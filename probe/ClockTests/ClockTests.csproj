@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>ClockTests</AssemblyName>
+    <RootNamespace>Overlyric.ClockTests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The clock has no Windows dependency, so it can be exercised as plain .NET. -->
+    <Compile Include="..\..\src\Overlyric\Media\PlaybackClock.cs" />
+  </ItemGroup>
+
+</Project>
