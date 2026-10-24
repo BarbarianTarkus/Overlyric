@@ -77,6 +77,14 @@ internal sealed class AppHost
     private NowPlayingSnapshot _snapshot = NowPlayingSnapshot.Empty;
     private IReadOnlyList<LyricsCandidate> _candidates = [];
     private long _candidatesRevision = -1;
+
+    /// <summary>
+    /// The live-source list the open source menu was built from. The watcher keeps polling while a
+    /// tray menu is up, so the list can change underneath the menu; the command id names an index
+    /// into this list, which is the list the user was looking at.
+    /// </summary>
+    private IReadOnlyList<SourceCandidate> _menuSources = [];
+
     private uint _currentInterval;
     private bool _overlayEnabled = true;
     private bool _locked = true;
@@ -89,6 +97,13 @@ internal sealed class AppHost
     private readonly HashSet<string> _unavailableShortcuts = [];
 
     private const int ErrorHotKeyAlreadyRegistered = 1409;
+
+    /// <summary>
+    /// The empty priority list handed to the watcher while nothing is configured. A shared instance
+    /// keeps the default path free of a per-poll allocation, which matters because the watcher reads
+    /// this setting once a second for as long as the application runs.
+    /// </summary>
+    private static readonly IReadOnlyList<SourcePreference> NoPriority = [];
 
     private static readonly NowPlayingSnapshot DemoSnapshot = new()
     {
@@ -171,7 +186,7 @@ internal sealed class AppHost
         }
         else
         {
-            _watcher = MediaSessionWatcher.CreateAsync().GetAwaiter().GetResult();
+            _watcher = MediaSessionWatcher.CreateAsync(ReadSourceSettings).GetAwaiter().GetResult();
             _watcher.Clock.ManualOffset = TimeSpan.FromMilliseconds(_config.LyricsOffsetMs);
             ApplyKaraokeTiming();
 
@@ -1134,6 +1149,13 @@ internal sealed class AppHost
             return;
         }
 
+        // Source-menu entries carry the index of the entry they were built for, in their own id range.
+        if (command >= Commands.PinSourceBase && command < Commands.SelectVersionBase)
+        {
+            PinSource(command - Commands.PinSourceBase);
+            return;
+        }
+
         switch (command)
         {
             case Commands.ToggleOverlay:
@@ -1275,10 +1297,40 @@ internal sealed class AppHost
                 OpenSettings();
                 break;
 
+            case Commands.SourceAutomatic:
+                SetPinnedSource("");
+                break;
+
+            case Commands.SourcePriorityOrder:
+                OpenSourceSettings();
+                break;
+
             case Commands.Exit:
                 Shutdown();
                 break;
         }
+    }
+
+    /// <summary>
+    /// Pin the player the source menu listed at <paramref name="index"/>. The watcher re-reads the
+    /// setting on its next poll, so the change lands within a second without touching the watcher or
+    /// restarting the application.
+    /// </summary>
+    private void PinSource(int index)
+    {
+        if (index < 0 || index >= _menuSources.Count)
+        {
+            return;
+        }
+
+        SetPinnedSource(_menuSources[index].Aumid);
+    }
+
+    /// <summary>Remember which player to follow, and persist it: a pin is a setting, not a mood.</summary>
+    private void SetPinnedSource(string aumid)
+    {
+        _config.SourcePinned = aumid;
+        _config.Save();
     }
 
     /// <summary>Pin the chosen lrclib record for this track and re-resolve straight away.</summary>
@@ -1401,10 +1453,37 @@ internal sealed class AppHost
                 name => _unavailableShortcuts.Contains(name),
                 () => OpenFolder(AppConfig.DataDirectory),
                 () => OpenFolder(AppConfig.CacheDirectory),
-                typeof(AppHost).Assembly.GetName().Version?.ToString(3) ?? "0.1.0");
+                typeof(AppHost).Assembly.GetName().Version?.ToString(3) ?? "0.1.0",
+                () => _watcher?.LiveSources ?? []);
         }
 
         _settings.Show();
+    }
+
+    /// <summary>Open the settings window straight on the source list, from the tray menu.</summary>
+    private void OpenSourceSettings()
+    {
+        OpenSettings();
+        _settings?.ShowSourceSection();
+    }
+
+    /// <summary>
+    /// The source setting as the watcher should see it on one poll.
+    /// </summary>
+    /// <remarks>
+    /// The priority list is copied rather than handed over: the polling thread enumerates it while the
+    /// settings window may be reordering it on the UI thread, and a copy is the cheapest way to keep
+    /// one from seeing the other mid-edit. The list is at most
+    /// <see cref="SourceSelector.MaxPriority"/> entries, so the copy costs nothing worth measuring -
+    /// and it is skipped entirely while the default, empty list is in use.
+    /// </remarks>
+    private SourceSettings ReadSourceSettings()
+    {
+        var priority = _config.SourcePriority;
+
+        return new SourceSettings(
+            priority.Count == 0 ? NoPriority : [.. priority],
+            _config.SourcePinned);
     }
 
     /// <summary>
@@ -1516,6 +1595,7 @@ internal sealed class AppHost
             // Informational, and previously selectable while doing nothing.
             TrayMenuItem.Disabled(trackLine),
             TrayMenuItem.Submenu("Lyrics version", versionItems),
+            TrayMenuItem.Submenu("Source", SourceMenuItems()),
             TrayMenuItem.Separator,
             new(Commands.ToggleOverlay, "Show overlay", _overlayEnabled),
             new(Commands.ToggleMode, _config.Mode == OverlayMode.SingleLine ? "Mode: single line" : "Mode: multi line"),
@@ -1538,6 +1618,62 @@ internal sealed class AppHost
         {
             Execute(selected);
         }
+    }
+
+    /// <summary>
+    /// The players publishing right now, as a menu: automatic first, one entry per live source, then
+    /// the way into the priority order.
+    /// </summary>
+    /// <remarks>
+    /// The list is the watcher's last poll, which is at most a second old - good enough for a menu
+    /// that is rebuilt every time it is opened. The command id an entry carries is an index into the
+    /// list it was built from, and that list is kept in <see cref="_menuSources"/>: the watcher keeps
+    /// polling while the menu is open, so re-reading <see cref="MediaSessionWatcher.LiveSources"/> at
+    /// click time could name a different player than the row that was clicked.
+    /// </remarks>
+    private IReadOnlyList<TrayMenuItem> SourceMenuItems()
+    {
+        var pinned = (_config.SourcePinned ?? "").Trim();
+        var sources = _watcher?.LiveSources ?? [];
+        _menuSources = sources;
+
+        var items = new List<TrayMenuItem>
+        {
+            // Clears the pin rather than pinning "whatever is current": automatic is a setting the
+            // user comes back to, and it has to keep following Windows afterwards.
+            new(Commands.SourceAutomatic, "Automatic (follow Windows)", pinned.Length == 0),
+            TrayMenuItem.Separator
+        };
+
+        if (sources.Count == 0)
+        {
+            items.Add(TrayMenuItem.Disabled("Nothing playing"));
+        }
+        else
+        {
+            for (var i = 0; i < sources.Count; i++)
+            {
+                var source = sources[i];
+
+                // A session with no readable app user model id has no name either. It is still a
+                // player the user can pin, so it gets a row rather than an unclickable blank line.
+                var label = string.IsNullOrWhiteSpace(source.Label) ? "Unknown player" : source.Label;
+
+                // The marker is Windows' own opinion, which is what "current" means elsewhere in the
+                // application - it is not necessarily the source being followed.
+                var text = source.IsSystemCurrent ? $"{label} (current)" : label;
+
+                items.Add(new TrayMenuItem(
+                    Commands.PinSourceBase + i,
+                    text,
+                    string.Equals(pinned, source.Aumid, StringComparison.OrdinalIgnoreCase)));
+            }
+        }
+
+        items.Add(TrayMenuItem.Separator);
+        items.Add(new TrayMenuItem(Commands.SourcePriorityOrder, "Priority order\u2026"));
+
+        return items;
     }
 
     private static string Truncate(string value, int maxLength) =>

@@ -1,6 +1,7 @@
 using System.Drawing;
 using System.Numerics;
 using Overlyric.Interop;
+using Overlyric.Media;
 using Overlyric.Overlay;
 using Vortice.Direct2D1;
 using Vortice.DirectWrite;
@@ -38,7 +39,7 @@ internal enum SettingsChange
 /// <para>
 /// The window is a plain Win32 window drawn with the same Direct2D/DirectWrite stack as the overlay,
 /// so it looks like the rest of the application and adds no dependency. It is fixed-size: no resize
-/// handling, no reflow, no scrollbars - five sections that each fit.
+/// handling, no reflow, no scrollbars - each section is laid out to fit the space it has.
 /// </para>
 /// </summary>
 internal sealed class SettingsWindow : WindowBase
@@ -51,7 +52,13 @@ internal sealed class SettingsWindow : WindowBase
         Behaviour = 3,
         Timing = 4,
         Position = 5,
-        Advanced = 6
+        Advanced = 6,
+
+        /// <summary>
+        /// Which player the overlay follows. Appended rather than slotted in next to Behaviour so the
+        /// existing navigation ids keep their values; the order here is the order in the side bar.
+        /// </summary>
+        Source = 7
     }
 
     /// <summary>Identifiers for every clickable thing. Values must stay unique.</summary>
@@ -64,6 +71,12 @@ internal sealed class SettingsWindow : WindowBase
         NavTiming = 5,
         NavPosition = 6,
         NavAdvanced = 7,
+
+        /// <summary>
+        /// The Source section's navigation entry. It has to follow the others with no gap, because the
+        /// click decoder turns a nav id back into a <see cref="Section"/> by subtracting NavOverlay.
+        /// </summary>
+        NavSource = 8,
 
         ModeSingle = 10,
         ModeMulti = 11,
@@ -106,7 +119,26 @@ internal sealed class SettingsWindow : WindowBase
         OledPixelShift = 66,
         OledOutline = 67,
         OledOpacitySlider = 68,
-        KaraokeToggle = 69
+        KaraokeToggle = 69,
+
+        /// <summary>Pin the player being followed right now, or clear the pin when there is one.</summary>
+        SourcePin = 70,
+
+        /// <summary>Add the player publishing to Windows right now to the top of the priority list.</summary>
+        SourceAdd = 71,
+
+        /// <summary>
+        /// The three buttons on every priority row. One base per button kind plus the slot index,
+        /// because the grid holds a fixed number of slots: the click handler decodes the slot with a
+        /// range check rather than the enum naming eighteen buttons.
+        /// </summary>
+        SourceUpBase = 80,
+
+        /// <summary>Move the entry in that slot one place towards the front of the list.</summary>
+        SourceDownBase = 90,
+
+        /// <summary>Remove the entry in that slot from the list.</summary>
+        SourceRemoveBase = 100
     }
 
     private const float WidthDip = 780f;
@@ -120,6 +152,14 @@ internal sealed class SettingsWindow : WindowBase
     private const float ContentLeft = NavWidthDip + PadDip;
     private const float ContentRight = WidthDip - PadDip;
     private const float ContentWidth = ContentRight - ContentLeft;
+
+    /// <summary>
+    /// The cluster of up, down and remove buttons at the right of a priority row, sized and spaced
+    /// like the other grouped controls so the rows read as one column.
+    /// </summary>
+    private const float RankButtonWidth = 30f;
+    private const float RankButtonGap = 6f;
+    private const float RankButtonsWidth = (RankButtonWidth * 3f) + (RankButtonGap * 2f);
 
     private const uint ColorWindow = 0xFF0F1116;
     private const uint ColorNav = 0xFF0A0C10;
@@ -138,7 +178,7 @@ internal sealed class SettingsWindow : WindowBase
     private const uint ColorWarning = 0xFFE0A458;
 
     private static readonly string[] SectionTitles =
-        ["Overlay", "Shortcuts", "OLED", "Behaviour", "Timing", "Position", "Advanced"];
+        ["Overlay", "Shortcuts", "OLED", "Behaviour", "Timing", "Position", "Advanced", "Source"];
 
     private static readonly string[] SectionHints =
     [
@@ -148,7 +188,8 @@ internal sealed class SettingsWindow : WindowBase
         "When the overlay should get out of the way.",
         "Correct lyrics that run early or late.",
         "Where the overlay sits on the monitor.",
-        "Folders and version information."
+        "Folders and version information.",
+        "A pinned player always wins, then this order, then Windows."
     ];
 
     private readonly AppConfig _config;
@@ -158,6 +199,13 @@ internal sealed class SettingsWindow : WindowBase
     private readonly Action _openDataFolder;
     private readonly Action _openCacheFolder;
     private readonly string _version;
+
+    /// <summary>
+    /// The players publishing to Windows at the moment the Source section is drawn. A callback rather
+    /// than a list captured at construction: the window outlives any single session, so a snapshot
+    /// would offer to add players that closed long ago.
+    /// </summary>
+    private readonly Func<IReadOnlyList<SourceCandidate>> _liveSources;
 
     private readonly Dictionary<uint, ID2D1SolidColorBrush> _brushes = [];
     private readonly Dictionary<(float Size, FontWeight Weight, TextAlignment Align), IDWriteTextFormat> _formats = [];
@@ -185,7 +233,8 @@ internal sealed class SettingsWindow : WindowBase
         Func<string, bool> isUnavailable,
         Action openDataFolder,
         Action openCacheFolder,
-        string version)
+        string version,
+        Func<IReadOnlyList<SourceCandidate>> liveSources)
     {
         _config = config;
         _changed = changed;
@@ -194,6 +243,7 @@ internal sealed class SettingsWindow : WindowBase
         _openDataFolder = openDataFolder;
         _openCacheFolder = openCacheFolder;
         _version = version;
+        _liveSources = liveSources;
     }
 
     private static nint _classBrush;
@@ -258,6 +308,17 @@ internal sealed class SettingsWindow : WindowBase
         {
             ShowWindow(Handle, SW_HIDE);
         }
+    }
+
+    /// <summary>
+    /// Open the window on the Source section. The tray deep-links here from its source menu, and it
+    /// shows the window itself rather than assuming the caller has already done so: a section that is
+    /// selected but invisible looks exactly like the deep link not working.
+    /// </summary>
+    public void ShowSourceSection()
+    {
+        _section = Section.Source;
+        Show();
     }
 
     private void Create()
@@ -643,6 +704,26 @@ internal sealed class SettingsWindow : WindowBase
             return;
         }
 
+        // The priority rows are a fixed grid, so their buttons are three contiguous id blocks rather
+        // than a case per button: the offset into the block is the slot the button belongs to.
+        if (id >= (int)Control.SourceUpBase && id < (int)Control.SourceUpBase + SourceSelector.MaxPriority)
+        {
+            MovePriority(id - (int)Control.SourceUpBase, up: true);
+            return;
+        }
+
+        if (id >= (int)Control.SourceDownBase && id < (int)Control.SourceDownBase + SourceSelector.MaxPriority)
+        {
+            MovePriority(id - (int)Control.SourceDownBase, up: false);
+            return;
+        }
+
+        if (id >= (int)Control.SourceRemoveBase && id < (int)Control.SourceRemoveBase + SourceSelector.MaxPriority)
+        {
+            RemovePriority(id - (int)Control.SourceRemoveBase);
+            return;
+        }
+
         switch ((Control)id)
         {
             case Control.NavOverlay:
@@ -652,8 +733,17 @@ internal sealed class SettingsWindow : WindowBase
             case Control.NavTiming:
             case Control.NavPosition:
             case Control.NavAdvanced:
+            case Control.NavSource:
                 _section = (Section)(id - (int)Control.NavOverlay);
                 Render();
+                return;
+
+            case Control.SourcePin:
+                TogglePinned();
+                return;
+
+            case Control.SourceAdd:
+                AddPlaying();
                 return;
 
             case Control.ModeSingle:
@@ -844,6 +934,118 @@ internal sealed class SettingsWindow : WindowBase
         Apply(SettingsChange.Placement);
     }
 
+    /// <summary>
+    /// The pin: on pins whoever is being followed this instant, off goes back to automatic. Pinning
+    /// the followed session rather than opening a picker is deliberate - the list and Windows have
+    /// already answered "which one now", and a second picker would be a second place to answer it
+    /// differently.
+    /// </summary>
+    private void TogglePinned()
+    {
+        if (!string.IsNullOrWhiteSpace(_config.SourcePinned))
+        {
+            // Empty means automatic: follow the list, and Windows when nothing in it is running.
+            _config.SourcePinned = "";
+            ApplySource();
+            return;
+        }
+
+        var live = LiveSources();
+        if (live.Count == 0)
+        {
+            return;
+        }
+
+        var following = SourceSelector.Choose(live, _config.SourcePriority, _config.SourcePinned);
+        if (!following.HasChoice)
+        {
+            return;
+        }
+
+        _config.SourcePinned = following.Aumid;
+        ApplySource();
+    }
+
+    /// <summary>
+    /// Adds the player publishing right now to the top of the list. Adding means "prefer this", which
+    /// is why it is a promotion rather than an append: an entry added at the bottom of a six-slot list
+    /// is one the user then has to move up themselves.
+    /// </summary>
+    private void AddPlaying()
+    {
+        var live = LiveSources();
+        if (live.Count == 0)
+        {
+            return;
+        }
+
+        var following = SourceSelector.Choose(live, _config.SourcePriority, _config.SourcePinned);
+        if (!following.HasChoice)
+        {
+            return;
+        }
+
+        // A full list refuses rather than growing past the six rows the grid draws: an entry the
+        // window cannot show is an entry the user cannot remove again.
+        if (SourceSelector.IndexOf(_config.SourcePriority, following.Aumid) < 0
+            && _config.SourcePriority.Count >= SourceSelector.MaxPriority)
+        {
+            return;
+        }
+
+        SourceSelector.Promote(_config.SourcePriority, following.Aumid, NameFor(live, following));
+        ApplySource();
+    }
+
+    /// <summary>Moves one priority entry a slot, and saves only when it really moved.</summary>
+    private void MovePriority(int slot, bool up)
+    {
+        if (slot < 0 || slot >= _config.SourcePriority.Count)
+        {
+            return;
+        }
+
+        // The helpers answer with the index the entry ended up at, which is also how an entry at
+        // either end of the list reports that there was nowhere to go.
+        var moved = up
+            ? SourceSelector.MoveUp(_config.SourcePriority, slot)
+            : SourceSelector.MoveDown(_config.SourcePriority, slot);
+
+        if (moved != slot)
+        {
+            ApplySource();
+        }
+    }
+
+    /// <summary>
+    /// Removes one priority entry. Removal is by app user model id, as the tray menu does it. The pin
+    /// is deliberately left alone: it is a separate statement about which player to follow, and a
+    /// player can be pinned without being in the list at all.
+    /// </summary>
+    private void RemovePriority(int slot)
+    {
+        if (slot < 0 || slot >= _config.SourcePriority.Count)
+        {
+            return;
+        }
+
+        if (SourceSelector.Remove(_config.SourcePriority, _config.SourcePriority[slot].Aumid))
+        {
+            ApplySource();
+        }
+    }
+
+    /// <summary>
+    /// Persist a source edit. No <see cref="SettingsChange"/> is raised on purpose: the host reads the
+    /// priority list and the pin fresh on every poll, so the next tick picks the change up and there is
+    /// nothing about the overlay to reapply here.
+    /// </summary>
+    private void ApplySource()
+    {
+        _config.Save();
+        Render();
+    }
+
     private void Apply(SettingsChange change)
     {
         _config.Save();
@@ -912,6 +1114,9 @@ internal sealed class SettingsWindow : WindowBase
                 break;
             case Section.Position:
                 DrawPositionSection(context);
+                break;
+            case Section.Source:
+                DrawSourceSection(context);
                 break;
             default:
                 DrawAdvancedSection(context);
@@ -1194,6 +1399,173 @@ internal sealed class SettingsWindow : WindowBase
         Hint(context, 2, $"Version {_version}. Settings live in %LOCALAPPDATA%\\Overlyric.");
     }
 
+    /// <summary>
+    /// The source section: the pin, then the priority order, then the one button that can be pressed
+    /// without knowing an app user model id. The grid is fixed at eight rows - one pin, six priority
+    /// slots and one add row - because the window has no scrollbar and a list that grew would push the
+    /// footer off the bottom.
+    /// </summary>
+    private void DrawSourceSection(ID2D1DeviceContext context)
+    {
+        // Asked once for the whole section: three separate calls could disagree if a player was closed
+        // in between, and the pin, the slots and the add row all describe the same moment.
+        var live = LiveSources();
+        var following = live.Count > 0
+            ? SourceSelector.Choose(live, _config.SourcePriority, _config.SourcePinned)
+            : SourceChoice.None;
+
+        var pinned = !string.IsNullOrWhiteSpace(_config.SourcePinned);
+
+        // Row 0: the pin, drawn above the list because it outranks it. The value is the pinned
+        // player's name derived from the app user model id - the player may well be closed while it is
+        // pinned, so the name cannot be read off a live session.
+        Row(context, 0, "Pin one player");
+        Label(
+            context,
+            pinned ? Fit(NowPlayingSnapshot.FriendlyNameFor(_config.SourcePinned), 28) : "Automatic",
+            ContentRight - 46f - 12f - 220f,
+            RowTop(0),
+            220f,
+            RowHeightDip,
+            12.5f,
+            FontWeight.Normal,
+            pinned ? ColorAccent : ColorTextDim,
+            TextAlignment.Trailing);
+
+        // Clearing a pin has to stay possible with nothing playing, because that is exactly when a
+        // stale pin gets noticed; turning one on needs a player to name.
+        Toggle(context, Control.SourcePin, pinned, pinned || live.Count > 0);
+
+        // Rows 1..6: one slot per priority entry. Empty slots draw nothing but keep their height, so
+        // the buttons never move out from under the mouse as entries are removed.
+        var count = _config.SourcePriority.Count;
+
+        for (var slot = 0; slot < SourceSelector.MaxPriority; slot++)
+        {
+            if (slot >= count)
+            {
+                continue;
+            }
+
+            var row = slot + 1;
+            var top = RowTop(row) + ((RowHeightDip - RankButtonWidth) / 2f);
+            var left = ContentRight - RankButtonsWidth;
+
+            // The label is never blank: NormalisePriority fills in the app user model id on load.
+            Row(context, row, Fit(_config.SourcePriority[slot].Label, 36));
+
+            // The arrow that cannot do anything is drawn dimmed rather than left out: a row with a
+            // different number of buttons would shift the column as the list changes length.
+            Button(
+                context,
+                left,
+                top,
+                RankButtonWidth,
+                RankButtonWidth,
+                "\u2191",
+                (Control)((int)Control.SourceUpBase + slot),
+                slot > 0);
+
+            Button(
+                context,
+                left + RankButtonWidth + RankButtonGap,
+                top,
+                RankButtonWidth,
+                RankButtonWidth,
+                "\u2193",
+                (Control)((int)Control.SourceDownBase + slot),
+                slot < count - 1);
+
+            Button(
+                context,
+                left + ((RankButtonWidth + RankButtonGap) * 2f),
+                top,
+                RankButtonWidth,
+                RankButtonWidth,
+                "\u2715",
+                (Control)((int)Control.SourceRemoveBase + slot),
+                true);
+        }
+
+        // Row 7: add the player publishing right now. It adds whoever is being followed, so the
+        // button, the pin and the list all mean the same thing by "what is playing".
+        const float addWidth = 190f;
+
+        var known = following.HasChoice && SourceSelector.IndexOf(_config.SourcePriority, following.Aumid) >= 0;
+        var full = count >= SourceSelector.MaxPriority;
+        var canAdd = following.HasChoice && (known || !full);
+
+        Label(
+            context,
+            !following.HasChoice
+                ? "No player is publishing to Windows right now."
+                : canAdd
+                    ? $"Following: {Fit(NameFor(live, following), 20)}. Adding puts it first."
+                    : "The list is full. Remove one before adding another.",
+            ContentLeft,
+            RowTop(7),
+            ContentWidth - addWidth - 24f,
+            RowHeightDip,
+            12f,
+            FontWeight.Normal,
+            ColorTextFaint);
+
+        Button(
+            context,
+            ContentRight - addWidth,
+            RowTop(7) + 8f,
+            addWidth,
+            30f,
+            "Add what is playing",
+            Control.SourceAdd,
+            canAdd);
+    }
+
+    /// <summary>
+    /// The players publishing to Windows right now, or nothing. The host owns the media sessions, so
+    /// the window asks for a fresh answer every time it draws rather than caching one: a stale list
+    /// would offer to add a player that has already been closed.
+    /// </summary>
+    private IReadOnlyList<SourceCandidate> LiveSources()
+    {
+        try
+        {
+            return _liveSources() ?? [];
+        }
+        catch (Exception)
+        {
+            // Asking the host must never be what breaks the window. An empty answer draws as "nothing
+            // is publishing", which is a state the section already has to handle.
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// The friendliest name for the session the selector picked: the label the candidate carries when
+    /// it has one, and the app user model id mapping otherwise. Matched by key, because two sessions
+    /// can share an app user model id and only the key says which one was meant.
+    /// </summary>
+    private static string NameFor(IReadOnlyList<SourceCandidate> live, SourceChoice choice)
+    {
+        foreach (var candidate in live)
+        {
+            if (string.Equals(candidate.Key, choice.Key, StringComparison.Ordinal))
+            {
+                var label = candidate.Label.Trim();
+                return label.Length > 0 ? label : NowPlayingSnapshot.FriendlyNameFor(candidate.Aumid);
+            }
+        }
+
+        return NowPlayingSnapshot.FriendlyNameFor(choice.Aumid);
+    }
+
+    /// <summary>
+    /// A list label short enough for one row. An app user model id the friendly-name mapping does not
+    /// know is stored as-is, and forty characters of it would draw under the reorder buttons.
+    /// </summary>
+    private static string Fit(string text, int limit) =>
+        text.Length <= limit ? text : text[..(limit - 1)] + "\u2026";
+
     private static float RowTop(int index) => RowsTopDip + (index * RowHeightDip);
 
     private void Row(ID2D1DeviceContext context, int index, string label) =>
@@ -1202,7 +1574,11 @@ internal sealed class SettingsWindow : WindowBase
     private void Hint(ID2D1DeviceContext context, int index, string text) =>
         Label(context, text, ContentLeft, RowTop(index) + 12f, ContentWidth, 40f, 12f, FontWeight.Normal, ColorTextFaint);
 
-    private void Toggle(ID2D1DeviceContext context, Control id, bool value)
+    /// <summary>
+    /// A switch. <paramref name="enabled"/> false draws it dimmed and drops the hover state: a toggle
+    /// that cannot do anything should not look like it will.
+    /// </summary>
+    private void Toggle(ID2D1DeviceContext context, Control id, bool value, bool enabled = true)
     {
         const float width = 46f;
         const float height = 26f;
@@ -1210,12 +1586,12 @@ internal sealed class SettingsWindow : WindowBase
 
         var left = ContentRight - width;
         var top = RowTop(RowOf(id)) + ((RowHeightDip - height) / 2f);
-        var hot = _hover == (int)id;
+        var hot = enabled && _hover == (int)id;
 
         FillRound(context, left, top, width, height, height / 2f, value ? ColorAccent : (hot ? ColorControlHot : ColorControl));
 
         var knobLeft = value ? left + width - knob - 3f : left + 3f;
-        FillRound(context, knobLeft, top + 3f, knob, knob, knob / 2f, ColorKnob);
+        FillRound(context, knobLeft, top + 3f, knob, knob, knob / 2f, enabled ? ColorKnob : ColorTextFaint);
 
         Hit((int)id, R(left - 8f, top - 8f, left + width + 8f, top + height + 8f));
     }
@@ -1316,11 +1692,24 @@ internal sealed class SettingsWindow : WindowBase
         Hit((int)id, R(left - 10f, centerY - 14f, left + width + 10f, centerY + 14f));
     }
 
-    private void Button(ID2D1DeviceContext context, float left, float top, float width, float height, string text, Control id)
+    /// <summary>
+    /// A labelled pill button. <paramref name="enabled"/> false draws the text faint and drops the hover
+    /// state, which is how the add row says that there is nothing to add without hiding the button and
+    /// leaving a gap where the user expects one.
+    /// </summary>
+    private void Button(
+        ID2D1DeviceContext context,
+        float left,
+        float top,
+        float width,
+        float height,
+        string text,
+        Control id,
+        bool enabled = true)
     {
-        var hot = _hover == (int)id;
+        var hot = enabled && _hover == (int)id;
         FillRound(context, left, top, width, height, 8f, hot ? ColorControlHot : ColorControl);
-        Label(context, text, left, top, width, height, 12.5f, FontWeight.Normal, ColorText, TextAlignment.Center);
+        Label(context, text, left, top, width, height, 12.5f, FontWeight.Normal, enabled ? ColorText : ColorTextFaint, TextAlignment.Center);
         Hit((int)id, R(left, top, left + width, top + height));
     }
 
@@ -1351,6 +1740,7 @@ internal sealed class SettingsWindow : WindowBase
         Control.ResetPosition => 2,
         Control.OpenData => 0,
         Control.OpenCache => 1,
+        Control.SourcePin => 0,
         _ => 0
     };
 

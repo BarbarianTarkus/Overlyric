@@ -30,7 +30,13 @@ public sealed record NowPlayingSnapshot
     public bool HasTrack => HasSession && (!string.IsNullOrWhiteSpace(Title) || !string.IsNullOrWhiteSpace(Artist));
 
     /// <summary>Human-readable player name derived from the app user model id.</summary>
-    public string SourceAppFriendly => SourceApp switch
+    public string SourceAppFriendly => FriendlyNameFor(SourceApp);
+
+    /// <summary>
+    /// The same mapping for a bare app user model id, because the source menus list every player that
+    /// is publishing - not only the one being followed - so they cannot read the name off a snapshot.
+    /// </summary>
+    public static string FriendlyNameFor(string? aumid) => (aumid ?? "") switch
     {
         "" => "",
         "com.squirrel.TIDAL.TIDAL" => "TIDAL",
@@ -41,11 +47,14 @@ public sealed record NowPlayingSnapshot
         var s when s.Contains("chrome", StringComparison.OrdinalIgnoreCase) => "Chrome",
         var s when s.Contains("msedge", StringComparison.OrdinalIgnoreCase) => "Edge",
         var s when s.Contains("firefox", StringComparison.OrdinalIgnoreCase) => "Firefox",
+        // Brave's session can arrive as "Brave._crx_<id>", where the rest of the id names the
+        // extension or web app that owns the media session rather than the browser itself.
+        var s when s.Contains("Brave", StringComparison.OrdinalIgnoreCase) => "Brave",
         var s when s.Contains("MusicBee", StringComparison.OrdinalIgnoreCase) => "MusicBee",
         var s when s.Contains("foobar", StringComparison.OrdinalIgnoreCase) => "foobar2000",
         var s when s.Contains("vlc", StringComparison.OrdinalIgnoreCase) => "VLC",
         var s when s.Contains("Microsoft.ZuneMusic", StringComparison.OrdinalIgnoreCase) => "Media Player",
-        _ => SourceApp
+        _ => aumid ?? ""
     };
 
     public string TrackDescription =>

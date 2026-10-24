@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Overlyric.Media;
 using Overlyric.Overlay;
 
 namespace Overlyric.App;
@@ -103,6 +104,20 @@ internal sealed class AppConfig
     /// </summary>
     public Dictionary<string, string> Shortcuts { get; set; } = [];
 
+    /// <summary>
+    /// The players to prefer, in order, when more than one is publishing to Windows media controls.
+    /// Empty - the default - means "follow whatever Windows calls current", which is what the app did
+    /// before this existed, so an old config keeps behaving exactly as it did.
+    /// </summary>
+    public List<SourcePreference> SourcePriority { get; set; } = [];
+
+    /// <summary>
+    /// App user model id of the player the user pinned, or empty for automatic. A pin outranks the
+    /// priority list: it is the user saying "this one, now", and it survives a restart because a
+    /// choice that has to be made again every morning is not a setting.
+    /// </summary>
+    public string SourcePinned { get; set; } = "";
+
     [JsonIgnore]
     public static string DataDirectory { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -169,6 +184,12 @@ internal sealed class AppConfig
         {
             FontFamily = "Segoe UI Variable Display";
         }
+
+        // The config file is editable by hand, so both halves of the source setting have to survive
+        // whatever it contains: a list of duplicates and blanks degrades to a usable order, and a pin
+        // that names no player simply stops matching.
+        SourcePriority = SourceSelector.NormalisePriority(SourcePriority);
+        SourcePinned = (SourcePinned ?? string.Empty).Trim();
 
         return this;
     }

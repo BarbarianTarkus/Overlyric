@@ -79,6 +79,30 @@ call is gated on the duration changing, plus a slow safety net for players that 
 while playback state and position are read cheaply every second. Without that gate the property call
 dominated the managed heap long before the collector ran.
 
+### Choosing which player to follow
+
+Windows has no API for this. `GetCurrentSession()` is the session the system believes the user would
+most likely want to control — the one the media keys apply to — which is a guess about intent, not a
+fact about audio. Measured with `probe\SmtcProbe --sessions`, with AIMP paused and a browser video
+open: Windows held the browser session as current for the whole window and never switched, while that
+session reported `Playing` with its position frozen at `00:00:06` and a timestamp an hour old.
+
+So the overlay decides for itself, in a fixed order: the player the user **pinned**, then their
+**priority list** in order, then whatever Windows calls current. A pin deliberately outranks even a
+playing source — it is the user saying "this one", and a setting that second-guesses that is not worth
+having. Nothing in the list matching falls back to Windows rather than to silence, so configuring a
+list can never leave the overlay with nothing to follow, and with both empty the watcher follows
+`GetCurrentSession()` exactly as it did before the setting existed.
+
+The order is edited in Settings → Source: six fixed slots, moved with the arrows, because the window
+has no scrollbar and a list that grew would push the footer off the bottom. The pin is one click in the
+tray menu's **Source** submenu, which lists every player publishing at that moment. Both are stored in
+`config.json` as the app user model id plus a label, so the list stays readable while a player is
+closed — the identity is a string like `Brave._crx_…` that nobody would recognise.
+`probe\SourcePreferenceTests` covers the rule in 46 checks: pin beating list and Windows, order
+respected, a listed player that is not running skipped, two sessions under one app id resolved to the
+one actually playing, and a hand-edited list cleaned and capped without throwing.
+
 ### Matching the right record
 
 lrclib usually holds many records for the same song — studio, live, remastered, assorted
@@ -586,6 +610,7 @@ because they are the quickest way to re-check a platform assumption.
 | `ShortcutsTests` | 35 checks over the hotkey text form: parsing, canonical modifier order, punctuation stored by name, and every malformed string falling back to "unbound" instead of throwing |
 | `KaraokeTests` | 22 checks over the sweep (monotonic, punctuation not sung ahead of the words, word timings honoured, mismatched timings falling back to the line span) and the lyricsfile reader (line ends, words, colons inside text, garbage refused without throwing) |
 | `ClockTests` | 19 checks over the playback clock: attaching mid-song, frozen vs live timelines, pause/resume, seeks, sentinel stamps |
+| `SourcePreferenceTests` | 46 checks over the source selector: pin beating the list and Windows, list order respected, a listed player that is not running skipped, duplicate app ids resolved to the one actually playing, and a hand-edited list cleaned and capped without throwing |
 
 Helper scripts: `probe\screenshot.py` (capture the screen) and `probe\crop.py` (crop and upscale a
 region for close inspection). Together they give a way to confirm visually that the overlay is on

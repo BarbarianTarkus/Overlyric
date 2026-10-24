@@ -93,6 +93,15 @@ internal static class Commands
     public const int AutoVersion = 170;
     public const int RefreshVersions = 171;
 
+    // The source menu is tray-only - no hotkey is bound to a player - but its ids live here with the
+    // rest, because this class is the one id namespace: the tray and the hotkey table are dispatched
+    // by the same switch, and a second place to look for "what is 200" is how collisions happen.
+    public const int SourceAutomatic = 200;
+    public const int SourcePriorityOrder = 201;
+
+    /// <summary>Source-menu entries carry the index of the entry they were built for in the id.</summary>
+    public const int PinSourceBase = 210;
+
     /// <summary>Command ids for version-menu entries are this base plus the candidate index.</summary>
     public const int SelectVersionBase = 1000;
 
