@@ -68,6 +68,9 @@ internal sealed class AppHost
     private CancellationTokenSource? _fetchCts;
     private OverlayVisual _visual = new();
     private long _lastRevision = -1;
+
+    /// <summary>When the current track started, for <see cref="AppConfig.HeaderAutoHideSeconds"/>.</summary>
+    private long _headerShownAt;
     private NowPlayingSnapshot _snapshot = NowPlayingSnapshot.Empty;
     private IReadOnlyList<LyricsCandidate> _candidates = [];
     private long _candidatesRevision = -1;
@@ -336,6 +339,7 @@ internal sealed class AppHost
         if (snapshot.Revision != _lastRevision)
         {
             _lastRevision = snapshot.Revision;
+            _headerShownAt = Stopwatch.GetTimestamp();
 
             if (!_demo)
             {
@@ -351,6 +355,12 @@ internal sealed class AppHost
         }
 
         var visual = BuildVisual(snapshot, position, positionIsUsable);
+
+        // The burn-in nudge rides on the visual rather than the window, so placement, dragging and
+        // hit testing are unaffected.
+        var (shiftX, shiftY) = PixelShiftOffset(position);
+        visual = visual with { OffsetX = shiftX, OffsetY = shiftY };
+
         if (!VisualEquals(_visual, visual))
         {
             _visual = visual;
@@ -386,7 +396,7 @@ internal sealed class AppHost
             completed = _fetchCompleted;
         }
 
-        var header = _config.ShowHeader ? BuildHeader(snapshot) : null;
+        var header = _config.ShowHeader && HeaderVisible() ? BuildHeader(snapshot) : null;
 
         var trackProgress = Quantise(ResolveTrackProgress(position, snapshot.DurationSeconds));
         var lineProgress = -1f;
@@ -914,12 +924,48 @@ internal sealed class AppHost
         }
     }
 
+    /// <summary>
+    /// Whether the track info is still within its on-screen time. It is the most static thing the
+    /// overlay draws, so on an OLED it is the first thing worth making disappear.
+    /// </summary>
+    private bool HeaderVisible()
+    {
+        if (_config.HeaderAutoHideSeconds <= 0)
+        {
+            return true;
+        }
+
+        return Stopwatch.GetElapsedTime(_headerShownAt).TotalSeconds < _config.HeaderAutoHideSeconds;
+    }
+
+    /// <summary>
+    /// Four positions a few pixels apart, one per minute of playback, so no pixel stays lit for the
+    /// whole track. Quantised to the minute so it changes rarely instead of redrawing every tick.
+    /// </summary>
+    private (float X, float Y) PixelShiftOffset(TimeSpan position)
+    {
+        if (!_config.PixelShift)
+        {
+            return (0f, 0f);
+        }
+
+        return (((int)(position.TotalSeconds / 60)) % 4) switch
+        {
+            1 => (3f, 0f),
+            2 => (0f, 3f),
+            3 => (3f, 3f),
+            _ => (0f, 0f)
+        };
+    }
+
     private static bool VisualEquals(OverlayVisual a, OverlayVisual b)
     {
         if (a.Mode != b.Mode
             || a.ActiveIndex != b.ActiveIndex
             || a.ShowHeader != b.ShowHeader
             || a.ShowProgressBar != b.ShowProgressBar
+            || a.OffsetX != b.OffsetX
+            || a.OffsetY != b.OffsetY
             || !string.Equals(a.Header, b.Header, StringComparison.Ordinal)
             || !string.Equals(a.Status, b.Status, StringComparison.Ordinal)
             || a.Lines.Count != b.Lines.Count)
@@ -953,7 +999,7 @@ internal sealed class AppHost
     private void OnOpacityScrolled(int delta)
     {
         var step = delta > 0 ? 0.05 : -0.05;
-        _config.BackgroundOpacity = Math.Clamp(_config.BackgroundOpacity + step, 0.15, 1.0);
+        _config.BackgroundOpacity = Math.Clamp(_config.BackgroundOpacity + step, 0.0, 1.0);
         ApplyTheme();
         _config.Save();
     }
@@ -1153,13 +1199,13 @@ internal sealed class AppHost
                 break;
 
             case Commands.OpacityUp:
-                _config.BackgroundOpacity = Math.Clamp(_config.BackgroundOpacity + 0.05, 0.15, 1.0);
+                _config.BackgroundOpacity = Math.Clamp(_config.BackgroundOpacity + 0.05, 0.0, 1.0);
                 ApplyTheme();
                 _config.Save();
                 break;
 
             case Commands.OpacityDown:
-                _config.BackgroundOpacity = Math.Clamp(_config.BackgroundOpacity - 0.05, 0.15, 1.0);
+                _config.BackgroundOpacity = Math.Clamp(_config.BackgroundOpacity - 0.05, 0.0, 1.0);
                 ApplyTheme();
                 _config.Save();
                 break;

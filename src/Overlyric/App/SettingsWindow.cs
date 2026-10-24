@@ -47,10 +47,11 @@ internal sealed class SettingsWindow : WindowBase
     {
         Overlay = 0,
         Shortcuts = 1,
-        Behaviour = 2,
-        Timing = 3,
-        Position = 4,
-        Advanced = 5
+        Oled = 2,
+        Behaviour = 3,
+        Timing = 4,
+        Position = 5,
+        Advanced = 6
     }
 
     /// <summary>Identifiers for every clickable thing. Values must stay unique.</summary>
@@ -58,16 +59,16 @@ internal sealed class SettingsWindow : WindowBase
     {
         NavOverlay = 1,
         NavShortcuts = 2,
-        NavBehaviour = 3,
-        NavTiming = 4,
-        NavPosition = 5,
-        NavAdvanced = 6,
+        NavOled = 3,
+        NavBehaviour = 4,
+        NavTiming = 5,
+        NavPosition = 6,
+        NavAdvanced = 7,
 
         ModeSingle = 10,
         ModeMulti = 11,
         LinesDown = 12,
         LinesUp = 13,
-        OpacitySlider = 14,
         Header = 15,
         ProgressBar = 16,
         FontActiveDown = 17,
@@ -94,7 +95,17 @@ internal sealed class SettingsWindow : WindowBase
         Close = 34,
 
         /// <summary>Shortcut chips are this base plus the index into <see cref="ShortcutActions.All"/>.</summary>
-        ShortcutChipBase = 40
+        ShortcutChipBase = 40,
+
+        OledPreset = 60,
+        OledAutoHideDown = 61,
+        OledAutoHideUp = 62,
+        OledHighlight = 63,
+        OledDimDown = 64,
+        OledDimUp = 65,
+        OledPixelShift = 66,
+        OledOutline = 67,
+        OledOpacitySlider = 68
     }
 
     private const float WidthDip = 780f;
@@ -125,12 +136,14 @@ internal sealed class SettingsWindow : WindowBase
     private const uint ColorKnobHot = 0xFFFFFFFF;
     private const uint ColorWarning = 0xFFE0A458;
 
-    private static readonly string[] SectionTitles = ["Overlay", "Shortcuts", "Behaviour", "Timing", "Position", "Advanced"];
+    private static readonly string[] SectionTitles =
+        ["Overlay", "Shortcuts", "OLED", "Behaviour", "Timing", "Position", "Advanced"];
 
     private static readonly string[] SectionHints =
     [
         "How the lyrics look on screen.",
         "Click a shortcut, then press the keys you want.",
+        "Leave nothing static on the screen for long.",
         "When the overlay should get out of the way.",
         "Correct lyrics that run early or late.",
         "Where the overlay sits on the monitor.",
@@ -453,7 +466,7 @@ internal sealed class SettingsWindow : WindowBase
                 continue;
             }
 
-            if (id == (int)Control.OpacitySlider)
+            if (id == (int)Control.OledOpacitySlider)
             {
                 _draggingOpacity = true;
                 SetCapture(Handle);
@@ -525,7 +538,7 @@ internal sealed class SettingsWindow : WindowBase
         }
 
         var t = Math.Clamp((x - _sliderLeft) / _sliderWidth, 0f, 1f);
-        var opacity = 0.15 + (t * (1.0 - 0.15));
+        var opacity = (double)t;
 
         if (Math.Abs(opacity - _config.BackgroundOpacity) < 0.001)
         {
@@ -633,6 +646,7 @@ internal sealed class SettingsWindow : WindowBase
         {
             case Control.NavOverlay:
             case Control.NavShortcuts:
+            case Control.NavOled:
             case Control.NavBehaviour:
             case Control.NavTiming:
             case Control.NavPosition:
@@ -750,10 +764,70 @@ internal sealed class SettingsWindow : WindowBase
                 _openCacheFolder();
                 return;
 
+            case Control.OledPreset:
+                ApplyOledPreset();
+                return;
+
+            case Control.OledAutoHideDown:
+                _config.HeaderAutoHideSeconds = Math.Clamp(_config.HeaderAutoHideSeconds - 2, 0, 30);
+                Apply(SettingsChange.Visibility);
+                return;
+
+            case Control.OledAutoHideUp:
+                _config.HeaderAutoHideSeconds = Math.Clamp(_config.HeaderAutoHideSeconds + 2, 0, 30);
+                Apply(SettingsChange.Visibility);
+                return;
+
+            case Control.OledHighlight:
+                _config.ShowActiveLineHighlight = !_config.ShowActiveLineHighlight;
+                Apply(SettingsChange.Appearance);
+                return;
+
+            case Control.OledDimDown:
+                _config.InactiveLineOpacity = Math.Clamp(Math.Round(_config.InactiveLineOpacity - 0.1, 2), 0.1, 1.0);
+                Apply(SettingsChange.Appearance);
+                return;
+
+            case Control.OledDimUp:
+                _config.InactiveLineOpacity = Math.Clamp(Math.Round(_config.InactiveLineOpacity + 0.1, 2), 0.1, 1.0);
+                Apply(SettingsChange.Appearance);
+                return;
+
+            case Control.OledPixelShift:
+                _config.PixelShift = !_config.PixelShift;
+                Apply(SettingsChange.Appearance);
+                return;
+
+            case Control.OledOutline:
+                _config.TextOutline = !_config.TextOutline;
+                Apply(SettingsChange.Appearance);
+                return;
+
             case Control.Close:
                 Hide();
                 return;
         }
+    }
+
+    /// <summary>
+    /// A bundle for an OLED panel: no backdrop, no progress bar, the static header fades out, no
+    /// highlight bar, dimmer surrounding lines, and the whole thing nudged around once a minute.
+    /// </summary>
+    private void ApplyOledPreset()
+    {
+        _config.BackgroundOpacity = 0.0;
+        _config.ShowProgressBar = false;
+        _config.HeaderAutoHideSeconds = 8;
+        _config.ShowActiveLineHighlight = false;
+        _config.InactiveLineOpacity = 0.4;
+        _config.PixelShift = true;
+        _config.TextOutline = true;
+        _config.HideWhenPaused = true;
+
+        _config.Save();
+        _changed(SettingsChange.Appearance);
+        _changed(SettingsChange.Visibility);
+        Render();
     }
 
     private void SetAnchor(OverlayAnchor anchor)
@@ -820,6 +894,9 @@ internal sealed class SettingsWindow : WindowBase
                 break;
             case Section.Shortcuts:
                 DrawShortcutsSection(context);
+                break;
+            case Section.Oled:
+                DrawOledSection(context);
                 break;
             case Section.Behaviour:
                 DrawBehaviourSection(context);
@@ -937,20 +1014,45 @@ internal sealed class SettingsWindow : WindowBase
         Row(context, 1, "Lines shown");
         Stepper(context, _config.MultiLineCount.ToString(), Control.LinesDown, Control.LinesUp);
 
-        Row(context, 2, "Backdrop opacity");
-        Slider(context, Control.OpacitySlider, $"{Math.Round(_config.BackgroundOpacity * 100)}%");
-
-        Row(context, 3, "Show track info");
+        Row(context, 2, "Show track info");
         Toggle(context, Control.Header, _config.ShowHeader);
 
-        Row(context, 4, "Show progress bar");
+        Row(context, 3, "Show progress bar");
         Toggle(context, Control.ProgressBar, _config.ShowProgressBar);
 
-        Row(context, 5, "Lyric size");
+        Row(context, 4, "Lyric size");
         Stepper(context, _config.ActiveFontSize.ToString("0"), Control.FontActiveDown, Control.FontActiveUp);
 
-        Row(context, 6, "Surrounding lines size");
+        Row(context, 5, "Surrounding lines size");
         Stepper(context, _config.InactiveFontSize.ToString("0"), Control.FontInactiveDown, Control.FontInactiveUp);
+    }
+
+    private void DrawOledSection(ID2D1DeviceContext context)
+    {
+        Row(context, 0, "OLED preset");
+        Button(context, ContentRight - 132f, RowTop(0) + 8f, 132f, 30f, "Apply preset", Control.OledPreset);
+
+        Row(context, 1, "Backdrop opacity");
+        Slider(context, Control.OledOpacitySlider, $"{Math.Round(_config.BackgroundOpacity * 100)}%");
+
+        Row(context, 2, "Auto-hide track info");
+        Stepper(
+            context,
+            _config.HeaderAutoHideSeconds == 0 ? "Never" : $"{_config.HeaderAutoHideSeconds} s",
+            Control.OledAutoHideDown,
+            Control.OledAutoHideUp);
+
+        Row(context, 3, "Highlight the active line");
+        Toggle(context, Control.OledHighlight, _config.ShowActiveLineHighlight);
+
+        Row(context, 4, "Dim surrounding lines");
+        Stepper(context, $"{Math.Round(_config.InactiveLineOpacity * 100)}%", Control.OledDimDown, Control.OledDimUp);
+
+        Row(context, 5, "Pixel shift");
+        Toggle(context, Control.OledPixelShift, _config.PixelShift);
+
+        Row(context, 6, "Outline text");
+        Toggle(context, Control.OledOutline, _config.TextOutline);
     }
 
     private void DrawShortcutsSection(ID2D1DeviceContext context)
@@ -1194,7 +1296,7 @@ internal sealed class SettingsWindow : WindowBase
 
         FillRound(context, left, top, width, trackHeight, trackHeight / 2f, ColorControl);
 
-        var t = (float)Math.Clamp((_config.BackgroundOpacity - 0.15) / (1.0 - 0.15), 0.0, 1.0);
+        var t = (float)Math.Clamp(_config.BackgroundOpacity, 0.0, 1.0);
         FillRound(context, left, top, Math.Max(knob, t * width), trackHeight, trackHeight / 2f, ColorAccent);
         FillRound(context, left + (t * width) - (knob / 2f), centerY - (knob / 2f), knob, knob, knob / 2f,
             _hover == (int)id || _draggingOpacity ? ColorKnobHot : ColorKnob);
@@ -1218,11 +1320,17 @@ internal sealed class SettingsWindow : WindowBase
     {
         Control.ModeSingle or Control.ModeMulti => 0,
         Control.LinesDown or Control.LinesUp => 1,
-        Control.OpacitySlider => 2,
-        Control.Header => 3,
-        Control.ProgressBar => 4,
-        Control.FontActiveDown or Control.FontActiveUp => 5,
-        Control.FontInactiveDown or Control.FontInactiveUp => 6,
+        Control.Header => 2,
+        Control.ProgressBar => 3,
+        Control.FontActiveDown or Control.FontActiveUp => 4,
+        Control.FontInactiveDown or Control.FontInactiveUp => 5,
+        Control.OledPreset => 0,
+        Control.OledOpacitySlider => 1,
+        Control.OledAutoHideDown or Control.OledAutoHideUp => 2,
+        Control.OledHighlight => 3,
+        Control.OledDimDown or Control.OledDimUp => 4,
+        Control.OledPixelShift => 5,
+        Control.OledOutline => 6,
         Control.HidePaused => 0,
         Control.HideNoLyrics => 1,
         Control.HideInstrumental => 2,

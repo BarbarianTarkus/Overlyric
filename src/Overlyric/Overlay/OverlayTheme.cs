@@ -39,6 +39,12 @@ public sealed class OverlayTheme
     /// <summary>How many lyric lines a multi-line overlay shows at once.</summary>
     public int MultiLineCount { get; init; } = 5;
 
+    /// <summary>Draw the highlight bar behind the line being sung.</summary>
+    public bool ShowActiveLineHighlight { get; init; } = true;
+
+    /// <summary>Draw a hard outline around the text instead of a soft shadow.</summary>
+    public bool TextOutline { get; init; }
+
     public static Color4 ToColor4(uint argb) => new(
         ((argb >> 16) & 0xFF) / 255f,
         ((argb >> 8) & 0xFF) / 255f,
@@ -71,4 +77,12 @@ public sealed record OverlayVisual
 
     /// <summary>0..1 progress through the whole track; negative when unknown.</summary>
     public float TrackProgress { get; init; } = -1f;
+
+    /// <summary>
+    /// Burn-in nudge in device-independent pixels, applied to everything drawn. Moving the drawing
+    /// rather than the window keeps the window's own hit testing and placement untouched.
+    /// </summary>
+    public float OffsetX { get; init; }
+
+    public float OffsetY { get; init; }
 }

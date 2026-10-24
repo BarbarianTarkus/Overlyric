@@ -358,11 +358,11 @@ anything.
 
 ### Settings window
 
-`Settings…` in the tray, or `Overlyric.exe --settings`, opens a fixed-size dark window with six
-sections down the left: **Overlay** (mode, lines shown, backdrop opacity, track info, progress bar,
-font sizes), **Shortcuts** (rebind the global hotkeys), **Behaviour** (the hide rules and the player
-warning), **Timing** (lyric offset), **Position** (anchor, offsets, reset) and **Advanced** (open the
-settings or cache folder, version).
+`Settings…` in the tray, or `Overlyric.exe --settings`, opens a fixed-size dark window with seven
+sections down the left: **Overlay** (mode, lines shown, track info, progress bar, font sizes),
+**Shortcuts** (rebind the global hotkeys), **OLED** (burn-in controls, see below), **Behaviour** (the
+hide rules and the player warning), **Timing** (lyric offset), **Position** (anchor, offsets, reset)
+and **Advanced** (open the settings or cache folder, version).
 
 ![The settings window](docs/settings-window.png)
 
@@ -370,6 +370,35 @@ Changes apply live and are saved as they are made, so the overlay behind the win
 immediately. `Esc` or the close button hides the window; the process keeps running and the overlay
 stays up. Hiding is split into "hide when no lyrics" and "hide instrumentals", so a wordless track
 can either vanish or simply say so.
+
+### OLED and burn-in
+
+An OLED panel wears where the same pixels stay lit for hours, and a lyric overlay is exactly that: the
+backdrop is a large static rectangle, the progress bar never moves except at one edge, the track info
+is identical for the whole song, and the surrounding lines sit in the same place for minutes. The
+**OLED** section exists to take all of that away.
+
+![The OLED section](docs/settings-oled.png)
+
+**Apply preset** sets the whole bundle in one click: backdrop to zero, progress bar off, track info
+gone after eight seconds, no highlight bar, surrounding lines dimmed to 40 %, pixel shift on, outline
+text on, and hide when paused. Every one of those is also a separate control, so the preset is a
+starting point rather than a mode.
+
+| Lever | What it does |
+| --- | --- |
+| **Backdrop opacity** | Goes all the way to 0. At 0 the backdrop is not drawn at all — the window is pure text |
+| **Auto-hide track info** | Seconds before `Artist — Title` fades out; `Never` keeps it |
+| **Highlight the active line** | The translucent bar behind the line being sung |
+| **Dim surrounding lines** | Opacity of the lines around the active one |
+| **Pixel shift** | Nudges everything 3 px around a four-step cycle, one step per minute of playback |
+| **Outline text** | A hard one-pixel outline instead of the soft shadow |
+
+Two of these interact, and are worth knowing about. A transparent backdrop is only legible over bright
+video if the text has an edge, which is what **Outline text** is for — the soft shadow alone is not
+enough once the backdrop is gone. And **Pixel shift** moves the *drawing*, not the window: placement,
+dragging and hit testing are untouched, so nothing has to be re-measured and no position is written to
+the config.
 
 Scroll the wheel over the overlay while it is unlocked to change the backdrop opacity. Drag it while
 unlocked to reposition: the placement is stored as an offset **from the anchored edge** — a margin
@@ -414,7 +443,12 @@ in `Locked`, so an overlay left unlocked on purpose is still unlocked next time.
 | `ShowHeader` | Show `Artist — Title` above the lyrics |
 | `ShowProgressBar` | Show the track progress bar |
 | `MultiLineCount` | Lines visible in multi-line mode |
-| `BackgroundOpacity` | Backdrop opacity, 0.15–1.0 |
+| `BackgroundOpacity` | Backdrop opacity, 0.0–1.0. At 0 the backdrop is not drawn at all |
+| `HeaderAutoHideSeconds` | Seconds before the track info fades out; 0 keeps it for the whole track |
+| `ShowActiveLineHighlight` | Draw the highlight bar behind the active line |
+| `InactiveLineOpacity` | Opacity of the surrounding lines, 0.05–1.0 |
+| `PixelShift` | Nudge the drawing a few pixels once a minute, against burn-in |
+| `TextOutline` | Hard outline instead of a soft shadow, for a transparent backdrop |
 | `HideWhenPaused` | Hide while playback is paused |
 | `HideWhenNoLyrics` | Hide when lrclib has no lyrics for the track |
 | `HideWhenInstrumental` | Hide when the track is instrumental |

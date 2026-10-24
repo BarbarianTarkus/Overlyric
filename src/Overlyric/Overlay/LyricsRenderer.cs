@@ -93,13 +93,54 @@ internal sealed class LyricsRenderer : IDisposable
 
         if (visual.Mode == OverlayMode.SingleLine)
         {
-            DrawSingleLine(context, visual, width, height, margin, available);
+            DrawWithShift(context, visual, () => DrawSingleLine(context, visual, width, height, margin, available));
         }
         else
         {
-            DrawMultiLine(context, visual, width, height, margin, available);
+            DrawWithShift(context, visual, () => DrawMultiLine(context, visual, width, height, margin, available));
         }
     }
+
+    /// <summary>
+    /// Draws one frame through the burn-in nudge and reports content bounds in window coordinates.
+    /// The transform is reset in a finally block because the device context keeps it between frames.
+    /// </summary>
+    private void DrawWithShift(ID2D1DeviceContext context, OverlayVisual visual, Action draw)
+    {
+        var shifted = visual.OffsetX != 0f || visual.OffsetY != 0f;
+
+        if (shifted)
+        {
+            context.Transform = Matrix3x2.CreateTranslation(visual.OffsetX, visual.OffsetY);
+        }
+
+        try
+        {
+            draw();
+        }
+        finally
+        {
+            if (shifted)
+            {
+                context.Transform = Matrix3x2.Identity;
+            }
+        }
+
+        if (!shifted)
+        {
+            return;
+        }
+
+        var bounds = ContentBounds;
+        ContentBounds = new Rect(RectangleF.FromLTRB(
+            bounds.Left + visual.OffsetX,
+            bounds.Top + visual.OffsetY,
+            bounds.Right + visual.OffsetX,
+            bounds.Bottom + visual.OffsetY));
+    }
+
+    /// <summary>False when the backdrop is fully transparent, so it is not drawn at all.</summary>
+    private bool HasBackdrop => (_theme.BackgroundColor >> 24) != 0;
 
     private void DrawSingleLine(
         ID2D1DeviceContext context,
@@ -147,9 +188,13 @@ internal sealed class LyricsRenderer : IDisposable
         if (headerLayout is not null)
         {
             var headerLeft = (width - headerWidth) / 2f;
-            context.FillRoundedRectangle(
-                Rounded(headerLeft, top, headerWidth, headerHeight - 4f, _theme.CornerRadius * 0.7f),
-                GetBrush(context, _theme.BackgroundColor));
+
+            if (HasBackdrop)
+            {
+                context.FillRoundedRectangle(
+                    Rounded(headerLeft, top, headerWidth, headerHeight - 4f, _theme.CornerRadius * 0.7f),
+                    GetBrush(context, _theme.BackgroundColor));
+            }
 
             DrawTextShadows(
                 context,
@@ -162,9 +207,12 @@ internal sealed class LyricsRenderer : IDisposable
             contentRight = Math.Max(contentRight, headerLeft + headerWidth);
         }
 
-        context.FillRoundedRectangle(
-            Rounded(left, top, pillWidth, pillHeight, _theme.CornerRadius),
-            GetBrush(context, _theme.BackgroundColor));
+        if (HasBackdrop)
+        {
+            context.FillRoundedRectangle(
+                Rounded(left, top, pillWidth, pillHeight, _theme.CornerRadius),
+                GetBrush(context, _theme.BackgroundColor));
+        }
 
         if (showProgress)
         {
@@ -241,9 +289,12 @@ internal sealed class LyricsRenderer : IDisposable
         var left = (width - boxWidth) / 2f;
         var top = (height - boxHeight) / 2f;
 
-        context.FillRoundedRectangle(
-            Rounded(left, top, boxWidth, boxHeight, _theme.CornerRadius),
-            GetBrush(context, _theme.BackgroundColor));
+        if (HasBackdrop)
+        {
+            context.FillRoundedRectangle(
+                Rounded(left, top, boxWidth, boxHeight, _theme.CornerRadius),
+                GetBrush(context, _theme.BackgroundColor));
+        }
 
         var y = top + _theme.PaddingY;
 
@@ -261,7 +312,7 @@ internal sealed class LyricsRenderer : IDisposable
         {
             var isActive = i == visual.ActiveIndex;
 
-            if (isActive)
+            if (isActive && _theme.ShowActiveLineHighlight)
             {
                 var highlight = Rounded(
                     left + 6f,
@@ -290,8 +341,9 @@ internal sealed class LyricsRenderer : IDisposable
     }
 
     /// <summary>
-    /// Text is drawn five times, four of them offset as a soft shadow, so lyrics stay readable over
-    /// bright or busy backgrounds such as games and video.
+    /// Text is drawn more than once so it stays readable over bright or busy backgrounds. The
+    /// default is a soft shadow; an outline is the same idea with a hard edge, which is what a
+    /// transparent backdrop needs to keep light text legible.
     /// </summary>
     private void DrawTextShadows(
         ID2D1DeviceContext context,
@@ -299,6 +351,22 @@ internal sealed class LyricsRenderer : IDisposable
         Vector2 origin,
         ID2D1SolidColorBrush foreground)
     {
+        if (_theme.TextOutline)
+        {
+            var outline = GetBrush(context, _theme.ShadowColor);
+
+            context.DrawTextLayout(origin + new Vector2(-1f, -1f), layout, outline);
+            context.DrawTextLayout(origin + new Vector2(0f, -1f), layout, outline);
+            context.DrawTextLayout(origin + new Vector2(1f, -1f), layout, outline);
+            context.DrawTextLayout(origin + new Vector2(-1f, 0f), layout, outline);
+            context.DrawTextLayout(origin + new Vector2(1f, 0f), layout, outline);
+            context.DrawTextLayout(origin + new Vector2(-1f, 1f), layout, outline);
+            context.DrawTextLayout(origin + new Vector2(0f, 1f), layout, outline);
+            context.DrawTextLayout(origin + new Vector2(1f, 1f), layout, outline);
+            context.DrawTextLayout(origin, layout, foreground);
+            return;
+        }
+
         var shadow = GetBrush(context, _theme.ShadowColor);
 
         context.DrawTextLayout(origin + new Vector2(0f, 1.5f), layout, shadow);

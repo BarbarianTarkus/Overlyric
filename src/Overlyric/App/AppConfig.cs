@@ -39,8 +39,29 @@ internal sealed class AppConfig
     /// <summary>Multi-line mode only: how many lines to show at once.</summary>
     public int MultiLineCount { get; set; } = 5;
 
-    /// <summary>0.15 - 1.0, applied to the overlay backdrop.</summary>
+    /// <summary>0.0 - 1.0, applied to the overlay backdrop. Zero removes it entirely.</summary>
     public double BackgroundOpacity { get; set; } = 0.7;
+
+    /// <summary>
+    /// Seconds after a track starts before the track info fades out; 0 keeps it for the whole
+    /// track. It is the most static text on screen, so it is the first thing an OLED wants gone.
+    /// </summary>
+    public int HeaderAutoHideSeconds { get; set; }
+
+    /// <summary>Draw the bar behind the line being sung.</summary>
+    public bool ShowActiveLineHighlight { get; set; } = true;
+
+    /// <summary>Opacity of the lines around the active one, 0.05 - 1.0.</summary>
+    public double InactiveLineOpacity { get; set; } = 0.54;
+
+    /// <summary>Nudge the drawn content a few pixels once a minute, so no pixel is always lit.</summary>
+    public bool PixelShift { get; set; }
+
+    /// <summary>
+    /// A hard outline instead of a soft shadow. Without a backdrop the shadow is not enough to keep
+    /// light text legible over bright video, and an outline is.
+    /// </summary>
+    public bool TextOutline { get; set; }
 
     public bool HideWhenPaused { get; set; }
 
@@ -129,7 +150,9 @@ internal sealed class AppConfig
     private AppConfig Normalise()
     {
         MultiLineCount = Math.Clamp(MultiLineCount, 1, 11);
-        BackgroundOpacity = Math.Clamp(BackgroundOpacity, 0.15, 1.0);
+        BackgroundOpacity = Math.Clamp(BackgroundOpacity, 0.0, 1.0);
+        InactiveLineOpacity = Math.Clamp(InactiveLineOpacity, 0.05, 1.0);
+        HeaderAutoHideSeconds = Math.Clamp(HeaderAutoHideSeconds, 0, 120);
         ActiveFontSize = Math.Clamp(ActiveFontSize, 12f, 72f);
         InactiveFontSize = Math.Clamp(InactiveFontSize, 10f, 72f);
         OffsetY = Math.Clamp(OffsetY, -4000, 4000);
@@ -150,7 +173,12 @@ internal sealed class AppConfig
         ActiveFontSize = ActiveFontSize,
         InactiveFontSize = InactiveFontSize,
         MultiLineCount = MultiLineCount,
-        BackgroundColor = ScaleAlpha(0xB4101014, BackgroundOpacity)
+        BackgroundColor = ScaleAlpha(0xB4101014, BackgroundOpacity),
+        // The surrounding lines keep their hue and lose their alpha, so "dim" means dimmer rather
+        // than a different colour.
+        InactiveTextColor = ScaleAlpha(0xFFF5F7FA, InactiveLineOpacity),
+        ShowActiveLineHighlight = ShowActiveLineHighlight,
+        TextOutline = TextOutline
     };
 
     private static uint ScaleAlpha(uint argb, double factor)
