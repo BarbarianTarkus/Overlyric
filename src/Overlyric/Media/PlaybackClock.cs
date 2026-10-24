@@ -28,8 +28,12 @@ namespace Overlyric.Media;
 /// </summary>
 public sealed class PlaybackClock
 {
-    /// <summary>Re-anchor only once the interpolated position is this far off the reported one.</summary>
-    private static readonly TimeSpan DriftSnapThreshold = TimeSpan.FromMilliseconds(400);
+    /// <summary>
+    /// Re-anchor only once the interpolated position is this far off the reported one. Word-level
+    /// karaoke wants a tighter leash than line-level lyrics, which are happy with a wider one, so
+    /// this is a property rather than a constant.
+    /// </summary>
+    public double DriftSnapThresholdMs { get; set; } = 400.0;
 
     /// <summary>
     /// Oldest stamp that can still be the moment a position was taken. Anything older is a sentinel
@@ -224,7 +228,7 @@ public sealed class PlaybackClock
             var interpolated = ComputePositionUnlocked();
             var drift = reportedPosition + _manualOffset - interpolated;
 
-            if (Math.Abs(drift.TotalMilliseconds) > DriftSnapThreshold.TotalMilliseconds)
+            if (Math.Abs(drift.TotalMilliseconds) > DriftSnapThresholdMs)
             {
                 // Distinguish an ordinary correction from a user seek.
                 if (Math.Abs(drift.TotalMilliseconds) > 2000)

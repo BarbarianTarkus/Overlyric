@@ -553,7 +553,7 @@ internal static class Program
         File.WriteAllText(
             Path.Combine(legacyCacheDirectory, CacheHash(stampedKey) + ".json"),
             LegacyEntryJson(stampedKey, 905)
-                .Replace("\"result\"", "\"matchVersion\":1,\"result\"", StringComparison.Ordinal));
+                .Replace("\"result\"", $"\"matchVersion\":{LyricsCache.CurrentMatchVersion},\"result\"", StringComparison.Ordinal));
         server.ResetRequests();
         var stamped = await new LyricsService(client, legacyCache).GetLyricsAsync(
             "Artist", "Stamped Entry", "Old Album", 300, CancellationToken.None);
@@ -565,7 +565,7 @@ internal static class Program
         var stampedMissKey = LyricsCache.MakeKey("Artist", "Stamped Tombstone", "Old Album");
         File.WriteAllText(
             Path.Combine(legacyCacheDirectory, CacheHash(stampedMissKey) + ".miss.json"),
-            "{\"key\":" + JsonSerializer.Serialize(stampedMissKey) + ",\"matchVersion\":1,\"result\":null}");
+            "{\"key\":" + JsonSerializer.Serialize(stampedMissKey) + ",\"matchVersion\":" + LyricsCache.CurrentMatchVersion + ",\"result\":null}");
 
         Check("matcher version control: a stamped tombstone is respected", legacyCache.IsMiss(stampedMissKey));
         server.ResetRequests();

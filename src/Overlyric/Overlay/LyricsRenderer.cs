@@ -221,11 +221,7 @@ internal sealed class LyricsRenderer : IDisposable
 
         // Drawn from `margin`, not from the pill edge: the layout centres text inside its own
         // box, so the origin must be the same box the width was measured against.
-        DrawTextShadows(
-            context,
-            lineLayout,
-            new Vector2(margin, top + _theme.PaddingY),
-            GetBrush(context, _theme.ActiveTextColor));
+        DrawLine(context, lineLayout, new Vector2(margin, top + _theme.PaddingY), visual.SungChars);
 
         ContentBounds = new Rect(RectangleF.FromLTRB(contentLeft, top - headerHeight, contentRight, top + pillHeight));
     }
@@ -323,11 +319,18 @@ internal sealed class LyricsRenderer : IDisposable
                 context.FillRoundedRectangle(highlight, GetBrush(context, 0x1FFFFFFF));
             }
 
-            DrawTextShadows(
-                context,
-                layouts[i],
-                new Vector2(margin, y),
-                GetBrush(context, isActive ? _theme.ActiveTextColor : _theme.InactiveTextColor));
+            if (isActive)
+            {
+                DrawLine(context, layouts[i], new Vector2(margin, y), visual.SungChars);
+            }
+            else
+            {
+                DrawTextShadows(
+                    context,
+                    layouts[i],
+                    new Vector2(margin, y),
+                    GetBrush(context, _theme.InactiveTextColor));
+            }
 
             y += heights[i] + _theme.LineSpacing;
         }
@@ -351,29 +354,69 @@ internal sealed class LyricsRenderer : IDisposable
         Vector2 origin,
         ID2D1SolidColorBrush foreground)
     {
-        if (_theme.TextOutline)
-        {
-            var outline = GetBrush(context, _theme.ShadowColor);
+        DrawShadows(context, layout, origin);
+        context.DrawTextLayout(origin, layout, foreground);
+    }
 
-            context.DrawTextLayout(origin + new Vector2(-1f, -1f), layout, outline);
-            context.DrawTextLayout(origin + new Vector2(0f, -1f), layout, outline);
-            context.DrawTextLayout(origin + new Vector2(1f, -1f), layout, outline);
-            context.DrawTextLayout(origin + new Vector2(-1f, 0f), layout, outline);
-            context.DrawTextLayout(origin + new Vector2(1f, 0f), layout, outline);
-            context.DrawTextLayout(origin + new Vector2(-1f, 1f), layout, outline);
-            context.DrawTextLayout(origin + new Vector2(0f, 1f), layout, outline);
-            context.DrawTextLayout(origin + new Vector2(1f, 1f), layout, outline);
-            context.DrawTextLayout(origin, layout, foreground);
+    /// <summary>
+    /// Draws one line, and when the sweep is on, paints the sung part over the unsung one through a
+    /// clip. The clip edge is measured with DirectWrite rather than estimated from a width, so
+    /// kerning, proportional fonts and CJK all land on the right character.
+    /// </summary>
+    private void DrawLine(
+        ID2D1DeviceContext context,
+        IDWriteTextLayout layout,
+        Vector2 origin,
+        int sungChars)
+    {
+        if (sungChars < 0)
+        {
+            DrawTextShadows(context, layout, origin, GetBrush(context, _theme.ActiveTextColor));
             return;
         }
 
+        DrawShadows(context, layout, origin);
+        context.DrawTextLayout(origin, layout, GetBrush(context, _theme.InactiveTextColor));
+
+        if (sungChars == 0)
+        {
+            return;
+        }
+
+        var hit = layout.HitTestTextPosition((uint)sungChars, false, out _);
+        var clipRight = origin.X + hit.Left + 1f;
+        var top = origin.Y - 2f;
+        var bottom = origin.Y + layout.Metrics.Height + 2f;
+
+        context.PushAxisAlignedClip(
+            new Rect(RectangleF.FromLTRB(origin.X - 2f, top, clipRight, bottom)),
+            AntialiasMode.Aliased);
+        context.DrawTextLayout(origin, layout, GetBrush(context, _theme.ActiveTextColor));
+        context.PopAxisAlignedClip();
+    }
+
+    /// <summary>The shadow (or outline) passes alone, without the text itself.</summary>
+    private void DrawShadows(ID2D1DeviceContext context, IDWriteTextLayout layout, Vector2 origin)
+    {
         var shadow = GetBrush(context, _theme.ShadowColor);
+
+        if (_theme.TextOutline)
+        {
+            context.DrawTextLayout(origin + new Vector2(-1f, -1f), layout, shadow);
+            context.DrawTextLayout(origin + new Vector2(0f, -1f), layout, shadow);
+            context.DrawTextLayout(origin + new Vector2(1f, -1f), layout, shadow);
+            context.DrawTextLayout(origin + new Vector2(-1f, 0f), layout, shadow);
+            context.DrawTextLayout(origin + new Vector2(1f, 0f), layout, shadow);
+            context.DrawTextLayout(origin + new Vector2(-1f, 1f), layout, shadow);
+            context.DrawTextLayout(origin + new Vector2(0f, 1f), layout, shadow);
+            context.DrawTextLayout(origin + new Vector2(1f, 1f), layout, shadow);
+            return;
+        }
 
         context.DrawTextLayout(origin + new Vector2(0f, 1.5f), layout, shadow);
         context.DrawTextLayout(origin + new Vector2(0f, -1f), layout, shadow);
         context.DrawTextLayout(origin + new Vector2(1.5f, 0f), layout, shadow);
         context.DrawTextLayout(origin + new Vector2(-1f, 0f), layout, shadow);
-        context.DrawTextLayout(origin, layout, foreground);
     }
 
     private void DrawProgressBar(

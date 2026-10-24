@@ -38,7 +38,7 @@ public sealed class LyricsCache
     /// Version of the matching rules that decide what an entry means. Bump it when they change, so
     /// that entries produced by the previous rules are re-resolved once instead of being trusted.
     /// </summary>
-    private const int CurrentMatchVersion = 1;
+    internal const int CurrentMatchVersion = 2;
 
     private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
 
@@ -338,10 +338,29 @@ internal sealed class CachedLyrics
         var lines = new List<CachedLine>(result.Lines.Count);
         foreach (var line in result.Lines)
         {
+            List<CachedWord>? words = null;
+
+            if (line.Words is { Count: > 0 })
+            {
+                words = new List<CachedWord>(line.Words.Count);
+
+                foreach (var word in line.Words)
+                {
+                    words.Add(new CachedWord
+                    {
+                        StartTicks = word.Start.Ticks,
+                        EndTicks = word.End?.Ticks,
+                        Text = word.Text,
+                    });
+                }
+            }
+
             lines.Add(new CachedLine
             {
                 StartTicks = line.Start.Ticks,
                 Text = line.Text,
+                EndTicks = line.End?.Ticks,
+                Words = words,
             });
         }
 
@@ -367,7 +386,26 @@ internal sealed class CachedLyrics
         {
             foreach (var line in source)
             {
-                lines.Add(new LyricLine(TimeSpan.FromTicks(line.StartTicks), line.Text ?? string.Empty));
+                List<LyricWord>? words = null;
+
+                if (line.Words is { Count: > 0 })
+                {
+                    words = new List<LyricWord>(line.Words.Count);
+
+                    foreach (var word in line.Words)
+                    {
+                        words.Add(new LyricWord(
+                            TimeSpan.FromTicks(word.StartTicks),
+                            word.EndTicks is null ? null : TimeSpan.FromTicks(word.EndTicks.Value),
+                            word.Text ?? string.Empty));
+                    }
+                }
+
+                lines.Add(new LyricLine(
+                    TimeSpan.FromTicks(line.StartTicks),
+                    line.Text ?? string.Empty,
+                    line.EndTicks is null ? null : TimeSpan.FromTicks(line.EndTicks.Value),
+                    words));
             }
         }
 
@@ -394,6 +432,27 @@ internal sealed class CachedLine
     /// </summary>
     [JsonPropertyName("startTicks")]
     public long StartTicks { get; init; }
+
+    [JsonPropertyName("text")]
+    public string? Text { get; init; }
+
+    /// <summary>When the line ends, in ticks, when the sheet said so.</summary>
+    [JsonPropertyName("endTicks")]
+    public long? EndTicks { get; init; }
+
+    /// <summary>Word-level timings, when the sheet carried them.</summary>
+    [JsonPropertyName("words")]
+    public List<CachedWord>? Words { get; init; }
+}
+
+/// <summary>One cached word timing.</summary>
+internal sealed class CachedWord
+{
+    [JsonPropertyName("startTicks")]
+    public long StartTicks { get; init; }
+
+    [JsonPropertyName("endTicks")]
+    public long? EndTicks { get; init; }
 
     [JsonPropertyName("text")]
     public string? Text { get; init; }

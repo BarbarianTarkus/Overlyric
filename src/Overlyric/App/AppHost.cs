@@ -19,6 +19,9 @@ internal sealed class AppHost
     private const uint TimerId = 1;
     private const uint FastIntervalMs = 250;
     private const uint SlowIntervalMs = 1000;
+
+    /// <summary>About 30 frames a second, which is what a sweeping highlight needs.</summary>
+    private const uint KaraokeIntervalMs = 33;
     private const int OffsetStepMs = 250;
 
     /// <summary>Ticks between z-order re-assertions; 20 fast ticks is roughly every five seconds.</summary>
@@ -170,6 +173,7 @@ internal sealed class AppHost
         {
             _watcher = MediaSessionWatcher.CreateAsync().GetAwaiter().GetResult();
             _watcher.Clock.ManualOffset = TimeSpan.FromMilliseconds(_config.LyricsOffsetMs);
+            ApplyKaraokeTiming();
 
             var overrides = VersionOverrides.Load(Path.Combine(AppConfig.DataDirectory, "versions.json"));
 
@@ -501,6 +505,20 @@ internal sealed class AppHost
             }
         }
 
+        var sungChars = -1;
+
+        if (_config.Karaoke)
+        {
+            // The sheet's own line end beats "the next line starts here": across a long
+            // instrumental break the second one is minutes away, and the sweep would crawl.
+            var lineEnd = lines[index].End
+                          ?? (index + 1 < lines.Length
+                              ? lines[index + 1].Start
+                              : lines[index].Start + TimeSpan.FromSeconds(5));
+
+            sungChars = KaraokeSweep.SungCharacters(lines[index], lineEnd, position);
+        }
+
         var visible = new string[count];
         var windowStart = index - (count / 2);
         windowStart = Math.Clamp(windowStart, 0, Math.Max(0, lines.Length - count));
@@ -519,7 +537,8 @@ internal sealed class AppHost
             ShowHeader = _config.ShowHeader,
             ShowProgressBar = _config.ShowProgressBar,
             LineProgress = lineProgress,
-            TrackProgress = trackProgress
+            TrackProgress = trackProgress,
+            SungChars = sungChars
         };
     }
 
@@ -743,7 +762,13 @@ internal sealed class AppHost
 
     private void UpdateTimerInterval(NowPlayingSnapshot snapshot)
     {
-        var wanted = snapshot.IsPlaying && IsOverlayVisible(snapshot) ? FastIntervalMs : SlowIntervalMs;
+        var playing = snapshot.IsPlaying && IsOverlayVisible(snapshot);
+
+        // The sweep is the one thing that needs a frame rate rather than a tick rate; everything
+        // else stays on the slow path so the overlay costs nothing when nothing is moving.
+        var wanted = playing
+            ? _config.Karaoke && _lyricsSynced ? KaraokeIntervalMs : FastIntervalMs
+            : SlowIntervalMs;
 
         if (wanted == _currentInterval)
         {
@@ -964,6 +989,7 @@ internal sealed class AppHost
             || a.ActiveIndex != b.ActiveIndex
             || a.ShowHeader != b.ShowHeader
             || a.ShowProgressBar != b.ShowProgressBar
+            || a.SungChars != b.SungChars
             || a.OffsetX != b.OffsetX
             || a.OffsetY != b.OffsetY
             || !string.Equals(a.Header, b.Header, StringComparison.Ordinal)
@@ -1381,6 +1407,19 @@ internal sealed class AppHost
         _settings.Show();
     }
 
+    /// <summary>
+    /// The sweep needs the clock to follow the player more closely than line-level lyrics do: a
+    /// 400 ms tolerance is invisible when a line changes every few seconds and obvious when a
+    /// syllable is being highlighted.
+    /// </summary>
+    private void ApplyKaraokeTiming()
+    {
+        if (_watcher is not null)
+        {
+            _watcher.Clock.DriftSnapThresholdMs = _config.Karaoke ? 150.0 : 400.0;
+        }
+    }
+
     /// <summary>Apply a change made in the settings window to the live overlay.</summary>
     private void ApplySettings(SettingsChange change)
     {
@@ -1414,6 +1453,7 @@ internal sealed class AppHost
                 break;
         }
 
+        ApplyKaraokeTiming();
         _config.Save();
     }
 

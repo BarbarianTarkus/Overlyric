@@ -35,4 +35,24 @@ public sealed class LyricsResult
     public string? ArtistName { get; init; }
 
     public double? DurationSeconds { get; init; }
+
+    /// <summary>
+    /// True when at least one line carries word-level timings, which is what the karaoke sweep
+    /// follows exactly instead of estimating.
+    /// </summary>
+    public bool HasWordTimings
+    {
+        get
+        {
+            foreach (var line in Lines)
+            {
+                if (line.HasWordTimings)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
 }

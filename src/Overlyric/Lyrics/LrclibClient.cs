@@ -365,6 +365,13 @@ public sealed class LrclibClient : IDisposable
                 score += 200.0;
             }
 
+            // Word timings are what karaoke needs, so a sheet that has them wins against one that
+            // only has line timings when everything else is equal.
+            if (record.HasWordSync == true)
+            {
+                score += 250.0;
+            }
+
             scored.Add((record, score));
         }
 
@@ -552,6 +559,18 @@ public sealed class LrclibClient : IDisposable
         // Synced lyrics win, then plain lyrics. In both cases a body that is nothing but placeholder
         // text ("Instrumental", "[Instrumental]", "[Solo]" ...) is not lyrics and must not be shown
         // as such, so it is skipped in favour of the other body before any decision is made.
+        // Word-level timings live only in the lyricsfile, and they are the better source when they
+        // are there: they carry the line ends too, which plain LRC has to guess from the next line.
+        if (record.HasWordSync == true)
+        {
+            var fromFile = LyricsFile.ParseLines(record.LyricsFile);
+
+            if (fromFile.Count > 0 && !InstrumentalDetector.IsPlaceholderOnly(fromFile))
+            {
+                return Build(record, fromFile, isSynced: true, instrumental);
+            }
+        }
+
         IReadOnlyList<LyricLine> synced = string.IsNullOrWhiteSpace(record.SyncedLyrics)
             ? Array.Empty<LyricLine>()
             : LrcParser.Parse(record.SyncedLyrics!);
@@ -642,6 +661,14 @@ internal sealed class LrclibGetResponse
 
     [JsonPropertyName("syncedLyrics")]
     public string? SyncedLyrics { get; init; }
+
+    /// <summary>True when <see cref="LyricsFile"/> carries word-level timings.</summary>
+    [JsonPropertyName("hasWordSync")]
+    public bool? HasWordSync { get; init; }
+
+    /// <summary>The raw lyricsfile YAML, which every record carries.</summary>
+    [JsonPropertyName("lyricsfile")]
+    public string? LyricsFile { get; init; }
 }
 
 /// <summary>

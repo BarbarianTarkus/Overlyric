@@ -105,7 +105,8 @@ internal sealed class SettingsWindow : WindowBase
         OledDimUp = 65,
         OledPixelShift = 66,
         OledOutline = 67,
-        OledOpacitySlider = 68
+        OledOpacitySlider = 68,
+        KaraokeToggle = 69
     }
 
     private const float WidthDip = 780f;
@@ -803,6 +804,11 @@ internal sealed class SettingsWindow : WindowBase
                 Apply(SettingsChange.Appearance);
                 return;
 
+            case Control.KaraokeToggle:
+                _config.Karaoke = !_config.Karaoke;
+                Apply(SettingsChange.Appearance);
+                return;
+
             case Control.Close:
                 Hide();
                 return;
@@ -1025,6 +1031,9 @@ internal sealed class SettingsWindow : WindowBase
 
         Row(context, 5, "Surrounding lines size");
         Stepper(context, _config.InactiveFontSize.ToString("0"), Control.FontInactiveDown, Control.FontInactiveUp);
+
+        Row(context, 6, "Karaoke sweep");
+        Toggle(context, Control.KaraokeToggle, _config.Karaoke);
     }
 
     private void DrawOledSection(ID2D1DeviceContext context)
@@ -1324,6 +1333,7 @@ internal sealed class SettingsWindow : WindowBase
         Control.ProgressBar => 3,
         Control.FontActiveDown or Control.FontActiveUp => 4,
         Control.FontInactiveDown or Control.FontInactiveUp => 5,
+        Control.KaraokeToggle => 6,
         Control.OledPreset => 0,
         Control.OledOpacitySlider => 1,
         Control.OledAutoHideDown or Control.OledAutoHideUp => 2,

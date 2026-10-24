@@ -51,6 +51,12 @@ internal sealed class AppConfig
     /// <summary>Draw the bar behind the line being sung.</summary>
     public bool ShowActiveLineHighlight { get; set; } = true;
 
+    /// <summary>
+    /// Sweep the active line as it is sung. Follows word-level timings when the sheet has them and
+    /// shares the line's span out over its syllables when it does not.
+    /// </summary>
+    public bool Karaoke { get; set; } = true;
+
     /// <summary>Opacity of the lines around the active one, 0.05 - 1.0.</summary>
     public double InactiveLineOpacity { get; set; } = 0.54;
 

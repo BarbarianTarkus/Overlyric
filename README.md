@@ -400,6 +400,32 @@ enough once the backdrop is gone. And **Pixel shift** moves the *drawing*, not t
 dragging and hit testing are untouched, so nothing has to be re-measured and no position is written to
 the config.
 
+### Karaoke
+
+The active line sweeps as it is sung: the part already sung is painted bright and the rest stays
+dim, so the eye follows the voice instead of the whole line changing colour at once.
+
+How the sweep is timed depends on the sheet:
+
+- **Word timings.** lrclib's `lyricsfile` carries `lines[].words[]` with a start and an end per word,
+  and `hasWordSync` says whether a record has them. When it does, the sweep follows them exactly.
+  That is why a record with word timings is ranked above one with only line timings.
+- **Line timings only.** The line's own span is shared out over its singable characters — letters and
+  digits; punctuation and spaces are not sung. This is an estimate: it assumes the words are
+  delivered evenly, so it drifts inside a line with a long held note or an instrumental gap. It is
+  the fallback that covers the whole catalogue, not a defect.
+
+The sheet's own `end_ms` is used when it has one, which matters across instrumental breaks: "the
+next line starts here" can be minutes away, and the sweep would otherwise crawl the whole time.
+
+The sweep costs a frame rate rather than a tick rate. While it is on, the overlay redraws about 30
+times a second instead of four, and the playback clock is held to a tighter leash (150 ms instead of
+400 ms), because a syllable is shorter than a line. The **Karaoke sweep** toggle in **Overlay** turns
+all of that off and returns the overlay to the cheaper behaviour.
+
+Word timings are rare in practice: lrclib does not align audio, it only publishes word timings that
+someone already submitted. The interpolated path is the common one.
+
 Scroll the wheel over the overlay while it is unlocked to change the backdrop opacity. Drag it while
 unlocked to reposition: the placement is stored as an offset **from the anchored edge** — a margin
 above the bottom, below the top, or either side of the centre — so it reopens exactly where it was
@@ -449,6 +475,7 @@ in `Locked`, so an overlay left unlocked on purpose is still unlocked next time.
 | `InactiveLineOpacity` | Opacity of the surrounding lines, 0.05–1.0 |
 | `PixelShift` | Nudge the drawing a few pixels once a minute, against burn-in |
 | `TextOutline` | Hard outline instead of a soft shadow, for a transparent backdrop |
+| `Karaoke` | Sweep the active line as it is sung (on by default) |
 | `HideWhenPaused` | Hide while playback is paused |
 | `HideWhenNoLyrics` | Hide when lrclib has no lyrics for the track |
 | `HideWhenInstrumental` | Hide when the track is instrumental |
@@ -550,13 +577,14 @@ because they are the quickest way to re-check a platform assumption.
 
 | Project | Question it answers |
 | --- | --- |
-| `SmtcProbe` | What does GSMTC actually report, and does the player update its timeline? |
+| `SmtcProbe` | What does GSMTC actually report, and does the player update its timeline? `--sessions` lists every session at once, marks the one Windows calls current, and reports each change while several are alive |
 | `SmtcAot` | Does the Windows SDK WinRT projection survive NativeAOT? |
 | `VorticeAot` | Does the Vortice COM interop survive NativeAOT, and what does DirectWrite report? |
 | `NowPlaying` | What is playing right now, what does lrclib hold for it, and what does the pipeline resolve the track to — the reproduction harness for a lyric-matching failure |
 | `LyricsTests` | 30 checks over LRC parsing, caching (including matcher-version staleness) and a live LRCLIB round-trip |
 | `ResilienceTests` | 66 checks: transient-vs-definitive caching, instrumental classification, metadata cleaning, candidate ranking, the synced-same-duration rule, the album-scoped supplement and version pinning |
 | `ShortcutsTests` | 35 checks over the hotkey text form: parsing, canonical modifier order, punctuation stored by name, and every malformed string falling back to "unbound" instead of throwing |
+| `KaraokeTests` | 22 checks over the sweep (monotonic, punctuation not sung ahead of the words, word timings honoured, mismatched timings falling back to the line span) and the lyricsfile reader (line ends, words, colons inside text, garbage refused without throwing) |
 | `ClockTests` | 19 checks over the playback clock: attaching mid-song, frozen vs live timelines, pause/resume, seeks, sentinel stamps |
 
 Helper scripts: `probe\screenshot.py` (capture the screen) and `probe\crop.py` (crop and upscale a

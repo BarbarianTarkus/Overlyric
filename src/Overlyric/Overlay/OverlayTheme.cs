@@ -79,6 +79,12 @@ public sealed record OverlayVisual
     public float TrackProgress { get; init; } = -1f;
 
     /// <summary>
+    /// How many characters of the active line have been sung, or -1 when the sweep is off. The
+    /// renderer turns this into a clip; the counting itself lives in <c>KaraokeSweep</c>.
+    /// </summary>
+    public int SungChars { get; init; } = -1;
+
+    /// <summary>
     /// Burn-in nudge in device-independent pixels, applied to everything drawn. Moving the drawing
     /// rather than the window keeps the window's own hit testing and placement untouched.
     /// </summary>
