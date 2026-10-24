@@ -46,20 +46,22 @@ internal sealed class SettingsWindow : WindowBase
     private enum Section
     {
         Overlay = 0,
-        Behaviour = 1,
-        Timing = 2,
-        Position = 3,
-        Advanced = 4
+        Shortcuts = 1,
+        Behaviour = 2,
+        Timing = 3,
+        Position = 4,
+        Advanced = 5
     }
 
     /// <summary>Identifiers for every clickable thing. Values must stay unique.</summary>
     private enum Control
     {
         NavOverlay = 1,
-        NavBehaviour = 2,
-        NavTiming = 3,
-        NavPosition = 4,
-        NavAdvanced = 5,
+        NavShortcuts = 2,
+        NavBehaviour = 3,
+        NavTiming = 4,
+        NavPosition = 5,
+        NavAdvanced = 6,
 
         ModeSingle = 10,
         ModeMulti = 11,
@@ -89,7 +91,10 @@ internal sealed class SettingsWindow : WindowBase
 
         OpenData = 32,
         OpenCache = 33,
-        Close = 34
+        Close = 34,
+
+        /// <summary>Shortcut chips are this base plus the index into <see cref="ShortcutActions.All"/>.</summary>
+        ShortcutChipBase = 40
     }
 
     private const float WidthDip = 780f;
@@ -118,12 +123,14 @@ internal sealed class SettingsWindow : WindowBase
     private const uint ColorAccent = 0xFF7CC4FF;
     private const uint ColorKnob = 0xFFD8DEE9;
     private const uint ColorKnobHot = 0xFFFFFFFF;
+    private const uint ColorWarning = 0xFFE0A458;
 
-    private static readonly string[] SectionTitles = ["Overlay", "Behaviour", "Timing", "Position", "Advanced"];
+    private static readonly string[] SectionTitles = ["Overlay", "Shortcuts", "Behaviour", "Timing", "Position", "Advanced"];
 
     private static readonly string[] SectionHints =
     [
         "How the lyrics look on screen.",
+        "Click a shortcut, then press the keys you want.",
         "When the overlay should get out of the way.",
         "Correct lyrics that run early or late.",
         "Where the overlay sits on the monitor.",
@@ -132,6 +139,8 @@ internal sealed class SettingsWindow : WindowBase
 
     private readonly AppConfig _config;
     private readonly Action<SettingsChange> _changed;
+    private readonly Func<int, string, string?> _assignShortcut;
+    private readonly Func<string, bool> _isUnavailable;
     private readonly Action _openDataFolder;
     private readonly Action _openCacheFolder;
     private readonly string _version;
@@ -149,15 +158,25 @@ internal sealed class SettingsWindow : WindowBase
     private float _sliderWidth;
     private float _dpi = 96f;
 
+    /// <summary>Index into <see cref="ShortcutActions.All"/> whose chip is waiting for keys, or -1.</summary>
+    private int _capturing = -1;
+
+    /// <summary>Why the last shortcut assignment was refused, shown under the list.</summary>
+    private string? _shortcutMessage;
+
     public SettingsWindow(
         AppConfig config,
         Action<SettingsChange> changed,
+        Func<int, string, string?> assignShortcut,
+        Func<string, bool> isUnavailable,
         Action openDataFolder,
         Action openCacheFolder,
         string version)
     {
         _config = config;
         _changed = changed;
+        _assignShortcut = assignShortcut;
+        _isUnavailable = isUnavailable;
         _openDataFolder = openDataFolder;
         _openCacheFolder = openCacheFolder;
         _version = version;
@@ -218,6 +237,8 @@ internal sealed class SettingsWindow : WindowBase
 
         _open = false;
         _hover = -1;
+        _capturing = -1;
+        _shortcutMessage = null;
 
         if (Handle != IntPtr.Zero)
         {
@@ -357,10 +378,14 @@ internal sealed class SettingsWindow : WindowBase
                 return IntPtr.Zero;
 
             case WM_KEYDOWN:
-                if (wParam.ToInt64() == VK_ESCAPE)
+                return OnKeyDown((int)wParam.ToInt64());
+
+            case WM_SYSKEYDOWN:
+                // Alt combinations arrive here. Only swallow them while a shortcut is being
+                // captured, otherwise Alt+Tab and Alt+F4 would stop working in this window.
+                if (_capturing >= 0)
                 {
-                    Hide();
-                    return IntPtr.Zero;
+                    return OnKeyDown((int)wParam.ToInt64());
                 }
 
                 break;
@@ -512,11 +537,102 @@ internal sealed class SettingsWindow : WindowBase
         Render();
     }
 
+    /// <summary>While a shortcut chip is armed, the next real key becomes the chord.</summary>
+    private IntPtr OnKeyDown(int virtualKey)
+    {
+        if (_capturing < 0)
+        {
+            if (virtualKey == VK_ESCAPE)
+            {
+                Hide();
+            }
+
+            return IntPtr.Zero;
+        }
+
+        if (virtualKey == VK_ESCAPE)
+        {
+            _capturing = -1;
+            _shortcutMessage = null;
+            Render();
+            return IntPtr.Zero;
+        }
+
+        // A modifier on its own is not a chord: wait for the key it modifies.
+        if (virtualKey is VK_CONTROL or VK_SHIFT or VK_MENU or VK_LWIN or VK_RWIN)
+        {
+            return IntPtr.Zero;
+        }
+
+        var chord = new HotKeyChord(CurrentModifiers(), (uint)virtualKey);
+        var action = ShortcutActions.All[_capturing];
+        var error = _assignShortcut(action.Command, chord.ToString());
+
+        if (error is null)
+        {
+            _capturing = -1;
+            _shortcutMessage = null;
+        }
+        else
+        {
+            _shortcutMessage = error;
+        }
+
+        Render();
+        return IntPtr.Zero;
+    }
+
+    /// <summary>
+    /// The modifiers held right now. Async state rather than <c>GetKeyState</c>, because what
+    /// matters is the keyboard as it is when the key arrives, not as it was for the last message
+    /// this thread happened to dequeue.
+    /// </summary>
+    private static uint CurrentModifiers()
+    {
+        var modifiers = 0u;
+
+        if ((GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0)
+        {
+            modifiers |= MOD_CONTROL;
+        }
+
+        if ((GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0)
+        {
+            modifiers |= MOD_SHIFT;
+        }
+
+        if ((GetAsyncKeyState(VK_MENU) & 0x8000) != 0)
+        {
+            modifiers |= MOD_ALT;
+        }
+
+        if ((GetAsyncKeyState(VK_LWIN) & 0x8000) != 0 || (GetAsyncKeyState(VK_RWIN) & 0x8000) != 0)
+        {
+            modifiers |= MOD_WIN;
+        }
+
+        return modifiers;
+    }
+
+    private void BeginCapture(int index)
+    {
+        _capturing = index;
+        _shortcutMessage = null;
+        Render();
+    }
+
     private void Activate(int id)
     {
+        if (id >= (int)Control.ShortcutChipBase && id < (int)Control.ShortcutChipBase + ShortcutActions.All.Length)
+        {
+            BeginCapture(id - (int)Control.ShortcutChipBase);
+            return;
+        }
+
         switch ((Control)id)
         {
             case Control.NavOverlay:
+            case Control.NavShortcuts:
             case Control.NavBehaviour:
             case Control.NavTiming:
             case Control.NavPosition:
@@ -702,6 +818,9 @@ internal sealed class SettingsWindow : WindowBase
             case Section.Overlay:
                 DrawOverlaySection(context);
                 break;
+            case Section.Shortcuts:
+                DrawShortcutsSection(context);
+                break;
             case Section.Behaviour:
                 DrawBehaviourSection(context);
                 break;
@@ -832,6 +951,69 @@ internal sealed class SettingsWindow : WindowBase
 
         Row(context, 6, "Surrounding lines size");
         Stepper(context, _config.InactiveFontSize.ToString("0"), Control.FontInactiveDown, Control.FontInactiveUp);
+    }
+
+    private void DrawShortcutsSection(ID2D1DeviceContext context)
+    {
+        for (var i = 0; i < ShortcutActions.All.Length; i++)
+        {
+            var action = ShortcutActions.All[i];
+            Row(context, i, action.Label);
+            ShortcutChip(context, i, action);
+        }
+
+        var line = ShortcutActions.All.Length;
+
+        // A refusal is more important than the prompt: it is why the capture is still armed.
+        if (_shortcutMessage is not null)
+        {
+            Label(
+                context,
+                _shortcutMessage,
+                ContentLeft,
+                RowTop(line) + 10f,
+                ContentWidth,
+                36f,
+                12f,
+                FontWeight.Normal,
+                ColorWarning);
+        }
+        else if (_capturing >= 0)
+        {
+            Hint(context, line, "Press the new combination, or Esc to cancel.");
+        }
+        else
+        {
+            Hint(context, line, "Shortcuts work system-wide, even when Overlyric is not focused.");
+        }
+    }
+
+    private void ShortcutChip(ID2D1DeviceContext context, int index, ShortcutAction action)
+    {
+        const float width = 190f;
+        const float height = 30f;
+
+        var left = ContentRight - width;
+        var top = RowTop(index) + ((RowHeightDip - height) / 2f);
+        var id = (int)Control.ShortcutChipBase + index;
+        var capturing = _capturing == index;
+        var text = ShortcutActions.Text(_config, action);
+        var hot = _hover == id;
+
+        FillRound(context, left, top, width, height, 8f, capturing ? ColorSelected : (hot ? ColorControlHot : ColorControl));
+
+        var label = capturing ? "Press keys\u2026" : text.Length == 0 ? "Unassigned" : text;
+
+        var color = capturing
+            ? ColorAccent
+            : _isUnavailable(action.Name)
+                ? ColorWarning
+                : text.Length == 0
+                    ? ColorTextFaint
+                    : ColorText;
+
+        Label(context, label, left, top, width, height, 12.5f, FontWeight.SemiBold, color, TextAlignment.Center);
+        Hit(id, R(left, top, left + width, top + height));
     }
 
     private void DrawBehaviourSection(ID2D1DeviceContext context)

@@ -79,6 +79,11 @@ internal sealed class AppHost
     private SettingsWindow? _settings;
     private readonly bool _openSettings;
 
+    /// <summary>Action names whose default chord another application already owns.</summary>
+    private readonly HashSet<string> _unavailableShortcuts = [];
+
+    private const int ErrorHotKeyAlreadyRegistered = 1409;
+
     private static readonly NowPlayingSnapshot DemoSnapshot = new()
     {
         HasSession = true,
@@ -208,14 +213,84 @@ internal sealed class AppHost
             return;
         }
 
-        const uint CtrlAlt = MOD_CONTROL | MOD_ALT;
+        foreach (var action in ShortcutActions.All)
+        {
+            var chord = ShortcutActions.Chord(_config, action);
 
-        _hotKeys.Register(Commands.ToggleLock, CtrlAlt, 0x4C);        // Ctrl+Alt+L
-        _hotKeys.Register(Commands.ToggleOverlay, CtrlAlt, 0x48);     // Ctrl+Alt+H
-        _hotKeys.Register(Commands.ToggleMode, CtrlAlt, 0x4D);        // Ctrl+Alt+M
-        _hotKeys.Register(Commands.OffsetBack, CtrlAlt, 0xBC);        // Ctrl+Alt+,
-        _hotKeys.Register(Commands.OffsetForward, CtrlAlt, 0xBE);     // Ctrl+Alt+.
-        _hotKeys.Register(Commands.OffsetReset, CtrlAlt, 0x30);       // Ctrl+Alt+0
+            if (chord.IsEmpty)
+            {
+                continue;
+            }
+
+            if (!_hotKeys.TryRegister(action.Command, chord.Modifiers, chord.VirtualKey, out _))
+            {
+                // Another application already owns it. The settings window shows these as taken
+                // rather than leaving the user pressing a shortcut that does nothing.
+                _unavailableShortcuts.Add(action.Name);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Rebind one action. Returns null on success, or a message explaining the refusal so the
+    /// settings window can show it beside the shortcut.
+    /// </summary>
+    private string? AssignShortcut(int command, string text)
+    {
+        if (_hotKeys is null)
+        {
+            return "Hotkeys are not available.";
+        }
+
+        var action = ShortcutActions.ForCommand(command);
+        if (action is null)
+        {
+            return "Unknown action.";
+        }
+
+        var chord = HotKeyChord.Parse(text);
+
+        if (!chord.IsEmpty && !chord.HasStrongModifier)
+        {
+            return "Add Ctrl, Alt or Win.";
+        }
+
+        if (!chord.IsEmpty)
+        {
+            foreach (var other in ShortcutActions.All)
+            {
+                if (other.Command == command)
+                {
+                    continue;
+                }
+
+                if (ShortcutActions.Chord(_config, other) == chord)
+                {
+                    return $"{chord} is already used by {other.Label}.";
+                }
+            }
+        }
+
+        var previous = ShortcutActions.Chord(_config, action);
+
+        _hotKeys.Unregister(command);
+        _unavailableShortcuts.Remove(action.Name);
+
+        if (!chord.IsEmpty && !_hotKeys.TryRegister(command, chord.Modifiers, chord.VirtualKey, out var error))
+        {
+            if (!previous.IsEmpty)
+            {
+                _hotKeys.TryRegister(command, previous.Modifiers, previous.VirtualKey, out _);
+            }
+
+            return error == ErrorHotKeyAlreadyRegistered
+                ? $"{chord} is already taken by another application."
+                : "Windows refused that combination.";
+        }
+
+        _config.Shortcuts[action.Name] = chord.ToString();
+        _config.Save();
+        return null;
     }
 
     private void OnMessage(uint message, nint wParam, nint lParam)
@@ -1250,6 +1325,8 @@ internal sealed class AppHost
             _settings = new SettingsWindow(
                 _config,
                 ApplySettings,
+                AssignShortcut,
+                name => _unavailableShortcuts.Contains(name),
                 () => OpenFolder(AppConfig.DataDirectory),
                 () => OpenFolder(AppConfig.CacheDirectory),
                 typeof(AppHost).Assembly.GetName().Version?.ToString(3) ?? "0.1.0");

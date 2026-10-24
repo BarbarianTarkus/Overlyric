@@ -69,6 +69,13 @@ internal sealed class AppConfig
 
     public float InactiveFontSize { get; set; } = 21f;
 
+    /// <summary>
+    /// Rebindable global hotkeys, keyed by action name and stored as text ("Ctrl+Alt+H"). A missing
+    /// entry falls back to the built-in default and an empty string means "deliberately unbound",
+    /// so a hand-edited file can never silently lose a shortcut.
+    /// </summary>
+    public Dictionary<string, string> Shortcuts { get; set; } = [];
+
     [JsonIgnore]
     public static string DataDirectory { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),

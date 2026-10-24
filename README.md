@@ -340,6 +340,14 @@ Overlyric.exe --settings
 | `Ctrl+Alt+.` | Shift lyrics later by 0.25 s |
 | `Ctrl+Alt+0` | Reset the timing offset |
 
+These are the defaults. Every one of them can be rebound in **Settings → Shortcuts**: click the
+shortcut, press the combination you want, and it is registered immediately. A combination that is
+already used by another action, or already taken by another application, is refused with the reason
+shown instead of being silently swallowed; a shortcut with no Ctrl, Alt or Win is refused too.
+`Open settings` ships unbound, so it costs nothing until you want it.
+
+![The Shortcuts section](docs/settings-shortcuts.png)
+
 ### Tray icon
 
 Left-click toggles the overlay. Right-click opens a deliberately short menu: the track line
@@ -350,10 +358,11 @@ anything.
 
 ### Settings window
 
-`Settings…` in the tray, or `Overlyric.exe --settings`, opens a fixed-size dark window with five
+`Settings…` in the tray, or `Overlyric.exe --settings`, opens a fixed-size dark window with six
 sections down the left: **Overlay** (mode, lines shown, backdrop opacity, track info, progress bar,
-font sizes), **Behaviour** (the hide rules and the player warning), **Timing** (lyric offset),
-**Position** (anchor, offsets, reset) and **Advanced** (open the settings or cache folder, version).
+font sizes), **Shortcuts** (rebind the global hotkeys), **Behaviour** (the hide rules and the player
+warning), **Timing** (lyric offset), **Position** (anchor, offsets, reset) and **Advanced** (open the
+settings or cache folder, version).
 
 ![The settings window](docs/settings-window.png)
 
@@ -412,6 +421,7 @@ in `Locked`, so an overlay left unlocked on purpose is still unlocked next time.
 | `WarnWhenPlayerDoesNotPublish` | Say so when audio is playing but no player publishes to Windows media controls, or when a player publishes a track without a playback position |
 | `LyricsOffsetMs` | Manual timing correction |
 | `FontFamily`, `ActiveFontSize`, `InactiveFontSize` | Typography |
+| `Shortcuts` | Action name → chord text, e.g. `"ToggleOverlay": "Ctrl+Alt+H"`. A missing entry uses the built-in default and an empty string means deliberately unbound, so a hand-edited file cannot silently lose a shortcut |
 
 Fetched lyrics are cached as one JSON file per track in `%LOCALAPPDATA%\Overlyric\cache`, including
 negative entries, so a track LRCLIB has never heard of is not re-queried on every replay.
@@ -512,6 +522,7 @@ because they are the quickest way to re-check a platform assumption.
 | `NowPlaying` | What is playing right now, what does lrclib hold for it, and what does the pipeline resolve the track to — the reproduction harness for a lyric-matching failure |
 | `LyricsTests` | 30 checks over LRC parsing, caching (including matcher-version staleness) and a live LRCLIB round-trip |
 | `ResilienceTests` | 66 checks: transient-vs-definitive caching, instrumental classification, metadata cleaning, candidate ranking, the synced-same-duration rule, the album-scoped supplement and version pinning |
+| `ShortcutsTests` | 35 checks over the hotkey text form: parsing, canonical modifier order, punctuation stored by name, and every malformed string falling back to "unbound" instead of throwing |
 | `ClockTests` | 19 checks over the playback clock: attaching mid-song, frozen vs live timelines, pause/resume, seeks, sentinel stamps |
 
 Helper scripts: `probe\screenshot.py` (capture the screen) and `probe\crop.py` (crop and upscale a

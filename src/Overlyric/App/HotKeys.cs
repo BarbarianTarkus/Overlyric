@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using static Overlyric.Interop.NativeMethods;
 
 namespace Overlyric.App;
@@ -16,11 +17,28 @@ internal sealed class HotKeyManager : IDisposable
 
     public event Action<int>? Pressed;
 
-    public void Register(int id, uint modifiers, uint virtualKey)
+    /// <summary>
+    /// Register a hotkey and report why it failed. Silently swallowing the result - as this used to -
+    /// leaves the user pressing a shortcut that another application already owns, with no clue.
+    /// </summary>
+    public bool TryRegister(int id, uint modifiers, uint virtualKey, out int error)
     {
         if (RegisterHotKey(_owner, id, modifiers | MOD_NOREPEAT, virtualKey))
         {
             _registered.Add(id);
+            error = 0;
+            return true;
+        }
+
+        error = Marshal.GetLastWin32Error();
+        return false;
+    }
+
+    public void Unregister(int id)
+    {
+        if (_registered.Remove(id))
+        {
+            UnregisterHotKey(_owner, id);
         }
     }
 
