@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using Overlyric.Interop;
 using Overlyric.Lyrics;
 using Overlyric.Media;
@@ -982,6 +983,10 @@ internal sealed class AppHost
         {
             case Commands.ToggleOverlay:
                 _overlayEnabled = !_overlayEnabled;
+
+                // Visibility is applied on the tick, so without this the overlay would take up to a
+                // second to answer the click that just asked for it.
+                ForceRedraw();
                 break;
 
             case Commands.ToggleMode:
@@ -1285,35 +1290,68 @@ internal sealed class AppHost
             }
         }
 
+        // The top level keeps what is worth reaching for while music is playing. Everything that is
+        // set once and then left alone is nested one level down instead of competing for the same
+        // list, which is what made this menu unreadable.
+        var displayItems = new List<TrayMenuItem>
+        {
+            new(Commands.ToggleHeader, "Show track info", _config.ShowHeader),
+            new(Commands.ToggleProgressBar, "Show progress bar", _config.ShowProgressBar),
+            TrayMenuItem.Separator,
+            TrayMenuItem.Disabled($"Lines: {_config.MultiLineCount}"),
+            new(Commands.MoreLines, "More lines"),
+            new(Commands.FewerLines, "Fewer lines"),
+            TrayMenuItem.Separator,
+            TrayMenuItem.Disabled($"Opacity: {OpacityPercent()}%"),
+            new(Commands.OpacityUp, "More opaque"),
+            new(Commands.OpacityDown, "Less opaque")
+        };
+
+        var behaviourItems = new List<TrayMenuItem>
+        {
+            new(Commands.ToggleHideWhenPaused, "Hide when paused", _config.HideWhenPaused),
+            new(Commands.ToggleHideWhenNoLyrics, "Hide when no lyrics", _config.HideWhenNoLyrics),
+            new(Commands.ToggleHideWhenInstrumental, "Hide instrumentals", _config.HideWhenInstrumental),
+            new(Commands.TogglePlayerWarning, "Warn when a player does not publish", _config.WarnWhenPlayerDoesNotPublish)
+        };
+
+        var timingItems = new List<TrayMenuItem>
+        {
+            new(Commands.OffsetBack, $"Lyrics earlier (-{OffsetStepSeconds()}s)"),
+            new(Commands.OffsetForward, $"Lyrics later (+{OffsetStepSeconds()}s)"),
+            TrayMenuItem.Separator,
+            new(Commands.OffsetReset, "Reset timing")
+        };
+
+        var positionItems = new List<TrayMenuItem>
+        {
+            new(Commands.AnchorBottom, "Bottom", _config.Anchor == OverlayAnchor.BottomCenter),
+            new(Commands.AnchorTop, "Top", _config.Anchor == OverlayAnchor.TopCenter),
+            new(Commands.AnchorCenter, "Centre", _config.Anchor == OverlayAnchor.Center)
+        };
+
+        var advancedItems = new List<TrayMenuItem>
+        {
+            new(Commands.OpenConfigFolder, "Open settings folder"),
+            new(Commands.OpenCacheFolder, "Open cache folder")
+        };
+
         var items = new List<TrayMenuItem>
         {
-            new(0, trackLine),
+            // Informational, and previously selectable while doing nothing.
+            TrayMenuItem.Disabled(trackLine),
             TrayMenuItem.Submenu("Lyrics version", versionItems),
             TrayMenuItem.Separator,
             new(Commands.ToggleOverlay, "Show overlay", _overlayEnabled),
             new(Commands.ToggleMode, _config.Mode == OverlayMode.SingleLine ? "Mode: single line" : "Mode: multi line"),
             new(Commands.ToggleLock, "Locked (click-through)", _locked),
-            new(Commands.ToggleHeader, "Show track info", _config.ShowHeader),
-            new(Commands.ToggleProgressBar, "Show progress bar", _config.ShowProgressBar),
-            new(Commands.ToggleHideWhenPaused, "Hide when paused", _config.HideWhenPaused),
-            new(Commands.ToggleHideWhenNoLyrics, "Hide when no lyrics", _config.HideWhenNoLyrics),
-            new(Commands.ToggleHideWhenInstrumental, "Hide instrumentals", _config.HideWhenInstrumental),
-            new(Commands.TogglePlayerWarning, "Warn when a player does not publish", _config.WarnWhenPlayerDoesNotPublish),
             TrayMenuItem.Separator,
-            new(Commands.MoreLines, "More lines"),
-            new(Commands.FewerLines, "Fewer lines"),
-            new(Commands.OpacityUp, "More opaque"),
-            new(Commands.OpacityDown, "Less opaque"),
+            TrayMenuItem.Submenu("Display", displayItems),
+            TrayMenuItem.Submenu("Behaviour", behaviourItems),
+            TrayMenuItem.Submenu($"Timing: {FormatOffset(_config.LyricsOffsetMs)}", timingItems),
+            TrayMenuItem.Submenu($"Position: {AnchorName(_config.Anchor)}", positionItems),
             TrayMenuItem.Separator,
-            new(Commands.OffsetBack, "Lyrics earlier (-0.25s)"),
-            new(Commands.OffsetForward, "Lyrics later (+0.25s)"),
-            new(Commands.OffsetReset, "Reset timing"),
-            TrayMenuItem.Separator,
-            new(Commands.AnchorBottom, "Position: bottom", _config.Anchor == OverlayAnchor.BottomCenter),
-            new(Commands.AnchorTop, "Position: top", _config.Anchor == OverlayAnchor.TopCenter),
-            new(Commands.AnchorCenter, "Position: centre", _config.Anchor == OverlayAnchor.Center),
-            TrayMenuItem.Separator,
-            new(Commands.OpenConfigFolder, "Open settings folder"),
+            TrayMenuItem.Submenu("Advanced", advancedItems),
             TrayMenuItem.Separator,
             new(Commands.Exit, "Exit")
         };
@@ -1325,7 +1363,8 @@ internal sealed class AppHost
             items.InsertRange(1, warningItems);
         }
 
-        var selected = TrayIcon.ShowMenu(_messageWindow.Handle, items);        if (selected != 0)
+        var selected = TrayIcon.ShowMenu(_messageWindow.Handle, items);
+        if (selected != 0)
         {
             Execute(selected);
         }
@@ -1333,6 +1372,33 @@ internal sealed class AppHost
 
     private static string Truncate(string value, int maxLength) =>
         value.Length <= maxLength ? value : value[..(maxLength - 1)] + "\u2026";
+
+    /// <summary>The step both timing commands move by, as the submenu spells it: "0.25".</summary>
+    private static string OffsetStepSeconds() =>
+        (OffsetStepMs / 1000.0).ToString("0.##", CultureInfo.InvariantCulture);
+
+    /// <summary>The current offset as the submenu label shows it: "+0.25 s", "-1.00 s" or "0 s".</summary>
+    private static string FormatOffset(int milliseconds)
+    {
+        if (milliseconds == 0)
+        {
+            return "0 s";
+        }
+
+        return (milliseconds / 1000.0).ToString("+0.00;-0.00", CultureInfo.InvariantCulture) + " s";
+    }
+
+    /// <summary>The anchor in one word, so the submenu label stays short.</summary>
+    private static string AnchorName(OverlayAnchor anchor) => anchor switch
+    {
+        OverlayAnchor.TopCenter => "top",
+        OverlayAnchor.Center => "centre",
+        _ => "bottom"
+    };
+
+    /// <summary>The backdrop opacity as the whole percentage the menu shows.</summary>
+    private int OpacityPercent() =>
+        (int)Math.Round(_config.BackgroundOpacity * 100, MidpointRounding.AwayFromZero);
 
     private static nint MonitorUnderCursor()
     {

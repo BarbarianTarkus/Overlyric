@@ -336,10 +336,23 @@ and drag it around with nothing playing.
 
 ### Tray icon
 
-Left-click toggles the overlay. Right-click opens the menu: the **Lyrics version** submenu, mode, lock,
-track info, progress bar, line count, opacity, lyric timing, screen anchor, and folders. Hiding is
-split into "hide when no lyrics" and "hide instrumentals", so a wordless track can either vanish or
-simply say so.
+Left-click toggles the overlay. Right-click opens the menu, which is deliberately short: the track
+line (informational — it is greyed out and cannot be chosen), the **Lyrics version** submenu, the
+three switches worth reaching for while music is playing (show overlay, mode, lock), and then
+everything else one level down, grouped by what it is for:
+
+| Submenu | Holds |
+| --- | --- |
+| **Display** | track info, progress bar, line count, backdrop opacity |
+| **Behaviour** | hide when paused, hide when no lyrics, hide instrumentals, the player warning |
+| **Timing** | lyrics earlier / later / reset |
+| **Position** | bottom, top, centre |
+| **Advanced** | open the settings folder, open the cache folder |
+
+The submenu titles carry live state — `Timing: +0.25 s`, `Position: bottom`, and `Lines: 7` /
+`Opacity: 70%` inside **Display** — so the usual questions are answered without opening anything.
+Hiding is split into "hide when no lyrics" and "hide instrumentals", so a wordless track can either
+vanish or simply say so.
 
 Scroll the wheel over the overlay while it is unlocked to change the backdrop opacity. Drag it while
 unlocked to reposition: the placement is stored as an offset **from the anchored edge** — a margin

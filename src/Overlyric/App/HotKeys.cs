@@ -65,8 +65,6 @@ internal static class Commands
     public const int AnchorBottom = 120;
     public const int AnchorTop = 121;
     public const int AnchorCenter = 122;
-    public const int MoveUp = 130;
-    public const int MoveDown = 131;
     public const int OpacityUp = 140;
     public const int OpacityDown = 141;
     public const int MoreLines = 150;
