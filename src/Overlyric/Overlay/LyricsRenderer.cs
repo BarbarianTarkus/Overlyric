@@ -22,7 +22,7 @@ internal sealed class LyricsRenderer : IDisposable
     private const int LayoutCacheLimit = 256;
 
     private readonly IDWriteFactory _writeFactory;
-    private readonly OverlayTheme _theme;
+    private OverlayTheme _theme;
     private readonly Dictionary<(float Size, FontWeight Weight), IDWriteTextFormat> _formats = [];
     private readonly Dictionary<uint, ID2D1SolidColorBrush> _brushes = [];
     private readonly Dictionary<(string Text, float Size, FontWeight Weight), IDWriteTextLayout> _layouts = [];
@@ -39,6 +39,34 @@ internal sealed class LyricsRenderer : IDisposable
 
     /// <summary>Bounds of the drawn content in device-independent pixels, for hit testing.</summary>
     public Rect ContentBounds { get; private set; }
+
+    /// <summary>
+    /// Adopt a new theme without rebuilding the renderer. Text formats, cached layouts and brushes
+    /// all bake in the old sizes and colours, so they are released rather than reused.
+    /// </summary>
+    public void SetTheme(OverlayTheme theme)
+    {
+        _theme = theme;
+
+        // Layouts reference formats, so they go first.
+        ClearLayouts();
+
+        foreach (var brush in _brushes.Values)
+        {
+            brush.Dispose();
+        }
+
+        _brushes.Clear();
+
+        foreach (var format in _formats.Values)
+        {
+            format.Dispose();
+        }
+
+        _formats.Clear();
+
+        _layoutWidth = -1f;
+    }
 
     public void Draw(ID2D1DeviceContext context, Size viewport, OverlayVisual visual)
     {

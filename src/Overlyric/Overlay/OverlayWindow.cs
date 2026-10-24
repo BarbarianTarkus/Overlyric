@@ -32,7 +32,7 @@ internal sealed class OverlayWindow : WindowBase
     private const float MultiLineWidthDip = 1040f;
     private const float MultiLineHeightDip = 430f;
 
-    private readonly OverlayTheme _theme;
+    private OverlayTheme _theme;
 
     private CompositionHost? _host;
     private LyricsRenderer? _renderer;
@@ -127,6 +127,17 @@ internal sealed class OverlayWindow : WindowBase
         _mode = mode;
         ApplyBounds();
         RecreateHost();
+    }
+
+    /// <summary>
+    /// Adopt a new theme in place. Rebuilding the window for every opacity step made the overlay
+    /// flash away under the settings slider, so the theme is handed to the live renderer instead.
+    /// </summary>
+    public void SetTheme(OverlayTheme theme)
+    {
+        _theme = theme;
+        _renderer?.SetTheme(theme);
+        Render();
     }
 
     public void SetLocked(bool locked)

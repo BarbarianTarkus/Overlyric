@@ -71,6 +71,7 @@ internal static class Commands
     public const int FewerLines = 151;
     public const int OpenCacheFolder = 160;
     public const int OpenConfigFolder = 161;
+    public const int OpenSettings = 180;
     public const int AutoVersion = 170;
     public const int RefreshVersions = 171;
 

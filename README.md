@@ -321,6 +321,12 @@ Overlyric.exe --demo
 Demo mode drives the overlay from a canned synced track, so you can judge the look, try both modes
 and drag it around with nothing playing.
 
+To open the configuration window without going through the tray:
+
+```powershell
+Overlyric.exe --settings
+```
+
 ## Controls
 
 ### Global hotkeys
@@ -336,23 +342,25 @@ and drag it around with nothing playing.
 
 ### Tray icon
 
-Left-click toggles the overlay. Right-click opens the menu, which is deliberately short: the track
-line (informational — it is greyed out and cannot be chosen), the **Lyrics version** submenu, the
-three switches worth reaching for while music is playing (show overlay, mode, lock), and then
-everything else one level down, grouped by what it is for:
+Left-click toggles the overlay. Right-click opens a deliberately short menu: the track line
+(informational — greyed out and not selectable), the **Lyrics version** submenu, the three switches
+worth reaching for mid-song (show overlay, mode, lock), and **Settings…**. Everything else moved into
+the settings window, because a menu that dismisses itself on every click is a poor place to change
+anything.
 
-| Submenu | Holds |
-| --- | --- |
-| **Display** | track info, progress bar, line count, backdrop opacity |
-| **Behaviour** | hide when paused, hide when no lyrics, hide instrumentals, the player warning |
-| **Timing** | lyrics earlier / later / reset |
-| **Position** | bottom, top, centre |
-| **Advanced** | open the settings folder, open the cache folder |
+### Settings window
 
-The submenu titles carry live state — `Timing: +0.25 s`, `Position: bottom`, and `Lines: 7` /
-`Opacity: 70%` inside **Display** — so the usual questions are answered without opening anything.
-Hiding is split into "hide when no lyrics" and "hide instrumentals", so a wordless track can either
-vanish or simply say so.
+`Settings…` in the tray, or `Overlyric.exe --settings`, opens a fixed-size dark window with five
+sections down the left: **Overlay** (mode, lines shown, backdrop opacity, track info, progress bar,
+font sizes), **Behaviour** (the hide rules and the player warning), **Timing** (lyric offset),
+**Position** (anchor, offsets, reset) and **Advanced** (open the settings or cache folder, version).
+
+![The settings window](docs/settings-window.png)
+
+Changes apply live and are saved as they are made, so the overlay behind the window shows the effect
+immediately. `Esc` or the close button hides the window; the process keeps running and the overlay
+stays up. Hiding is split into "hide when no lyrics" and "hide instrumentals", so a wordless track
+can either vanish or simply say so.
 
 Scroll the wheel over the overlay while it is unlocked to change the backdrop opacity. Drag it while
 unlocked to reposition: the placement is stored as an offset **from the anchored edge** — a margin

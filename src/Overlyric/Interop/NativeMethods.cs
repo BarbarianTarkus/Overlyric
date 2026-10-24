@@ -14,6 +14,7 @@ internal static partial class NativeMethods
     internal const int WS_EX_TOPMOST = 0x00000008;
     internal const int WS_EX_TRANSPARENT = 0x00000020;
     internal const int WS_EX_TOOLWINDOW = 0x00000080;
+    internal const int WS_EX_APPWINDOW = 0x00040000;
     internal const int WS_EX_NOACTIVATE = 0x08000000;
     internal const int WS_EX_NOREDIRECTIONBITMAP = 0x00200000;
     internal const int WS_EX_LAYERED = 0x00080000;
@@ -21,10 +22,16 @@ internal static partial class NativeMethods
     internal const int WS_POPUP = unchecked((int)0x80000000);
     internal const int WS_VISIBLE = 0x10000000;
     internal const int WS_CLIPSIBLINGS = 0x04000000;
+    internal const int WS_CAPTION = 0x00C00000;
+    internal const int WS_SYSMENU = 0x00080000;
+    internal const int WS_MINIMIZEBOX = 0x00020000;
 
     internal const int WM_DESTROY = 0x0002;
     internal const int WM_CLOSE = 0x0010;
     internal const int WM_PAINT = 0x000F;
+    internal const int WM_ERASEBKGND = 0x0014;
+    internal const int WM_KEYDOWN = 0x0100;
+    internal const int WM_MOUSELEAVE = 0x02A3;
     internal const int WM_TIMER = 0x0113;
     internal const int WM_HOTKEY = 0x0312;
     internal const int WM_NCHITTEST = 0x0084;
@@ -46,11 +53,21 @@ internal static partial class NativeMethods
     internal static readonly IntPtr HWND_TOPMOST = new(-1);
     internal const uint SWP_NOSIZE = 0x0001;
     internal const uint SWP_NOMOVE = 0x0002;
+    internal const uint SWP_NOZORDER = 0x0004;
     internal const uint SWP_NOACTIVATE = 0x0010;
     internal const uint SWP_SHOWWINDOW = 0x0040;
 
     internal const int SW_HIDE = 0;
+    internal const int SW_SHOW = 5;
     internal const int SW_SHOWNA = 8;
+
+    internal const int VK_ESCAPE = 0x1B;
+
+    internal const uint TME_LEAVE = 0x00000002;
+
+    /// <summary>DWMWA_USE_IMMERSIVE_DARK_MODE; 19 on Windows 10 builds before 20H1.</summary>
+    internal const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+    internal const int DWMWA_USE_IMMERSIVE_DARK_MODE_OLD = 19;
 
     internal const int SM_CXSCREEN = 0;
     internal const int SM_CYSCREEN = 1;
@@ -209,6 +226,36 @@ internal static partial class NativeMethods
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool AdjustWindowRectEx(ref RECT lpRect, uint dwStyle, bool bMenu, uint dwExStyle);
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct TRACKMOUSEEVENT
+    {
+        public int cbSize;
+        public uint dwFlags;
+        public IntPtr hwndTrack;
+        public uint dwHoverTime;
+    }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool TrackMouseEvent(ref TRACKMOUSEEVENT lpEventTrack);
+
+    [DllImport("user32.dll")]
+    internal static extern IntPtr SetCapture(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool ReleaseCapture();
+
+    [DllImport("dwmapi.dll")]
+    internal static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
+
+    [DllImport("gdi32.dll")]
+    internal static extern IntPtr CreateSolidBrush(uint crColor);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     internal static extern ushort RegisterClassExW(ref WNDCLASSEXW lpwcx);

@@ -24,8 +24,12 @@ internal static class Program
         // previewed (and the renderer verified) without anything playing.
         var demo = Array.Exists(args, a => string.Equals(a, "--demo", StringComparison.OrdinalIgnoreCase));
 
+        // --settings opens the configuration window straight away, which is how a
+        // shortcut or a second launch is expected to behave.
+        var settings = Array.Exists(args, a => string.Equals(a, "--settings", StringComparison.OrdinalIgnoreCase));
+
         var config = AppConfig.Load();
-        var host = new AppHost(config, demo);
+        var host = new AppHost(config, demo, settings);
 
         return host.Run();
     }
