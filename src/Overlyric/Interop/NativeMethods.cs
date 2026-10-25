@@ -63,6 +63,13 @@ internal static partial class NativeMethods
     internal const int SW_SHOWNA = 8;
 
     internal const int VK_ESCAPE = 0x1B;
+    internal const int VK_TAB = 0x09;
+    internal const int VK_RETURN = 0x0D;
+    internal const int VK_SPACE = 0x20;
+    internal const int VK_PRIOR = 0x21;
+    internal const int VK_NEXT = 0x22;
+    internal const int VK_END = 0x23;
+    internal const int VK_HOME = 0x24;
     internal const int VK_CONTROL = 0x11;
     internal const int VK_SHIFT = 0x10;
     internal const int VK_MENU = 0x12;

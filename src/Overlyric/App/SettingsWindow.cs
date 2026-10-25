@@ -166,7 +166,18 @@ internal sealed class SettingsWindow : WindowBase
         ClearCache = 76,
 
         /// <summary>Write or remove the current user's Run entry.</summary>
-        StartWithWindows = 77
+        StartWithWindows = 77,
+
+        /// <summary>
+        /// The four offset nudges and the scrollbar. Their values fill the gap between the shortcut
+        /// chips and the OLED block, the only stretch of the id space left; the enum's order documents
+        /// the window, and only the navigation ids are ever decoded by arithmetic.
+        /// </summary>
+        OffsetXDown = 50,
+        OffsetXUp = 51,
+        OffsetYDown = 52,
+        OffsetYUp = 53,
+        Scrollbar = 54
     }
 
     private const float WidthDip = 780f;
@@ -228,6 +239,12 @@ internal sealed class SettingsWindow : WindowBase
     private static readonly string[] NavCaptions =
         ["ON SCREEN", "", "", "", "", "SETUP", "", ""];
 
+    /// <summary>
+    /// One past the last row index each section draws. The viewport needs the height before the section
+    /// is drawn, so this is a table rather than something measured twice.
+    /// </summary>
+    private static readonly int[] SectionRows = [10, 6, 3, 4, 6, 8, 8, 3];
+
     private readonly AppConfig _config;
     private readonly Action<SettingsChange> _changed;
     private readonly Func<int, string, string?> _assignShortcut;
@@ -257,6 +274,30 @@ internal sealed class SettingsWindow : WindowBase
     private float _sliderLeft;
     private float _sliderWidth;
     private float _dpi = 96f;
+
+    /// <summary>How far the open section is scrolled, in DIP. Zero whenever the section fits.</summary>
+    private float _scroll;
+
+    /// <summary>Translation applied to the hit rectangles being recorded; zero outside the scrolled body.</summary>
+    private float _hitScroll;
+
+    private bool _draggingScroll;
+    private float _scrollTrackTop;
+    private float _scrollTrackLength;
+    private float _scrollThumbLength;
+
+    /// <summary>The control the keyboard is on, or -1 when the window has not been tabbed into.</summary>
+    private int _focus = -1;
+
+    /// <summary>
+    /// The live client height in DIP. The window prefers 540 but shrinks to fit the monitor's work area,
+    /// which is what keeps a 200 % window on a 1080p screen reachable rather than taller than the screen.
+    /// </summary>
+    private float _clientHeightDip = HeightDip;
+
+    private float ViewportTop => 108f;
+
+    private float ViewportBottom => _clientHeightDip - 40f;
 
     /// <summary>Index into <see cref="ShortcutActions.All"/> whose chip is waiting for keys, or -1.</summary>
     private int _capturing = -1;
@@ -390,9 +431,8 @@ internal sealed class SettingsWindow : WindowBase
 
         // Frameless: the window is exactly the client area.
         var clientWidth = ToPixels(WidthDip);
-        var clientHeight = ToPixels(WindowHeightDip);
         var windowWidth = clientWidth;
-        var windowHeight = clientHeight;
+        var windowHeight = ToPixels(WindowHeightDip);
 
         var monitor = MonitorFromWindow(Handle, MONITOR_DEFAULTTONEAREST);
         var info = new MONITORINFO { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<MONITORINFO>() };
@@ -401,14 +441,23 @@ internal sealed class SettingsWindow : WindowBase
 
         if (GetMonitorInfoW(monitor, ref info))
         {
+            // At 200 % on a 1080p panel the work area is 540 DIP, shorter than this window wants to be.
+            // Shrinking to the work area keeps the footer and the last row on screen; the rows scroll
+            // instead of the window growing past the display.
+            windowHeight = Math.Min(windowHeight, info.rcWork.Height - ToPixels(12f));
             x = info.rcWork.Left + ((info.rcWork.Width - windowWidth) / 2);
             y = info.rcWork.Top + ((info.rcWork.Height - windowHeight) / 2);
         }
 
+        // Content coordinates start below the title bar, so this is the window minus the title: the
+        // footer sits 30 DIP above it, and a value that forgot the title would push the footer off the
+        // bottom edge and let the last row draw past the clip.
+        _clientHeightDip = (windowHeight / (_dpi / 96f)) - TitleHeightDip;
+
         SetWindowPos(Handle, IntPtr.Zero, x, y, windowWidth, windowHeight, SWP_NOACTIVATE | SWP_NOZORDER);
 
-        _host?.Resize(clientWidth, clientHeight, _dpi);
-        EnsureHost(clientWidth, clientHeight);
+        _host?.Resize(windowWidth, windowHeight, _dpi);
+        EnsureHost(windowWidth, windowHeight);
         Render();
     }
 
@@ -484,6 +533,11 @@ internal sealed class SettingsWindow : WindowBase
 
             case WM_MOUSEMOVE:
                 OnMouseMove(lParam);
+                return IntPtr.Zero;
+
+            case WM_MOUSEWHEEL:
+                // The delta lives in the high word of wParam; the pointer's position is in lParam.
+                OnMouseWheel(wParam);
                 return IntPtr.Zero;
 
             case WM_MOUSELEAVE:
@@ -579,6 +633,15 @@ internal sealed class SettingsWindow : WindowBase
                 return;
             }
 
+            if (id == (int)Control.Scrollbar)
+            {
+                _draggingScroll = true;
+                SetCapture(Handle);
+                SetScrollFrom(contentY);
+                Render();
+                return;
+            }
+
             Activate(id);
             return;
         }
@@ -586,6 +649,13 @@ internal sealed class SettingsWindow : WindowBase
 
     private void OnMouseUp()
     {
+        if (_draggingScroll)
+        {
+            _draggingScroll = false;
+            ReleaseCapture();
+            Render();
+        }
+
         if (!_draggingOpacity)
         {
             return;
@@ -604,6 +674,12 @@ internal sealed class SettingsWindow : WindowBase
         if (_draggingOpacity)
         {
             SetOpacityFrom(x);
+            return;
+        }
+
+        if (_draggingScroll)
+        {
+            SetScrollFrom(y - TitleHeightDip);
             return;
         }
 
@@ -635,6 +711,19 @@ internal sealed class SettingsWindow : WindowBase
         TrackMouseEvent(ref track);
     }
 
+    /// <summary>Three rows a notch, which is the same feel as the lyric sheet's wheel.</summary>
+    private void OnMouseWheel(nint wParam)
+    {
+        var delta = (short)((wParam.ToInt64() >> 16) & 0xFFFF);
+
+        if (delta == 0 || MaxScroll <= 0f)
+        {
+            return;
+        }
+
+        SetScroll(_scroll - (Math.Sign(delta) * 3f * RowHeightDip));
+    }
+
     private void SetOpacityFrom(float x)
     {
         if (_sliderWidth <= 0f)
@@ -660,9 +749,42 @@ internal sealed class SettingsWindow : WindowBase
     {
         if (_capturing < 0)
         {
-            if (virtualKey == VK_ESCAPE)
+            switch (virtualKey)
             {
-                Hide();
+                case VK_ESCAPE:
+                    Hide();
+                    return IntPtr.Zero;
+
+                case VK_TAB:
+                    // Shift is what makes it a reverse cycle, and the message itself carries no
+                    // modifier state, so the keyboard is asked directly.
+                    MoveFocus((GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0 ? -1 : 1);
+                    return IntPtr.Zero;
+
+                case VK_RETURN:
+                case VK_SPACE:
+                    if (_focus >= 0)
+                    {
+                        Activate(_focus);
+                    }
+
+                    return IntPtr.Zero;
+
+                case VK_PRIOR:
+                    SetScroll(_scroll - (ViewportBottom - ViewportTop));
+                    return IntPtr.Zero;
+
+                case VK_NEXT:
+                    SetScroll(_scroll + (ViewportBottom - ViewportTop));
+                    return IntPtr.Zero;
+
+                case VK_HOME:
+                    SetScroll(0f);
+                    return IntPtr.Zero;
+
+                case VK_END:
+                    SetScroll(MaxScroll);
+                    return IntPtr.Zero;
             }
 
             return IntPtr.Zero;
@@ -771,6 +893,11 @@ internal sealed class SettingsWindow : WindowBase
         if (id >= (int)Control.NavLyrics && id <= (int)Control.NavAdvanced)
         {
             _section = (Section)(id - (int)Control.NavLyrics);
+
+            // A section opens at its top, and the keyboard starts over: keeping either would land the
+            // reader halfway down a section they have just chosen.
+            _scroll = 0f;
+            _focus = -1;
             Render();
             return;
         }
@@ -891,6 +1018,22 @@ internal sealed class SettingsWindow : WindowBase
                 SetAnchor(_config.Anchor);
                 return;
 
+            case Control.OffsetXDown:
+                NudgeOffset(-5, 0);
+                return;
+
+            case Control.OffsetXUp:
+                NudgeOffset(5, 0);
+                return;
+
+            case Control.OffsetYDown:
+                NudgeOffset(0, -5);
+                return;
+
+            case Control.OffsetYUp:
+                NudgeOffset(0, 5);
+                return;
+
             case Control.OpenData:
                 _openDataFolder();
                 return;
@@ -988,6 +1131,17 @@ internal sealed class SettingsWindow : WindowBase
         _changed(SettingsChange.Appearance);
         _changed(SettingsChange.Visibility);
         Render();
+    }
+
+    /// <summary>
+    /// Move the stored offset by a few pixels. Dragging the overlay is the fast path; this is the one
+    /// that works from a keyboard, and it is why the offsets stopped being a read-only label.
+    /// </summary>
+    private void NudgeOffset(int dx, int dy)
+    {
+        _config.OffsetX = Math.Clamp(_config.OffsetX + dx, -4000, 4000);
+        _config.OffsetY = Math.Clamp(_config.OffsetY + dy, -4000, 4000);
+        Apply(SettingsChange.Placement);
     }
 
     private void SetAnchor(OverlayAnchor anchor)
@@ -1150,8 +1304,8 @@ internal sealed class SettingsWindow : WindowBase
         // Everything below the title bar is laid out in content coordinates.
         context.Transform = Matrix3x2.CreateTranslation(0f, TitleHeightDip);
 
-        Fill(context, R(0f, 0f, NavWidthDip, HeightDip), ColorNav);
-        Fill(context, R(NavWidthDip, 0f, NavWidthDip + 1f, HeightDip), ColorLine);
+        Fill(context, R(0f, 0f, NavWidthDip, _clientHeightDip), ColorNav);
+        Fill(context, R(NavWidthDip, 0f, NavWidthDip + 1f, _clientHeightDip), ColorLine);
 
         DrawNavigation(context);
 
@@ -1159,6 +1313,42 @@ internal sealed class SettingsWindow : WindowBase
         Label(context, SectionHints[(int)_section], ContentLeft, 76f, ContentWidth, 18f, 12.5f, FontWeight.Normal, ColorTextDim);
         Fill(context, R(ContentLeft, 106f, ContentRight, 107f), ColorLine);
 
+        // Clip first, in unscrolled coordinates, then move the rows. The clip is stored in device
+        // space, so a translation applied after the push does not drag it along with the content.
+        context.PushAxisAlignedClip(
+            R(NavWidthDip + 1f, ViewportTop, WidthDip, ViewportBottom),
+            AntialiasMode.Aliased);
+
+        context.Transform = Matrix3x2.CreateTranslation(0f, TitleHeightDip - _scroll);
+        _hitScroll = _scroll;
+
+        DrawSectionBody(context);
+
+        _hitScroll = 0f;
+        context.Transform = Matrix3x2.CreateTranslation(0f, TitleHeightDip);
+        context.PopAxisAlignedClip();
+
+        DrawScrollbar(context);
+
+        Label(
+            context,
+            $"Overlyric {_version}  ·  Esc to close",
+            ContentLeft,
+            _clientHeightDip - 30f,
+            ContentWidth,
+            18f,
+            11.5f,
+            FontWeight.Normal,
+            ColorTextFaint);
+
+        DrawFocusRing(context);
+
+        context.Transform = Matrix3x2.Identity;
+    }
+
+    /// <summary>The rows of the open section. Drawn inside the scroll clip, so it may be taller than the viewport.</summary>
+    private void DrawSectionBody(ID2D1DeviceContext context)
+    {
         switch (_section)
         {
             case Section.Lyrics:
@@ -1186,19 +1376,6 @@ internal sealed class SettingsWindow : WindowBase
                 DrawAdvancedSection(context);
                 break;
         }
-
-        Label(
-            context,
-            $"Overlyric {_version}  ·  Esc to close",
-            ContentLeft,
-            HeightDip - 30f,
-            ContentWidth,
-            18f,
-            11.5f,
-            FontWeight.Normal,
-            ColorTextFaint);
-
-        context.Transform = Matrix3x2.Identity;
     }
 
     private void DrawTitleBar(ID2D1DeviceContext context)
@@ -1329,13 +1506,19 @@ internal sealed class SettingsWindow : WindowBase
         Row(context, 4, "Karaoke sweep");
         Toggle(context, Control.KaraokeToggle, _config.Karaoke);
 
-        Group(context, 5, "CHROME");
+        // The one part of a swept line that is both static and lit is the half waiting to be sung.
+        // Pure black is an unlit pixel on the panel, so the words appear only as the sweep reaches
+        // them - which is why this row belongs to the sweep and dies without it.
+        Row(context, 5, "Black out unsung words", child: true, enabled: _config.Karaoke);
+        Toggle(context, Control.OledBlackout, _config.KaraokeBlackout, _config.Karaoke);
 
-        Row(context, 5, "Show track info");
+        Group(context, 6, "CHROME");
+
+        Row(context, 6, "Show track info");
         Toggle(context, Control.Header, _config.ShowHeader);
 
-        // The pop-up is the header's lifetime, not a sibling setting five rows away.
-        Row(context, 6, "Info pop-up", child: true, enabled: _config.ShowHeader);
+        // The pop-up and the auto-hide are the header's lifetime, not sibling settings rows apart.
+        Row(context, 7, "Info pop-up", child: true, enabled: _config.ShowHeader);
         Stepper(
             context,
             _config.InfoPopupSeconds == 0 ? "Off" : $"{_config.InfoPopupSeconds} s",
@@ -1343,7 +1526,15 @@ internal sealed class SettingsWindow : WindowBase
             Control.InfoPopupUp,
             _config.ShowHeader);
 
-        Row(context, 7, "Show progress bar");
+        Row(context, 8, "Auto-hide track info", child: true, enabled: _config.ShowHeader);
+        Stepper(
+            context,
+            _config.HeaderAutoHideSeconds == 0 ? "Never" : $"{_config.HeaderAutoHideSeconds} s",
+            Control.OledAutoHideDown,
+            Control.OledAutoHideUp,
+            _config.ShowHeader);
+
+        Row(context, 9, "Show progress bar");
         Toggle(context, Control.ProgressBar, _config.ShowProgressBar);
     }
 
@@ -1367,29 +1558,13 @@ internal sealed class SettingsWindow : WindowBase
         Row(context, 3, "Dim surrounding lines");
         Stepper(context, $"{Math.Round(_config.InactiveLineOpacity * 100)}%", Control.OledDimDown, Control.OledDimUp);
 
-        // The one part of a swept line that is both static and lit is the half waiting to be sung.
-        // Pure black is an unlit pixel on the panel, so the words appear only as the sweep reaches
-        // them. It draws nothing while the sweep is off, which is why the preset turns the sweep on;
-        // until the scroll viewport lets this row live under Karaoke sweep, it says so here.
-        Row(context, 4, "Black out unsung words", child: true, enabled: _config.Karaoke);
-        Toggle(context, Control.OledBlackout, _config.KaraokeBlackout, _config.Karaoke);
+        Group(context, 4, "BURN-IN TOOLS");
 
-        Group(context, 5, "BURN-IN TOOLS");
-
-        Row(context, 5, "Pixel shift");
+        Row(context, 4, "Pixel shift");
         Toggle(context, Control.OledPixelShift, _config.PixelShift);
 
-        Row(context, 6, "Outline text");
+        Row(context, 5, "Outline text");
         Toggle(context, Control.OledOutline, _config.TextOutline);
-
-        // The header's lifetime, so it follows the header rather than sitting three rows above it.
-        Row(context, 7, "Auto-hide track info", child: true, enabled: _config.ShowHeader);
-        Stepper(
-            context,
-            _config.HeaderAutoHideSeconds == 0 ? "Never" : $"{_config.HeaderAutoHideSeconds} s",
-            Control.OledAutoHideDown,
-            Control.OledAutoHideUp,
-            _config.ShowHeader);
     }
 
     private void DrawShortcutsSection(ID2D1DeviceContext context)
@@ -1525,18 +1700,10 @@ internal sealed class SettingsWindow : WindowBase
         Row(context, 0, "Anchor");
         AnchorDiagram(context, 0);
 
+        // Two steppers instead of a read-only label: the offsets were visible but not editable, and
+        // dragging the overlay is not possible from the keyboard.
         Row(context, 1, "Offset from the anchor");
-        Label(
-            context,
-            $"{_config.OffsetX}, {_config.OffsetY} px",
-            ContentRight - 200f,
-            RowTop(1),
-            200f,
-            RowHeightDip,
-            12.5f,
-            FontWeight.Normal,
-            ColorTextDim,
-            TextAlignment.Trailing);
+        OffsetSteppers(context, 1);
 
         Row(context, 2, "Reset position");
         Button(context, ContentRight - 132f, RowTop(2) + 8f, 132f, 30f, "Reset", Control.ResetPosition);
@@ -1894,6 +2061,51 @@ internal sealed class SettingsWindow : WindowBase
     }
 
     /// <summary>
+    /// The stored offset in pixels, editable. Dragging the overlay stays the fast path; this is the one
+    /// that works from a keyboard, and it is why the offsets stopped being a read-only label.
+    /// </summary>
+    private void OffsetSteppers(ID2D1DeviceContext context, int index)
+    {
+        const float button = 26f;
+        const float valueWidth = 54f;
+        const float gap = 4f;
+        const float pairGap = 14f;
+
+        var pairWidth = 18f + button + gap + valueWidth + gap + button;
+        var left = ContentRight - (pairWidth * 2f) - pairGap;
+        var top = RowTop(index) + 10f;
+
+        OffsetPair(context, left, top, "X", _config.OffsetX, Control.OffsetXDown, Control.OffsetXUp, button, valueWidth, gap);
+        OffsetPair(context, left + pairWidth + pairGap, top, "Y", _config.OffsetY, Control.OffsetYDown, Control.OffsetYUp, button, valueWidth, gap);
+    }
+
+    private void OffsetPair(
+        ID2D1DeviceContext context,
+        float left,
+        float top,
+        string axis,
+        int value,
+        Control down,
+        Control up,
+        float button,
+        float valueWidth,
+        float gap)
+    {
+        Label(context, axis, left, top - 8f, 16f, 42f, 9.5f, FontWeight.SemiBold, ColorTextFaint);
+
+        var x = left + 18f;
+
+        Button(context, x, top, button, 26f, "\u2212", down);
+        x += button + gap;
+
+        FillRound(context, x, top, valueWidth, 26f, 7f, ColorControl);
+        Label(context, value.ToString(), x, top, valueWidth, 26f, 12f, FontWeight.SemiBold, ColorText, TextAlignment.Center);
+        x += valueWidth + gap;
+
+        Button(context, x, top, button, 26f, "+", up);
+    }
+
+    /// <summary>
     /// Three monitors, one per anchor, with a bar where the overlay would sit. A position is easier to
     /// recognise than to read, and the offsets below are measured from the edge this shows.
     /// </summary>
@@ -2011,19 +2223,19 @@ internal sealed class SettingsWindow : WindowBase
         Control.FontActiveDown or Control.FontActiveUp => 2,
         Control.FontInactiveDown or Control.FontInactiveUp => 3,
         Control.KaraokeToggle => 4,
-        Control.Header => 5,
-        Control.InfoPopupDown or Control.InfoPopupUp => 6,
-        Control.ProgressBar => 7,
+        Control.OledBlackout => 5,
+        Control.Header => 6,
+        Control.InfoPopupDown or Control.InfoPopupUp => 7,
+        Control.OledAutoHideDown or Control.OledAutoHideUp => 8,
+        Control.ProgressBar => 9,
 
         // Appearance
         Control.OledPreset => 0,
         Control.OledOpacitySlider => 1,
         Control.OledHighlight => 2,
         Control.OledDimDown or Control.OledDimUp => 3,
-        Control.OledBlackout => 4,
-        Control.OledPixelShift => 5,
-        Control.OledOutline => 6,
-        Control.OledAutoHideDown or Control.OledAutoHideUp => 7,
+        Control.OledPixelShift => 4,
+        Control.OledOutline => 5,
 
         // Behaviour
         Control.HidePaused => 0,
@@ -2039,6 +2251,7 @@ internal sealed class SettingsWindow : WindowBase
 
         // Position
         Control.AnchorBottom or Control.AnchorTop or Control.AnchorCentre => 0,
+        Control.OffsetXDown or Control.OffsetXUp or Control.OffsetYDown or Control.OffsetYUp => 1,
         Control.ResetPosition => 2,
 
         // Advanced
@@ -2051,7 +2264,192 @@ internal sealed class SettingsWindow : WindowBase
         _ => 0
     };
 
-    private void Hit(int id, Rect rect) => _hits.Add((id, rect));
+    /// <summary>
+    /// Record a clickable area. Inside the scrolled body the rectangle moves with the row it belongs
+    /// to and is cut to the viewport, so a row that has scrolled under the header cannot answer a click
+    /// aimed at the header above it.
+    /// </summary>
+    private void Hit(int id, Rect rect)
+    {
+        if (_hitScroll == 0f)
+        {
+            _hits.Add((id, rect));
+            return;
+        }
+
+        var top = MathF.Max(rect.Top - _hitScroll, ViewportTop);
+        var bottom = MathF.Min(rect.Bottom - _hitScroll, ViewportBottom);
+
+        if (bottom > top)
+        {
+            _hits.Add((id, R(rect.Left, top, rect.Right, bottom)));
+        }
+    }
+
+    /// <summary>Height of the open section's rows, in DIP.</summary>
+    private float ContentHeight => SectionRows[(int)_section] * RowHeightDip;
+
+    private float MaxScroll => MathF.Max(0f, ContentHeight - (ViewportBottom - ViewportTop));
+
+    /// <summary>
+    /// A scrollbar only while the section is taller than the viewport, proportional with a floor so a
+    /// long section still leaves something to grab.
+    /// </summary>
+    private void DrawScrollbar(ID2D1DeviceContext context)
+    {
+        var max = MaxScroll;
+
+        if (max <= 0f)
+        {
+            _scroll = 0f;
+            return;
+        }
+
+        _scroll = Math.Clamp(_scroll, 0f, max);
+
+        const float width = 4f;
+
+        var viewport = ViewportBottom - ViewportTop;
+        var left = WidthDip - 14f;
+        var top = ViewportTop + 2f;
+        var length = viewport - 4f;
+        var thumb = MathF.Max(36f, length * (viewport / ContentHeight));
+        var offset = (length - thumb) * (_scroll / max);
+        var hot = _hover == (int)Control.Scrollbar || _draggingScroll;
+
+        FillRound(context, left, top, width, length, 2f, ColorControl);
+        FillRound(context, left, top + offset, width, thumb, 2f, hot ? ColorAccent : ColorTextFaint);
+
+        _scrollTrackTop = top;
+        _scrollTrackLength = length;
+        _scrollThumbLength = thumb;
+
+        Hit((int)Control.Scrollbar, R(left - 6f, ViewportTop, left + width + 6f, ViewportBottom));
+    }
+
+    /// <summary>Drag the thumb: where it is on the track is the fraction of the section being shown.</summary>
+    private void SetScrollFrom(float y)
+    {
+        if (MaxScroll <= 0f || _scrollTrackLength <= _scrollThumbLength)
+        {
+            return;
+        }
+
+        var t = Math.Clamp(
+            (y - _scrollTrackTop - (_scrollThumbLength / 2f)) / (_scrollTrackLength - _scrollThumbLength),
+            0f,
+            1f);
+
+        SetScroll(t * MaxScroll);
+    }
+
+    private void SetScroll(float value)
+    {
+        var clamped = Math.Clamp(value, 0f, MaxScroll);
+
+        if (MathF.Abs(clamped - _scroll) < 0.5f)
+        {
+            return;
+        }
+
+        _scroll = clamped;
+        Render();
+    }
+
+    /// <summary>
+    /// The keyboard's focus ring, drawn from the recorded rectangles: it lands exactly on the control the
+    /// next Tab would reach, and follows the scroll because those rectangles already did.
+    /// </summary>
+    private void DrawFocusRing(ID2D1DeviceContext context)
+    {
+        if (_focus < 0)
+        {
+            return;
+        }
+
+        foreach (var (id, rect) in _hits)
+        {
+            if (id != _focus)
+            {
+                continue;
+            }
+
+            const float radius = 9f;
+
+            context.DrawRoundedRectangle(
+                new RoundedRectangle(
+                    new RectangleF(rect.Left - 3f, rect.Top - 3f, (rect.Right - rect.Left) + 6f, (rect.Bottom - rect.Top) + 6f),
+                    radius,
+                    radius),
+                GetBrush(context, 0x807CC4FF),
+                1.5f);
+
+            return;
+        }
+    }
+
+    /// <summary>
+    /// Move the focus to the next control the window draws, in draw order - which is reading order - and
+    /// scroll it into view. Tab and Shift+Tab wrap, so the whole window is reachable from the keyboard.
+    /// </summary>
+    private void MoveFocus(int direction)
+    {
+        if (_hits.Count == 0)
+        {
+            return;
+        }
+
+        var index = -1;
+
+        for (var i = 0; i < _hits.Count; i++)
+        {
+            if (_hits[i].Id == _focus)
+            {
+                index = i;
+                break;
+            }
+        }
+
+        // The close button is a window control rather than a setting: Esc already closes the window,
+        // and a tab stop that dismisses it is a trap in the middle of the cycle.
+        for (var step = 0; step < _hits.Count; step++)
+        {
+            index = index < 0
+                ? (direction > 0 ? 0 : _hits.Count - 1)
+                : (index + direction + _hits.Count) % _hits.Count;
+
+            if (_hits[index].Id != (int)Control.Close)
+            {
+                break;
+            }
+        }
+
+        _focus = _hits[index].Id;
+        Reveal(_hits[index].Rect);
+        Render();
+    }
+
+    /// <summary>Scroll just enough for a rectangle to be fully inside the viewport.</summary>
+    private void Reveal(Rect rect)
+    {
+        // Only the body scrolls. The navigation sits above the viewport, so revealing one of its rows
+        // would drag the section sideways under a header that did not move.
+        if (rect.Left < ContentLeft)
+        {
+            return;
+        }
+
+        if (rect.Top < ViewportTop)
+        {
+            _scroll = MathF.Max(0f, _scroll - (ViewportTop - rect.Top) - 8f);
+        }
+        else if (rect.Bottom > ViewportBottom)
+        {
+            _scroll += rect.Bottom - ViewportBottom + 8f;
+        }
+
+        _scroll = Math.Clamp(_scroll, 0f, MaxScroll);
+    }
 
     private void Fill(ID2D1DeviceContext context, Rect rect, uint argb) =>
         context.FillRectangle(rect, GetBrush(context, argb));

@@ -126,7 +126,7 @@ stack and the settings window's palette, so they add no new UI framework.
 
 ## Settings window
 
-`Settings…` in the tray, or `Overlyric.exe --settings`, opens a fixed-size dark window with eight
+`Settings…` in the tray, or `Overlyric.exe --settings`, opens a fixed-width dark window with eight
 sections down the left, in two groups. **ON SCREEN** holds **Lyrics** (mode, lines shown, text sizes,
 the karaoke sweep, and the track info and info pop-up that belong together), **Appearance** (the
 backdrop, what stays lit, and the burn-in preset and tools — see [OLED and burn-in](oled.md)),
@@ -139,6 +139,13 @@ The sections are ordered by the job rather than by the order the features shippe
 then the two corrections made most often, then when it gets out of the way, then the setup. Inside a
 section, a row that only means something because of another row sits under it, indented, and stays
 dead until that row is on — turn **Show track info** off and **Info pop-up** greys out with it.
+
+A section taller than the window scrolls: the wheel, the scrollbar, `PageUp`/`PageDown` and
+`Home`/`End` move the rows under a header that stays put, so the section's name is always in view.
+`Tab` and `Shift+Tab` walk the controls in reading order and ring the one that has focus; `Enter`
+or `Space` presses it. The window also shrinks to the monitor's work area, which is what keeps it
+reachable at 200 % scaling on a 1080p display — the rows scroll instead of the window growing past the
+screen.
 
 ![The settings window, on the Lyrics section](images/settings-window.png)
 
