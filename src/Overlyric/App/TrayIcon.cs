@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Overlyric.Interop;
 using static Overlyric.Interop.NativeMethods;
 
 namespace Overlyric.App;
@@ -27,7 +28,15 @@ internal sealed class TrayIcon : IDisposable
 
     public void Show(string tooltip)
     {
-        _icon = LoadIconW(nint.Zero, new nint(32512));
+        // The executable's own icon, at notification-area size. The stock icons below are only a
+        // fallback for a build that somehow lost its resources: a tray entry with no icon at all
+        // leaves the user unable to find the app.
+        _icon = AppIcon.Small;
+        if (_icon == nint.Zero)
+        {
+            _icon = LoadIconW(nint.Zero, new nint(32512));
+        }
+
         if (_icon == nint.Zero)
         {
             _icon = LoadIconW(nint.Zero, new nint(32513));

@@ -77,6 +77,10 @@ internal static partial class NativeMethods
 
     internal const int SM_CXSCREEN = 0;
     internal const int SM_CYSCREEN = 1;
+    internal const int SM_CXICON = 11;
+    internal const int SM_CYICON = 12;
+    internal const int SM_CXSMICON = 49;
+    internal const int SM_CYSMICON = 50;
     internal const int SM_XVIRTUALSCREEN = 76;
     internal const int SM_YVIRTUALSCREEN = 77;
     internal const int SM_CXVIRTUALSCREEN = 78;
@@ -408,6 +412,15 @@ internal static partial class NativeMethods
 
     [DllImport("user32.dll")]
     internal static extern IntPtr LoadIconW(IntPtr hInstance, IntPtr lpIconName);
+
+    internal const uint IMAGE_ICON = 1;
+
+    /// <summary>LR_DEFAULTCOLOR: no flags. Without LR_SHARED the icon belongs to the caller.</summary>
+    internal const uint LR_DEFAULTCOLOR = 0x00000000;
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    internal static extern IntPtr LoadImageW(
+        IntPtr hInstance, IntPtr lpName, uint uType, int cxDesired, int cyDesired, uint fuLoad);
 
     /// <summary>CLSCTX_INPROC_SERVER | CLSCTX_LOCAL_SERVER | CLSCTX_REMOTE_SERVER.</summary>
     internal const uint CLSCTX_ALL = 0x17;

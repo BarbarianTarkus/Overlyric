@@ -22,6 +22,29 @@ The executable lands in:
 src\Overlyric\bin\Release\net10.0-windows10.0.26100.0\win-x64\publish\Overlyric.exe
 ```
 
+## Icon
+
+`src\Overlyric\Assets\Overlyric.svg` is the artwork; `Overlyric.ico` beside it is the rendered set
+that ships — 16, 20, 24, 32, 40, 48, 64, 128 and 256 px, small frames as 32-bit DIBs and the two
+largest as PNG. One file feeds every Windows surface, so they cannot drift apart:
+
+- the executable's resources (`<ApplicationIcon>` in `Overlyric.csproj`) — Explorer, the taskbar,
+  Alt+Tab and the MSI's Add/Remove Programs entry;
+- the notification-area icon and the window class icons, read back out of the executable's own
+  resources by `AppIcon`;
+- both installer shortcuts (`installer\Overlyric.wxs`).
+
+Re-render it after editing the SVG:
+
+```powershell
+python tools\make-icon.py
+```
+
+That needs Python with Pillow and Chrome or Edge to rasterise each size at 4× before downsampling
+(`--svg`, `--out` and `--chrome` override the defaults). It rewrites
+`src\Overlyric\Assets\Overlyric.ico` in place; rebuild and restart the app to see the change,
+because Windows caches shell icons per file.
+
 ## Installer
 
 The per-user MSI is built from the publish output, so the payload always matches the binary that was

@@ -18,14 +18,18 @@
     <!-- Version: -p:OverlyricVersion=... (build-installer.ps1 -Version) or -p:ProductVersion=...
          Both work; OverlyricVersion wins when both are supplied. -->
     <OverlyricVersion Condition="'$(OverlyricVersion)' == '' and '$(ProductVersion)' != ''">$(ProductVersion)</OverlyricVersion>
-    <OverlyricVersion Condition="'$(OverlyricVersion)' == ''">0.1.0</OverlyricVersion>
+    <OverlyricVersion Condition="'$(OverlyricVersion)' == ''">0.3.1</OverlyricVersion>
 
     <Configuration Condition="'$(Configuration)' == ''">Release</Configuration>
     <PublishDir Condition="'$(PublishDir)' == ''">$(MSBuildThisFileDirectory)..\src\Overlyric\bin\$(Configuration)\net10.0-windows10.0.26100.0\win-x64\publish</PublishDir>
 
+    <!-- The product icon: the same .ico the application embeds, so the shortcut, the Add/Remove
+         Programs entry and the installed executable cannot drift apart. -->
+    <AppIconPath Condition="'$(AppIconPath)' == ''">$(MSBuildThisFileDirectory)..\src\Overlyric\Assets\Overlyric.ico</AppIconPath>
+
     <!-- Installed size in Add/Remove Programs is computed by Windows Installer from the File table,
          so the build passes no explicit size. -->
-    <DefineConstants>OverlyricVersion=$(OverlyricVersion);PublishDir=$(PublishDir)</DefineConstants>
+    <DefineConstants>OverlyricVersion=$(OverlyricVersion);PublishDir=$(PublishDir);AppIconPath=$(AppIconPath)</DefineConstants>
 
     <!--
       ICE61 (AllowSameVersionUpgrades means the upgrade row's VersionMax equals the current

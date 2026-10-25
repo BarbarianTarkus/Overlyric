@@ -152,7 +152,7 @@ Building needs the .NET SDK 10 and the MSVC toolchain for the NativeAOT link;
 | [Using Overlyric](docs/usage.md) | Hotkeys, control bar, tray, settings, karaoke, moving and locking |
 | [OLED and burn-in](docs/oled.md) | The burn-in levers and the preset |
 | [Configuration](docs/configuration.md) | Every `config.json` key, the cache, pinned versions |
-| [Development](docs/development.md) | Build, resource budget, probes, project layout |
+| [Development](docs/development.md) | Build, icon, resource budget, probes, project layout |
 | [Fullscreen feasibility](docs/fullscreen-overlay-feasibility.md) | Why true exclusive fullscreen cannot work |
 | [Documentation index](docs/README.md) | All of the above, with the screenshot gallery |
 

@@ -23,7 +23,14 @@
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
 
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>0.1.0</Version>
+    <Version>0.3.1</Version>
+
+    <!--
+      The icon every Windows surface reads: Explorer and the taskbar (from the executable's
+      resources), the notification area, Alt+Tab, and the MSI's Add/Remove Programs entry.
+      Assets\Overlyric.ico is rendered from Assets\Overlyric.svg by tools\make-icon.py.
+    -->
+    <ApplicationIcon>Assets\Overlyric.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>

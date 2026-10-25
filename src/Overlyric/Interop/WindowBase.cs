@@ -87,12 +87,14 @@ internal abstract class WindowBase : IDisposable
                     cbClsExtra = 0,
                     cbWndExtra = 0,
                     hInstance = GetModuleHandleW(null),
-                    hIcon = IntPtr.Zero,
+                    // The taskbar, Alt+Tab and the window menu all fall back to these class icons;
+                    // without them those surfaces show the stock application icon.
+                    hIcon = AppIcon.Large,
                     hCursor = LoadCursorW(IntPtr.Zero, new IntPtr(32512)),
                     hbrBackground = BackgroundBrush,
                     lpszMenuName = null,
                     lpszClassName = ClassName,
-                    hIconSm = IntPtr.Zero
+                    hIconSm = AppIcon.Small
                 };
 
                 if (RegisterClassExW(ref windowClass) == 0)
