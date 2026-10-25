@@ -56,6 +56,7 @@ internal sealed class AppHost
     private HotKeyManager? _hotKeys;
     private TrayIcon? _tray;
     private OverlayWindow? _overlay;
+    private ShortcutToastWindow? _toast;
     private MediaSessionWatcher? _watcher;
     private LyricsService? _lyrics;
 
@@ -1216,7 +1217,86 @@ internal sealed class AppHost
         return true;
     }
 
-    private void OnHotKey(int command) => Execute(command);
+    private void OnHotKey(int command)
+    {
+        // Read the offset before the command runs, so the toast can tell "moved earlier" from
+        // "already at the limit"; the title still reports the total now in force.
+        var offsetBefore = _config.LyricsOffsetMs;
+        Execute(command);
+        ShowShortcutFeedback(command, offsetBefore);
+    }
+
+    /// <summary>
+    /// Confirm a global shortcut with a small toast. Only hotkeys do this: a tray selection already
+    /// had a menu to explain itself, and the settings window changes settings the user is looking at.
+    /// </summary>
+    private void ShowShortcutFeedback(int command, int offsetBefore)
+    {
+        var notice = command switch
+        {
+            Commands.ToggleOverlay => ShortcutFeedback.ForOverlay(_overlayEnabled, _overlay?.IsVisible ?? false),
+            Commands.ToggleMode => ShortcutFeedback.ForLayout(_config.Mode == OverlayMode.MultiLine),
+            Commands.ToggleLock => ShortcutFeedback.ForLock(_locked),
+            Commands.OffsetBack or Commands.OffsetForward or Commands.OffsetReset =>
+                ShortcutFeedback.ForOffset(
+                    _config.LyricsOffsetMs,
+                    _config.LyricsOffsetMs - offsetBefore,
+                    command == Commands.OffsetReset),
+            Commands.OpenSettings => ShortcutFeedback.ForSettings(),
+            _ => null
+        };
+
+        if (notice is null)
+        {
+            return;
+        }
+
+        try
+        {
+            // Created on the first shortcut rather than at startup: the window costs a second
+            // composition stack, and the people who never touch a hotkey should not pay for it.
+            _toast ??= CreateToast();
+
+            // Top and bottom are opposites on purpose: the toast must not cover the lyrics it is
+            // describing. When the overlay is hidden there is nothing to avoid, so the toast uses
+            // the monitor under the cursor, which is where the user's attention already is.
+            _toast.Show(notice, _config.Anchor != OverlayAnchor.TopCenter, ToastMonitor());
+        }
+        catch (Exception)
+        {
+            // A shortcut still has to work when the second composition device cannot be created.
+            _toast?.Dispose();
+            _toast = null;
+        }
+    }
+
+    private ShortcutToastWindow CreateToast()
+    {
+        var toast = new ShortcutToastWindow(_config.ToTheme());
+
+        try
+        {
+            toast.Create();
+            return toast;
+        }
+        catch (Exception)
+        {
+            // Create can fail after the HWND exists, so the half-built window is released here
+            // rather than left registered with nothing owning it.
+            toast.Dispose();
+            throw;
+        }
+    }
+
+    private nint ToastMonitor()
+    {
+        if (_overlay is not null && _overlay.IsVisible)
+        {
+            return MonitorFromWindow(_overlay.Handle, MONITOR_DEFAULTTONEAREST);
+        }
+
+        return MonitorUnderCursor();
+    }
 
     private void ToggleOverlay() => Execute(Commands.ToggleOverlay);
 
@@ -1599,7 +1679,9 @@ internal sealed class AppHost
     {
         // The renderer takes a new theme in place. Rebuilding the window here used to make every
         // opacity step flash the overlay away, which is unusable from a slider.
-        _overlay?.SetTheme(_config.ToTheme());
+        var theme = _config.ToTheme();
+        _overlay?.SetTheme(theme);
+        _toast?.SetTheme(theme);
         ForceRedraw();
     }
 
@@ -1886,6 +1968,9 @@ internal sealed class AppHost
 
         _settings?.Dispose();
         _settings = null;
+
+        _toast?.Dispose();
+        _toast = null;
 
         _overlay?.Dispose();
         _overlay = null;

@@ -418,6 +418,12 @@ already used by another action, or already taken by another application, is refu
 shown instead of being silently swallowed; a shortcut with no Ctrl, Alt or Win is refused too.
 `Open settings` ships unbound, so it costs nothing until you want it.
 
+Every global hotkey confirms itself with a small toast. It names the state the shortcut just entered,
+and a timing nudge names the resulting total offset rather than repeating the step: `Ctrl+Alt+,`
+reads `Offset -0.25s`, and a second press reads `Offset -0.50s`. The toast is drawn in its own
+click-through window, opposite the overlay's anchor — so "Overlay hidden" can still say so after
+`Ctrl+Alt+H` has made the lyric window disappear — and it dismisses itself after 1.8 seconds.
+
 ![The Shortcuts section](docs/settings-shortcuts.png)
 
 ### Tray icon
@@ -657,6 +663,7 @@ because they are the quickest way to re-check a platform assumption.
 | `LyricsTests` | 30 checks over LRC parsing, caching (including matcher-version staleness) and a live LRCLIB round-trip |
 | `ResilienceTests` | 66 checks: transient-vs-definitive caching, instrumental classification, metadata cleaning, candidate ranking, the synced-same-duration rule, the album-scoped supplement and version pinning |
 | `ShortcutsTests` | 35 checks over the hotkey text form: parsing, canonical modifier order, punctuation stored by name, and every malformed string falling back to "unbound" instead of throwing |
+| `ShortcutFeedbackTests` | 30 checks over the shortcut toast: the total-offset title (`Offset -0.25s`), direction and step, the clamp saying nothing moved, and every state label |
 | `KaraokeTests` | 22 checks over the sweep (monotonic, punctuation not sung ahead of the words, word timings honoured, mismatched timings falling back to the line span) and the lyricsfile reader (line ends, words, colons inside text, garbage refused without throwing) |
 | `ClockTests` | 19 checks over the playback clock: attaching mid-song, frozen vs live timelines, pause/resume, seeks, sentinel stamps |
 | `SourcePreferenceTests` | 46 checks over the source selector: pin beating the list and Windows, list order respected, a listed player that is not running skipped, duplicate app ids resolved to the one actually playing, and a hand-edited list cleaned and capped without throwing |
@@ -681,6 +688,7 @@ src\Overlyric\
   App\
     AppConfig.cs             settings + source-generated JSON (AOT-safe)
     AppHost.cs               message loop, tick, lyric-to-overlay pipeline
+    ShortcutFeedback.cs      wording for the toast a global shortcut raises
     TrayIcon.cs              Shell_NotifyIcon wrapper and context menu
     HotKeys.cs               RegisterHotKey manager, command ids
   Media\
@@ -700,6 +708,7 @@ src\Overlyric\
     LyricsService.cs         pinned -> cache -> exact -> ranked search
   Overlay\
     OverlayWindow.cs         topmost click-through Win32 window
+    ShortcutToastWindow.cs   click-through window that confirms a global shortcut
     CompositionHost.cs       D3D11 + DirectComposition + D2D device stack
     LyricsRenderer.cs        Direct2D/DirectWrite drawing
     OverlayTheme.cs          theme and per-frame visual model
