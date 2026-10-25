@@ -154,7 +154,10 @@ internal sealed class SettingsWindow : WindowBase
         /// Say so when lrclib has nothing for the track. Appended past the source id ranges so those
         /// blocks keep decoding to the same slots.
         /// </summary>
-        NotifyMissingLyrics = 74
+        NotifyMissingLyrics = 74,
+
+        /// <summary>The OLED section's pure-black sweep toggle, appended so the older ids keep their values.</summary>
+        OledBlackout = 75
     }
 
     private const float WidthDip = 780f;
@@ -910,6 +913,11 @@ internal sealed class SettingsWindow : WindowBase
                 Apply(SettingsChange.Appearance);
                 return;
 
+            case Control.OledBlackout:
+                _config.KaraokeBlackout = !_config.KaraokeBlackout;
+                Apply(SettingsChange.Appearance);
+                return;
+
             case Control.KaraokeToggle:
                 _config.Karaoke = !_config.Karaoke;
                 Apply(SettingsChange.Appearance);
@@ -936,20 +944,10 @@ internal sealed class SettingsWindow : WindowBase
         }
     }
 
-    /// <summary>
-    /// A bundle for an OLED panel: no backdrop, no progress bar, the static header fades out, no
-    /// highlight bar, dimmer surrounding lines, and the whole thing nudged around once a minute.
-    /// </summary>
     private void ApplyOledPreset()
     {
-        _config.BackgroundOpacity = 0.0;
-        _config.ShowProgressBar = false;
-        _config.HeaderAutoHideSeconds = 8;
-        _config.ShowActiveLineHighlight = false;
-        _config.InactiveLineOpacity = 0.4;
-        _config.PixelShift = true;
-        _config.TextOutline = true;
-        _config.HideWhenPaused = true;
+        // The bundle itself lives on the config, so it can be tested without a window.
+        _config.ApplyOledPreset();
 
         _config.Save();
         _changed(SettingsChange.Appearance);
@@ -1306,9 +1304,11 @@ internal sealed class SettingsWindow : WindowBase
         Row(context, 6, "Outline text");
         Toggle(context, Control.OledOutline, _config.TextOutline);
 
-        // The preset does not touch the pop-up: it is up for a few seconds at a time, which is too
-        // little for a stuck pixel, so suppressing it would cost an answer without buying anything.
-        Hint(context, 7, "The info pop-up still appears: it is transient, so it adds no burn-in risk.");
+        // The one part of a swept line that is both static and lit is the half waiting to be sung.
+        // Pure black is an unlit pixel on the panel, so the words appear only as the sweep reaches
+        // them. It does nothing while the sweep is off, which is why the preset turns the sweep on.
+        Row(context, 7, "Black out unsung words");
+        Toggle(context, Control.OledBlackout, _config.KaraokeBlackout);
     }
 
     private void DrawShortcutsSection(ID2D1DeviceContext context)
@@ -1776,6 +1776,7 @@ internal sealed class SettingsWindow : WindowBase
         Control.OledDimDown or Control.OledDimUp => 4,
         Control.OledPixelShift => 5,
         Control.OledOutline => 6,
+        Control.OledBlackout => 7,
         Control.HidePaused => 0,
         Control.HideNoLyrics => 1,
         Control.HideInstrumental => 2,

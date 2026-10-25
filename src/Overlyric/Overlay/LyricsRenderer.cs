@@ -463,7 +463,9 @@ internal sealed class LyricsRenderer : IDisposable
     /// <summary>
     /// Draws one line, and when the sweep is on, paints the sung part over the unsung one through a
     /// clip. The clip edge is measured with DirectWrite rather than estimated from a width, so
-    /// kerning, proportional fonts and CJK all land on the right character.
+    /// kerning, proportional fonts and CJK all land on the right character. The unsung half uses
+    /// <see cref="OverlayTheme.KaraokeUnlitColor"/>, which the OLED preset turns pure black so the
+    /// words light up only as they are reached.
     /// </summary>
     private void DrawLine(
         ID2D1DeviceContext context,
@@ -478,7 +480,7 @@ internal sealed class LyricsRenderer : IDisposable
         }
 
         DrawShadows(context, layout, origin);
-        context.DrawTextLayout(origin, layout, GetBrush(context, _theme.InactiveTextColor));
+        context.DrawTextLayout(origin, layout, GetBrush(context, _theme.KaraokeUnlitColor));
 
         if (sungChars == 0)
         {

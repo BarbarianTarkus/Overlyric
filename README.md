@@ -460,9 +460,10 @@ is identical for the whole song, and the surrounding lines sit in the same place
 ![The OLED section](docs/settings-oled.png)
 
 **Apply preset** sets the whole bundle in one click: backdrop to zero, progress bar off, track info
-gone after eight seconds, no highlight bar, surrounding lines dimmed to 40 %, pixel shift on, outline
-text on, and hide when paused. Every one of those is also a separate control, so the preset is a
-starting point rather than a mode.
+gone after eight seconds, no highlight bar, surrounding lines dimmed to 40 %, the unsung half of the
+current line blacked out, pixel shift on, outline text on, and hide when paused. It also turns the
+karaoke sweep on, because the blackout has nothing to draw without it. Every one of those is also a
+separate control, so the preset is a starting point rather than a mode.
 
 | Lever | What it does |
 | --- | --- |
@@ -472,12 +473,22 @@ starting point rather than a mode.
 | **Dim surrounding lines** | Opacity of the lines around the active one |
 | **Pixel shift** | Nudges everything 3 px around a four-step cycle, one step per minute of playback |
 | **Outline text** | A hard one-pixel outline instead of the soft shadow |
+| **Black out unsung words** | The half of the active line the sweep has not reached is drawn in pure black, so only the sung part is lit |
 
-Two of these interact, and are worth knowing about. A transparent backdrop is only legible over bright
+Three of these interact, and are worth knowing about. A transparent backdrop is only legible over bright
 video if the text has an edge, which is what **Outline text** is for — the soft shadow alone is not
 enough once the backdrop is gone. And **Pixel shift** moves the *drawing*, not the window: placement,
 dragging and hit testing are untouched, so nothing has to be re-measured and no position is written to
 the config.
+
+The third is **Black out unsung words**, which only shows while the karaoke sweep is running: it
+blackens the part of the active line the sweep has not reached. On a transparent backdrop those
+words are black shapes rather than lit ones, so over a dark scene they disappear entirely and the
+line lights up as it is sung. That is deliberate: without the blackout those words are the one part
+of a swept line that is both standing still and emitting light.
+
+The preset leaves the info pop-up alone. It is up for a few seconds at a time, which is too little
+for a stuck pixel, so suppressing it would cost an answer without buying anything.
 
 ### Karaoke
 
@@ -504,6 +515,13 @@ all of that off and returns the overlay to the cheaper behaviour.
 
 Word timings are rare in practice: lrclib does not align audio, it only publishes word timings that
 someone already submitted. The interpolated path is the common one.
+
+On an OLED panel the unsung half of a line is also the part that stands still and stays lit.
+**Black out unsung words** in **OLED** — part of the preset — paints it pure black instead of the dim
+inactive colour, so the line lights up word by word and the panel stays off ahead of the voice. With
+the sweep off there is no unsung half to draw, so the setting does nothing; that is why the preset
+also turns the sweep on. The surrounding lines are unaffected: they keep the dim colour, because
+reading ahead is the reason they are there.
 
 Scroll the wheel over the overlay while it is unlocked to change the backdrop opacity. Drag it while
 unlocked to reposition: the placement is stored as an offset **from the anchored edge** — a margin
@@ -555,6 +573,7 @@ in `Locked`, so an overlay left unlocked on purpose is still unlocked next time.
 | `PixelShift` | Nudge the drawing a few pixels once a minute, against burn-in |
 | `TextOutline` | Hard outline instead of a soft shadow, for a transparent backdrop |
 | `Karaoke` | Sweep the active line as it is sung (on by default) |
+| `KaraokeBlackout` | Draw the not-yet-sung part of the active line in pure black instead of the dim colour |
 | `HideWhenPaused` | Hide while playback is paused |
 | `HideWhenNoLyrics` | Hide when lrclib has no lyrics for the track |
 | `HideWhenInstrumental` | Hide when the track is instrumental |
@@ -667,6 +686,7 @@ because they are the quickest way to re-check a platform assumption.
 | `KaraokeTests` | 22 checks over the sweep (monotonic, punctuation not sung ahead of the words, word timings honoured, mismatched timings falling back to the line span) and the lyricsfile reader (line ends, words, colons inside text, garbage refused without throwing) |
 | `ClockTests` | 19 checks over the playback clock: attaching mid-song, frozen vs live timelines, pause/resume, seeks, sentinel stamps |
 | `SourcePreferenceTests` | 46 checks over the source selector: pin beating the list and Windows, list order respected, a listed player that is not running skipped, duplicate app ids resolved to the one actually playing, and a hand-edited list cleaned and capped without throwing |
+| `ThemeTests` | 18 checks over the OLED preset and the colours it produces: every preset value moved off its opposite, the unsung half turning pure black, the surrounding lines staying dim, and the transparent backdrop staying absent |
 
 Helper scripts: `probe\screenshot.py` (capture the screen) and `probe\crop.py` (crop and upscale a
 region for close inspection). Together they give a way to confirm visually that the overlay is on
@@ -708,6 +728,7 @@ src\Overlyric\
     LyricsService.cs         pinned -> cache -> exact -> ranked search
   Overlay\
     OverlayWindow.cs         topmost click-through Win32 window
+    OverlayAnchor.cs         which monitor edge the overlay hangs from
     ShortcutToastWindow.cs   click-through window that confirms a global shortcut
     CompositionHost.cs       D3D11 + DirectComposition + D2D device stack
     LyricsRenderer.cs        Direct2D/DirectWrite drawing

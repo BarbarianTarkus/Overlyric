@@ -4,13 +4,6 @@ using static Overlyric.Interop.NativeMethods;
 
 namespace Overlyric.Overlay;
 
-public enum OverlayAnchor
-{
-    BottomCenter = 0,
-    TopCenter = 1,
-    Center = 2
-}
-
 /// <summary>
 /// The lyric overlay window.
 /// <para>

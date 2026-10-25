@@ -24,6 +24,14 @@ public sealed class OverlayTheme
     public uint BackgroundColor { get; init; } = 0xB4101014;
     public uint ActiveTextColor { get; init; } = 0xFFF5F7FA;
     public uint InactiveTextColor { get; init; } = 0x8AF5F7FA;
+
+    /// <summary>
+    /// Colour of the part of the active line the sweep has not reached yet. Normally the same dim
+    /// colour as the surrounding lines; the OLED preset turns it pure black, which on the panel is
+    /// an unlit pixel, so only the sung part of the line emits light.
+    /// </summary>
+    public uint KaraokeUnlitColor { get; init; } = 0x8AF5F7FA;
+
     public uint HeaderTextColor { get; init; } = 0x99F5F7FA;
     public uint ShadowColor { get; init; } = 0xC0000000;
     public uint ProgressColor { get; init; } = 0xCC7CC4FF;

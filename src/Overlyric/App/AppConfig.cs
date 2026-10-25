@@ -73,6 +73,14 @@ internal sealed class AppConfig
     /// </summary>
     public bool Karaoke { get; set; } = true;
 
+    /// <summary>
+    /// Draw the not-yet-sung part of the active line in pure black instead of the dim inactive
+    /// colour. On an OLED panel black is an unlit pixel, so the sweep is the only thing that lights
+    /// up and the half of the line that is standing still emits nothing. Does nothing when
+    /// <see cref="Karaoke"/> is off: there is no unsung half to draw then.
+    /// </summary>
+    public bool KaraokeBlackout { get; set; }
+
     /// <summary>Opacity of the lines around the active one, 0.05 - 1.0.</summary>
     public double InactiveLineOpacity { get; set; } = 0.54;
 
@@ -210,19 +218,48 @@ internal sealed class AppConfig
         return this;
     }
 
-    public OverlayTheme ToTheme() => new()
+    /// <summary>
+    /// The OLED bundle in one place: no backdrop, no progress bar, the static header fades out, no
+    /// highlight bar, dimmer surrounding lines, the unsung half of the current line unlit, pixel
+    /// shift on, outline text on, and hide when paused. The sweep is included because the blackout
+    /// has nothing to draw without it.
+    /// </summary>
+    public void ApplyOledPreset()
     {
-        FontFamily = FontFamily,
-        ActiveFontSize = ActiveFontSize,
-        InactiveFontSize = InactiveFontSize,
-        MultiLineCount = MultiLineCount,
-        BackgroundColor = ScaleAlpha(0xB4101014, BackgroundOpacity),
+        BackgroundOpacity = 0.0;
+        ShowProgressBar = false;
+        HeaderAutoHideSeconds = 8;
+        ShowActiveLineHighlight = false;
+        InactiveLineOpacity = 0.4;
+        Karaoke = true;
+        KaraokeBlackout = true;
+        PixelShift = true;
+        TextOutline = true;
+        HideWhenPaused = true;
+    }
+
+    public OverlayTheme ToTheme()
+    {
         // The surrounding lines keep their hue and lose their alpha, so "dim" means dimmer rather
         // than a different colour.
-        InactiveTextColor = ScaleAlpha(0xFFF5F7FA, InactiveLineOpacity),
-        ShowActiveLineHighlight = ShowActiveLineHighlight,
-        TextOutline = TextOutline
-    };
+        var inactive = ScaleAlpha(0xFFF5F7FA, InactiveLineOpacity);
+
+        return new OverlayTheme
+        {
+            FontFamily = FontFamily,
+            ActiveFontSize = ActiveFontSize,
+            InactiveFontSize = InactiveFontSize,
+            MultiLineCount = MultiLineCount,
+            BackgroundColor = ScaleAlpha(0xB4101014, BackgroundOpacity),
+            InactiveTextColor = inactive,
+            // The unsung half of the swept line is normally as dim as the lines around it. The
+            // OLED preset makes it pure black instead, so it is an unlit pixel on the panel rather
+            // than a second, static piece of grey text waiting to be sung.
+            KaraokeUnlitColor = KaraokeBlackout ? 0xFF000000 : inactive,
+            ShowActiveLineHighlight = ShowActiveLineHighlight,
+            TextOutline = TextOutline
+        };
+    }
 
     private static uint ScaleAlpha(uint argb, double factor)
     {
