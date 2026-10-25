@@ -27,7 +27,9 @@ internal static class Program
         const string Track = "Can't Be Long Now";
 
         await using var server = new StubServer(503, "{}");
-        using var client = new LrclibClient("Overlyric.Tests/1.0", server.BaseUrl);
+        // Unpaced: this suite makes more requests in a few seconds than a listening session makes in
+        // an hour, and it is here to pin classification and caching down, not to measure the pacing.
+        using var client = new LrclibClient("Overlyric.Tests/1.0", server.BaseUrl, paced: false);
         var service = new LyricsService(client, cache);
 
         // ---- 1. Server is throttled / broken: the answer is unknown, not "absent". ----
@@ -396,12 +398,9 @@ internal static class Program
 
         // ---- 12. Album-scoped supplement: the twenty-record cap can hide the synced sheet. ----
         server.Body = "{}";
-        server.SearchBody = """
-            [
-              {"id":7001,"trackName":"Hidden Sheet","albumName":"Hidden Sheet","duration":300,"instrumental":false,"plainLyrics":"a\nb","syncedLyrics":null},
-              {"id":7002,"trackName":"Hidden Sheet","albumName":"Hidden Sheet","duration":300.5,"instrumental":false,"plainLyrics":"a\nb","syncedLyrics":null}
-            ]
-            """;
+        server.SearchBody = FullSearchPage(
+            """{"id":7001,"trackName":"Hidden Sheet","albumName":"Hidden Sheet","duration":300,"instrumental":false,"plainLyrics":"a\nb","syncedLyrics":null}""",
+            """{"id":7002,"trackName":"Hidden Sheet","albumName":"Hidden Sheet","duration":300.5,"instrumental":false,"plainLyrics":"a\nb","syncedLyrics":null}""");
         server.AlbumSearchBody = """
             [
               {"id":7002,"trackName":"Hidden Sheet","albumName":"Hidden Sheet","duration":300.5,"instrumental":false,"plainLyrics":"a\nb","syncedLyrics":null},
@@ -431,9 +430,10 @@ internal static class Program
 
         Check(
             "album supplement: the merged menu dedupes the overlapping record",
-            supplementVersions.Count == 3
+            supplementVersions.Count == 21
             && supplementVersions.Count(c => c.Id == 7002) == 1
-            && supplementVersions.Count(c => c.Id == 7003) == 1);
+            && supplementVersions.Count(c => c.Id == 7003) == 1
+            && supplementVersions.Select(c => c.Id).Distinct().Count() == supplementVersions.Count);
 
         // ---- 13. No synced candidate matches the length: the plain result stands. ----
         server.Body = "{}";
@@ -565,7 +565,10 @@ internal static class Program
         var stampedMissKey = LyricsCache.MakeKey("Artist", "Stamped Tombstone", "Old Album");
         File.WriteAllText(
             Path.Combine(legacyCacheDirectory, CacheHash(stampedMissKey) + ".miss.json"),
-            "{\"key\":" + JsonSerializer.Serialize(stampedMissKey) + ",\"matchVersion\":" + LyricsCache.CurrentMatchVersion + ",\"result\":null}");
+            "{\"key\":" + JsonSerializer.Serialize(stampedMissKey)
+            + ",\"matchVersion\":" + LyricsCache.CurrentMatchVersion
+            + ",\"writtenAt\":" + DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+            + ",\"result\":null}");
 
         Check("matcher version control: a stamped tombstone is respected", legacyCache.IsMiss(stampedMissKey));
         server.ResetRequests();
@@ -575,6 +578,74 @@ internal static class Program
         Check(
             "matcher version control: a stamped tombstone short-circuits the lookup",
             stampedMiss is null && server.Requests.Count == 0);
+
+        // ---- 16. A tombstone is a verdict with a shelf life: lrclib backfills missing tracks. ----
+        var datedMissKey = LyricsCache.MakeKey("Artist", "Dated Tombstone", "Old Album");
+        File.WriteAllText(
+            Path.Combine(legacyCacheDirectory, CacheHash(datedMissKey) + ".miss.json"),
+            "{\"key\":" + JsonSerializer.Serialize(datedMissKey)
+            + ",\"matchVersion\":" + LyricsCache.CurrentMatchVersion
+            + ",\"writtenAt\":" + (DateTimeOffset.UtcNow.ToUnixTimeSeconds() - (90L * 24 * 60 * 60))
+            + ",\"result\":null}");
+
+        Check(
+            "tombstone lifetime: a verdict older than the lifetime is not trusted any more",
+            !legacyCache.IsMiss(datedMissKey));
+
+        var freshMissKey = LyricsCache.MakeKey("Artist", "Fresh Tombstone", "Old Album");
+        LegacyWriteMiss(legacyCacheDirectory, freshMissKey, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+
+        Check("tombstone lifetime: a fresh verdict is trusted", legacyCache.IsMiss(freshMissKey));
+
+        // ---- 17. A validation error is a fault on this side, never an absence. ----
+        server.StatusCode = 400;
+        server.Body = """{"message":"duration: must be between 1 and 3600","name":"ValidationError","statusCode":400}""";
+        server.SearchBody = "[]";
+
+        var validationCache = new LyricsCache(Path.Combine(cacheDirectory, "validation"));
+        var validationService = new LyricsService(client, validationCache);
+        var validationKey = LyricsCache.MakeKey("Artist", "Rejected", "Album");
+
+        var validation = await validationService.GetLyricsAsync(
+            "Artist", "Rejected", "Album", 200, CancellationToken.None);
+
+        Check(
+            "400: a validation error yields no lyrics",
+            validation is null);
+        Check(
+            "400: a validation error is NOT tombstoned, because it says nothing about the track",
+            !validationCache.IsMiss(validationKey));
+
+        // ---- 18. An outage costs one request, and a long track cannot send a rejected one. ----
+        server.StatusCode = 503;
+        server.Body = "{}";
+        server.SearchBody = "[]";
+
+        // A fresh client, so this check measures its own cascade and not the backoff window the
+        // earlier sections left behind.
+        using var outageClient = new LrclibClient("Overlyric.Tests/1.0", server.BaseUrl, paced: false);
+        var outageCache = new LyricsCache(Path.Combine(cacheDirectory, "outage"));
+        var outageService = new LyricsService(outageClient, outageCache);
+        server.ResetRequests();
+
+        var outage = await outageService.GetLyricsAsync(
+            "Artist", "Outage", "Album", 300, CancellationToken.None);
+
+        Check("outage: a resolution that meets a 503 asks lrclib nothing further", server.Requests.Count == 1);
+        Check("outage: an unreachable lrclib yields no lyrics", outage is null);
+        Check(
+            "outage: and is not tombstoned, so the track stays retryable",
+            !outageCache.IsMiss(LyricsCache.MakeKey("Artist", "Outage", "Album")));
+
+        server.StatusCode = 200;
+        server.ResetRequests();
+
+        await outageClient.LookupExactAsync("Artist", "Long Track", null, 5000, CancellationToken.None);
+
+        Check(
+            "duration: a track longer than an hour is asked about without a duration, which would 400",
+            server.Requests.Count == 1
+            && !server.Requests[0].Contains("duration=", StringComparison.OrdinalIgnoreCase));
 
         Console.WriteLine();
         Console.WriteLine(_failures == 0 ? "ALL CHECKS PASSED" : $"{_failures} CHECK(S) FAILED");
@@ -599,6 +670,40 @@ internal static class Program
         {
             _failures++;
         }
+    }
+
+    /// <summary>
+    /// A search answer at lrclib's twenty-record cap. The album-scoped supplement exists only to get
+    /// past that cap, so a full page is the one shape in which it can still be hiding something: a
+    /// shorter answer was complete, and narrowing it further cannot add a record.
+    /// </summary>
+    private static string FullSearchPage(params string[] head)
+    {
+        var records = new List<string>(head);
+        var filler = 1;
+
+        while (records.Count < 20)
+        {
+            records.Add(
+                "{\"id\":" + (90_000 + filler).ToString(CultureInfo.InvariantCulture)
+                + ",\"trackName\":\"Hidden Sheet\",\"albumName\":\"Hidden Sheet\",\"duration\":"
+                + (300 + (filler * 0.25)).ToString("0.##", CultureInfo.InvariantCulture)
+                + ",\"instrumental\":false,\"plainLyrics\":\"a\\nb\",\"syncedLyrics\":null}");
+            filler++;
+        }
+
+        return "[" + string.Join(",", records) + "]";
+    }
+
+    /// <summary>Writes a tombstone in the current on-disk shape, for the lifetime checks.</summary>
+    private static void LegacyWriteMiss(string directory, string key, long writtenAt)
+    {
+        File.WriteAllText(
+            Path.Combine(directory, CacheHash(key) + ".miss.json"),
+            "{\"key\":" + JsonSerializer.Serialize(key)
+            + ",\"matchVersion\":" + LyricsCache.CurrentMatchVersion
+            + ",\"writtenAt\":" + writtenAt
+            + ",\"result\":null}");
     }
 
     /// <summary>Search requests that carried an album, i.e. the album-scoped supplement.</summary>

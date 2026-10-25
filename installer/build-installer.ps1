@@ -129,7 +129,11 @@ Write-Step "Publishing application ($Configuration, win-x64)"
 if ($SkipPublish) {
     Write-Host '  skipped (-SkipPublish); using existing publish output'
 } else {
-    & dotnet publish $AppProject -c $Configuration --nologo
+    # The product version is passed into the build as well as the installer. Without this the
+    # binary keeps the <Version> from the csproj while the MSI carries -Version, and the two drift:
+    # the executable's own version string - which the lrclib User-Agent is built from - would name
+    # a release that was never shipped.
+    & dotnet publish $AppProject -c $Configuration --nologo "-p:Version=$Version"
     if ($LASTEXITCODE -ne 0) {
         Fail "dotnet publish failed with exit code $LASTEXITCODE."
     }

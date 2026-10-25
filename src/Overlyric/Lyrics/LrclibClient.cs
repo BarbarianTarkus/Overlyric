@@ -52,7 +52,26 @@ internal readonly record struct LookupOutcome(LookupStatus Status, LyricsResult?
 public sealed class LrclibClient : IDisposable
 {
     private const string BaseUrl = "https://lrclib.net";
-    private const string FallbackUserAgent = "Overlyric/0.1.0 (+https://github.com/overlyric)";
+
+    /// <summary>How many records one <c>/api/search</c> can return. There is no pagination.</summary>
+    private const int SearchResultCap = 20;
+
+    /// <summary>
+    /// Used when a 429 arrives without <c>Retry-After</c>, which should not happen but does. Kept
+    /// inside the client's own patience: waiting is better than refusing, but not for long.
+    /// </summary>
+    private static readonly TimeSpan DefaultThrottleDelay = TimeSpan.FromSeconds(2);
+
+    /// <summary>lrclib's documentation says a 503 usually asks for one second.</summary>
+    private static readonly TimeSpan DefaultBusyDelay = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// The header lrclib asks every client to send: name, version and a link. The version is read
+    /// from the assembly rather than written here, because a literal drifts the moment the product
+    /// version does - and lrclib uses this header to tell clients apart and to contact whoever runs
+    /// one that misbehaves.
+    /// </summary>
+    public static string DefaultUserAgent { get; } = BuildDefaultUserAgent();
 
     private static readonly HttpClient SharedHttpClient = CreateHttpClient();
     private static readonly LrclibJsonContext Json = LrclibJsonContext.Default;
@@ -60,16 +79,30 @@ public sealed class LrclibClient : IDisposable
     private readonly string _userAgent;
     private readonly string _baseUrl;
 
+    /// <summary>Null when the caller asked for an unpaced client, which only probes do.</summary>
+    private readonly LrclibPacer? _pacer;
+    private readonly LrclibBackoff _backoff = new();
+
     public LrclibClient(string userAgent)
         : this(userAgent, BaseUrl)
     {
     }
 
-    /// <summary>Test seam: lets a probe aim the client at a local server that misbehaves on purpose.</summary>
-    internal LrclibClient(string userAgent, string baseUrl)
+    /// <summary>
+    /// Test seam: lets a probe aim the client at a local server that misbehaves on purpose.
+    /// </summary>
+    /// <param name="paced">
+    /// False to drop the request pacing, which exists to protect a real service from a real app.
+    /// A probe that makes sixty requests in a second - far more than any listening session - would
+    /// otherwise spend that second waiting for its own allowance, and would be measuring the pacer
+    /// rather than the behaviour it came to check. The pacing itself is measured by
+    /// <c>probe/ApiBudget</c>, which uses one client per scenario.
+    /// </param>
+    internal LrclibClient(string userAgent, string baseUrl, bool paced = true)
     {
-        _userAgent = string.IsNullOrWhiteSpace(userAgent) ? FallbackUserAgent : userAgent.Trim();
+        _userAgent = string.IsNullOrWhiteSpace(userAgent) ? DefaultUserAgent : userAgent.Trim();
         _baseUrl = string.IsNullOrWhiteSpace(baseUrl) ? BaseUrl : baseUrl.TrimEnd('/');
+        _pacer = paced ? new LrclibPacer() : null;
     }
 
     /// <summary>
@@ -124,6 +157,14 @@ public sealed class LrclibClient : IDisposable
     /// Second, lrclib caps <c>/api/search</c> at twenty records and that cap can hide the very record
     /// the first rule is looking for, so the search is repeated with the album and both arrays are
     /// ranked together. The merged list is also what the version menu shows.
+    /// <para>
+    /// The second search is only worth its cost when the first one came back <em>full</em>.
+    /// <c>album_name</c> narrows a search rather than widening it - asking for an album that does not
+    /// exist returns nothing at all, measured - so an album-scoped answer is always a subset of the
+    /// unfiltered match set, and that subset can only be missing from a page that was truncated. A
+    /// search that returned fewer than twenty records was complete, and the supplement cannot add a
+    /// record to it.
+    /// </para>
     /// </remarks>
     internal async Task<(LookupStatus Status, LyricsResult? Best, IReadOnlyList<LyricsCandidate> Candidates)>
         LookupSearchDetailedAsync(
@@ -147,7 +188,10 @@ public sealed class LrclibClient : IDisposable
         var ranked = RankCandidates(records, track, album, durationSeconds);
         var best = Choose(ranked, durationSeconds);
 
-        if (NeedsSyncedSibling(best) && durationSeconds is > 0 && !string.IsNullOrWhiteSpace(album))
+        if (NeedsSyncedSibling(best)
+            && durationSeconds is > 0
+            && !string.IsNullOrWhiteSpace(album)
+            && records.Length >= SearchResultCap)
         {
             var (extraStatus, extraRecords) = await GetJsonAsync(
                     BuildSearchUrl(artist, track, album), Json.LrclibGetResponseArray, ct)
@@ -181,6 +225,24 @@ public sealed class LrclibClient : IDisposable
     {
     }
 
+    private static string BuildDefaultUserAgent()
+    {
+        // Guarded because this runs during static initialisation: if it threw, the first lyric
+        // lookup would take the whole client down with a TypeInitializationException. A version
+        // string is never worth that - a name and a link still identify the client to lrclib.
+        try
+        {
+            var version = typeof(LrclibClient).Assembly.GetName().Version;
+            var text = version is null ? "0.0.0" : version.ToString(3);
+
+            return string.Concat("Overlyric/", text, " (+https://github.com/overlyric/overlyric)");
+        }
+        catch (Exception)
+        {
+            return "Overlyric (+https://github.com/overlyric/overlyric)";
+        }
+    }
+
     private static HttpClient CreateHttpClient()
     {
         var handler = new SocketsHttpHandler
@@ -209,8 +271,15 @@ public sealed class LrclibClient : IDisposable
 
     /// <summary>
     /// Performs the request and classifies the result. A 404 means lrclib genuinely has no such
-    /// track; 429 and 5xx mean it could not answer, which is emphatically not the same thing.
+    /// track; a 429, a 5xx, a timeout and every other unexpected status mean it could not answer,
+    /// which is emphatically not the same thing.
     /// </summary>
+    /// <remarks>
+    /// Two gates come before the send. The backoff gate honours <c>Retry-After</c>, and the pacer
+    /// keeps requests sequential with a gap between them, as the documentation asks. When either
+    /// gate would hold the request longer than a lyrics lookup can afford, nothing is sent and the
+    /// answer is reported as unknown: a request that has not been made cannot be throttled.
+    /// </remarks>
     private async Task<(LookupStatus Status, T? Value)> GetJsonAsync<T>(
         string url,
         JsonTypeInfo<T> typeInfo,
@@ -219,6 +288,12 @@ public sealed class LrclibClient : IDisposable
     {
         try
         {
+            if (!await _backoff.WaitAsync(ct).ConfigureAwait(false)
+                || (_pacer is not null && !await _pacer.WaitAsync(ct).ConfigureAwait(false)))
+            {
+                return (LookupStatus.Unavailable, null);
+            }
+
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.TryAddWithoutValidation("User-Agent", _userAgent);
             request.Headers.TryAddWithoutValidation("Accept", "application/json");
@@ -232,15 +307,29 @@ public sealed class LrclibClient : IDisposable
                 return (LookupStatus.NotFound, null);
             }
 
-            // Throttling and server faults: retryable, and never worth remembering as a miss.
-            if (response.StatusCode == HttpStatusCode.TooManyRequests || (int)response.StatusCode >= 500)
+            // Throttled. The window the server named applies to the whole client, so every later
+            // request in this resolution waits for it too rather than asking again immediately.
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
             {
+                _backoff.Defer(RetryDelayFor(response, DefaultThrottleDelay));
                 return (LookupStatus.Unavailable, null);
             }
 
+            // Busy or broken: retryable, and never worth remembering as a miss. A 503 carries
+            // Retry-After in practice, which is the server telling every client to come back later.
+            if ((int)response.StatusCode >= 500)
+            {
+                _backoff.Defer(RetryDelayFor(response, DefaultBusyDelay));
+                return (LookupStatus.Unavailable, null);
+            }
+
+            // Anything else - 400 ValidationError, 401 for a header we got wrong, a framework
+            // rejection with no JSON body - is a fault on this side or a status we do not know.
+            // It is not the statement "lrclib has no lyrics for this track", so it must never be
+            // allowed to become a tombstone.
             if (!response.IsSuccessStatusCode)
             {
-                return (LookupStatus.NotFound, null);
+                return (LookupStatus.Unavailable, null);
             }
 
             await using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
@@ -259,6 +348,29 @@ public sealed class LrclibClient : IDisposable
         }
     }
 
+    /// <summary>
+    /// How long the server asked clients to wait, from either form the header allows: delta-seconds
+    /// or an HTTP date. Falls back to a default when the header is missing, which is what happens
+    /// when the network edge rejects a request before the API sees it.
+    /// </summary>
+    private static TimeSpan RetryDelayFor(HttpResponseMessage response, TimeSpan fallback)
+    {
+        var header = response.Headers.RetryAfter;
+
+        if (header?.Delta is { } delta)
+        {
+            return delta;
+        }
+
+        if (header?.Date is { } date)
+        {
+            var wait = date - DateTimeOffset.UtcNow;
+            return wait > TimeSpan.Zero ? wait : TimeSpan.Zero;
+        }
+
+        return fallback;
+    }
+
     private string BuildGetUrl(string artist, string track, string? album, double? durationSeconds)
     {
         var url = new StringBuilder(_baseUrl).Append("/api/get");
@@ -268,7 +380,14 @@ public sealed class LrclibClient : IDisposable
         AppendQuery(url, ref first, "track_name", track);
         AppendQuery(url, ref first, "album_name", album);
 
-        if (durationSeconds is { } duration && !double.IsNaN(duration) && !double.IsInfinity(duration))
+        // lrclib validates the range strictly and answers 400 outside it: a track longer than an
+        // hour - a DJ set, a live prog epic, a movement of a mass - would otherwise send a request
+        // that cannot succeed. Leaving the parameter out costs the two-second matching window on
+        // those tracks, which is far cheaper than a request that is guaranteed to be rejected.
+        if (durationSeconds is { } duration
+            && !double.IsNaN(duration)
+            && !double.IsInfinity(duration)
+            && duration is >= 1 and <= 3600)
         {
             AppendQuery(url, ref first, "duration", duration.ToString("0.###", CultureInfo.InvariantCulture));
         }

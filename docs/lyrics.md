@@ -58,11 +58,18 @@ while this was written — Gentle Giant, *For Nobody*, from *The Missing Piece*,
 track-and-artist search returned twenty records and **not one of them carried timings**, while the same
 query plus `album_name=The Missing Piece` is the only one that contains the synced record 16359843,
 "09 - For nobody", 244.744127 s, twenty lines, first line `Running away, I'll leave you my address,` at
-0:46.88. So when — and only when — the first search leaves the track unsynced, the search is repeated
-with the album and the two lists are ranked together; the app now resolves that track to the synced
-record. A track the first search already answers well still costs exactly one `/api/search`, because the
-album-scoped question is only asked when the first one left the track untimed. The merged list is also
-what the lyric selector shows: for the live case it held 35 records, with id 16359843 appearing exactly
+0:46.88. So when — and only when — the first search leaves the track unsynced **and comes back
+full**, the search is repeated with the album and the two lists are ranked together; the app now
+resolves that track to the synced record. A track the first search already answers well still costs
+exactly one `/api/search`, because the album-scoped question is only asked when the first one left
+the track untimed.
+
+The "comes back full" part is not caution, it is arithmetic. `album_name` narrows a search rather
+than widening it — `album_name=ZZZnotarealalbum` returns nothing at all, measured — so an
+album-scoped answer is always a subset of the unfiltered match set, and a subset can only be missing
+from a page that was truncated. A search that returned nineteen records was complete. A track lrclib
+does not hold at all therefore costs three requests rather than four. The merged list is also what
+the lyric selector shows: for the live case it held 35 records, with id 16359843 appearing exactly
 once.
 
 ## Choosing a version by hand
@@ -88,6 +95,11 @@ lyrics are missing or untimed — exactly where a version change is likely — a
 selector is opened for a track whose automatic answer was good. A track that already has good synced
 lyrics costs no extra request until someone asks to change it.
 
+It is also written to the cache beside the answer, because it is the most expensive thing a
+resolution downloads: one search answer is twenty records with their full bodies. A track resolved by
+searching in one session therefore opens its selector at no cost in the next. **Look again** is the
+only thing that throws the list away and asks lrclib afresh.
+
 ## The complete lyric sheet
 
 **Full lyrics** opens the whole sheet in its own window: every line, its timestamp, the record it
@@ -111,32 +123,63 @@ network was down.
 
 ## Notes on LRCLIB
 
-The client uses `/api/get` with artist, title, album and duration for an exact match, falling back to
-`/api/search` and picking the best candidate by duration, preferring entries that carry synced lyrics
-and upgrading an untimed pick to the first timed record of the same length (see [Matching the right
-record](#matching-the-right-record)); when that first search leaves the track unsynced it is repeated
-with the album, because lrclib caps a search at twenty records. Every request sends a descriptive
-`User-Agent`, as LRCLIB asks. Network failures degrade to "no lyrics"; they never disturb playback.
+
+The client asks the cheapest question that can answer. `/api/get` returns one record for the exact
+artist, title, album and duration — about 1.8 kB — while `/api/search` returns up to twenty records
+with their full bodies, about 36 kB, twenty times the bytes for one question. So the exact endpoint
+goes first and the ranked search is spent only when it did not answer, or answered without timings
+(see [Matching the right record](#matching-the-right-record)). A cold track costs one request when
+lrclib knows it well, three when a search has to settle it, and nothing at all on a replay.
+
+Four rules keep the client inside the API's terms, all of them checked against the live service:
+
+- **Identify.** Every request carries `User-Agent: Overlyric/<version> (+https://github.com/overlyric/overlyric)`,
+  version read from the assembly rather than written into the source. lrclib allows roughly 90
+  requests a minute to a client that names itself, and a fraction of that to one that does not.
+- **Pace.** Requests go out one at a time, at least 200 ms apart, and never more than fifty in a
+  minute — well inside the allowance, and the 200–500 ms spacing the documentation asks for. A
+  request that would have to queue longer than five seconds is not sent at all: the answer is
+  reported as unknown rather than held hostage behind a queue.
+- **Obey `Retry-After`.** On a `429` or a `503` the client stops sending until the window the server
+  named has passed, stretched by up to 30 % at random as the documentation asks. This one is not
+  theoretical: the service answered in runs of three and four consecutive `503`s while this was
+  written, each carrying `Retry-After: 1`, and the previous fixed 600 ms retry walked straight into
+  the next one.
+- **Do not cascade.** A request that comes back `429`, `5xx`, timed out or refused ends the
+  resolution. lrclib's failures are server-wide, so the questions after it would meet the same
+  answer; asking them turned one failure into six requests, and a run of skipped tracks into a
+  burst. The host retries the track after 15 seconds and once more after 45, which is the schedule
+  the documentation asks for and a much cheaper one.
 
 **A transient outage must never become a permanent verdict.** LRCLIB throttles bursts and regularly
-answers `503 Server is busy`, which was observed repeatedly during development. Treating that as "this
-track has no lyrics" and negative-caching it would hide a track's lyrics forever after one bad
-moment. So the client distinguishes three outcomes:
+answers `503 Server is busy`. Treating that as "this track has no lyrics" and negative-caching it
+would hide a track's lyrics after one bad moment. So the client distinguishes three outcomes:
 
 | Response | Meaning | Cached? |
 | --- | --- | --- |
 | `200` with lyrics | Found | Yes, as lyrics |
-| `404`, or a record with no lyrics at all | Definitively absent | Yes, as a tombstone |
-| `429`, `5xx`, timeout, network error | Unknown — ask again later | **No** |
+| `404`, or a record with no lyrics at all | Definitively absent | Yes, as a tombstone, for 21 days |
+| `429`, `5xx`, `400`, `401`, timeout, network error | Unknown — ask again later | **No** |
 
-Throttled and failed requests are retried once before giving up, and only a definitive answer is
-remembered. This is covered by `probe\ResilienceTests`, which points the client at a local stub server
-returning `503`, `429`, `404` and lyric-less `200` responses and asserts both the classification and
-the caching decision.
+A `400 ValidationError` belongs in the second group on purpose. lrclib rejects a `duration` outside
+1–3600 seconds, so a track longer than an hour — a DJ set, a live prog epic — would send a request
+that cannot succeed; the client leaves the parameter out in that case, and treats any other 4xx as
+its own bug rather than as a statement about the track. Filing a `400` as "no lyrics" and
+tombstoning it, as the client used to, made a permanent verdict out of a rejected parameter.
+
+A tombstone expires after 21 days. lrclib's documentation says missing tracks "may become available
+in a later request", because a background service picks them up, so a verdict that never expires
+would hide lyrics that exist by now — the one failure this cache must not cause. Three weeks is long
+enough that a hopeless track is not re-queried on every replay.
 
 Unsynced lyrics are shown only after the search for a synced sheet of the same length has come up empty:
 then single-line mode says `Lyrics not synced` rather than guessing, and multi-line mode scrolls the
 text proportionally to track position.
+
+`probe\ResilienceTests` covers the classification, the caching decision, the one-request outage, the
+tombstone lifetime and the candidate list (74 checks), against a local stub returning `503`, `429`,
+`400`, `404` and lyric-less `200` responses. `probe\ApiBudget` measures the requests themselves and
+prints what each resolution path costs.
 
 ## Instrumental tracks
 

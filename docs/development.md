@@ -89,7 +89,8 @@ because they are the quickest way to re-check a platform assumption.
 | `VorticeAot` | Does the Vortice COM interop survive NativeAOT, and what does DirectWrite report? |
 | `NowPlaying` | What is playing right now, what does lrclib hold for it, and what does the pipeline resolve the track to — the reproduction harness for a lyric-matching failure |
 | `LyricsTests` | 34 checks over LRC parsing, caching (including matcher-version staleness, forget and clear) and a live LRCLIB round-trip |
-| `ResilienceTests` | 66 checks: transient-vs-definitive caching, instrumental classification, metadata cleaning, candidate ranking, the synced-same-duration rule, the album-scoped supplement and version pinning |
+| `ResilienceTests` | 74 checks: transient-vs-definitive caching, the one-request outage, a validation error never being filed as "no lyrics", the tombstone lifetime, instrumental classification, metadata cleaning, candidate ranking, the synced-same-duration rule, the album-scoped supplement, the stored candidate list and version pinning |
+| `ApiBudget` | What one lyric resolution costs in requests and bytes on every path - a hit, a search that settles it, a track lrclib does not hold, an outage, the selector, a replay - against a stub that counts them |
 | `ShortcutsTests` | 35 checks over the hotkey text form: parsing, canonical modifier order, punctuation stored by name, and every malformed string falling back to "unbound" instead of throwing |
 | `ShortcutFeedbackTests` | 31 checks over the shortcut toast: the total-offset title (`Offset -0.25s`), direction and step, the clamp saying nothing moved, and every state label |
 | `KaraokeTests` | 22 checks over the sweep (monotonic, punctuation not sung ahead of the words, word timings honoured, mismatched timings falling back to the line span) and the lyricsfile reader (line ends, words, colons inside text, garbage refused without throwing) |
@@ -135,13 +136,14 @@ src\Overlyric\
     PlayerWarningWatch.cs    when to tell the user their player publishes nothing usable
   Lyrics\
     LrclibClient.cs          lrclib.net HTTP client: exact, ranked and album-scoped search
+    LrclibPacing.cs          request pacing and the Retry-After gate every request passes
     LrcParser.cs             LRC parsing
     InstrumentalDetector.cs  decides whether a track has anything to sing
     MetadataNormaliser.cs    strips release noise so the right record is found
     LyricsCandidate.cs       one selectable lrclib record
     VersionOverrides.cs      remembers manually chosen versions
-    LyricsCache.cs           on-disk cache with negative entries, stamped with the matcher version
-    LyricsService.cs         pinned -> cache -> exact -> ranked search
+    LyricsCache.cs           on-disk cache: answers, expiring tombstones, the candidate list
+    LyricsService.cs         pinned -> cache -> exact -> ranked search, one resolution at a time
   Overlay\
     OverlayWindow.cs         topmost click-through Win32 window
     OverlayAnchor.cs         which monitor edge the overlay hangs from

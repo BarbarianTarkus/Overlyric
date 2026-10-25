@@ -33,6 +33,19 @@ public sealed class LyricsCache
 {
     private const string EntryExtension = ".json";
     private const string MissExtension = ".miss.json";
+    private const string CandidatesExtension = ".candidates.json";
+
+    /// <summary>
+    /// How long "lrclib has nothing for this track" is trusted before the track is asked about again.
+    /// </summary>
+    /// <remarks>
+    /// lrclib's own documentation says missing tracks "may become available in a later request",
+    /// because a background service picks them up - so a verdict that never expires would hide
+    /// lyrics that exist by now, which is the one failure this cache must not cause. Twenty-one days
+    /// is long enough that a hopeless track is not re-queried on every replay and short enough that
+    /// a backfilled one arrives within a month of listening.
+    /// </remarks>
+    private static readonly TimeSpan TombstoneLifetime = TimeSpan.FromDays(21);
 
     /// <summary>
     /// Version of the matching rules that decide what an entry means. Bump it when they change, so
@@ -132,6 +145,7 @@ public sealed class LyricsCache
             {
                 Key = key,
                 MatchVersion = CurrentMatchVersion,
+                WrittenAt = Now(),
                 Result = CachedLyrics.FromLyricsResult(result),
             };
 
@@ -159,6 +173,7 @@ public sealed class LyricsCache
             {
                 Key = key,
                 MatchVersion = CurrentMatchVersion,
+                WrittenAt = Now(),
                 Result = null,
             };
 
@@ -195,11 +210,13 @@ public sealed class LyricsCache
 
             var entry = JsonSerializer.Deserialize(json, LyricsCacheJsonContext.Default.LyricsCacheEntry);
 
-            // A tombstone is only respected while the matcher that wrote it is the current one: a
-            // search that has since learned a better question may well find what that one missed.
+            // A tombstone is respected while the matcher that wrote it is still current and while
+            // it is younger than the lifetime: a search that has since learned a better question,
+            // or a record lrclib has since picked up, may well find what the old verdict missed.
             return entry is not null
                    && string.Equals(entry.Key, key, StringComparison.Ordinal)
-                   && entry.MatchVersion >= CurrentMatchVersion;
+                   && entry.MatchVersion >= CurrentMatchVersion
+                   && !IsStale(entry.WrittenAt);
         }
         catch (Exception)
         {
@@ -208,8 +225,135 @@ public sealed class LyricsCache
     }
 
     /// <summary>
-    /// Removes both the positive entry and any tombstone for a track. Refresh uses this so a wrong
-    /// record or a stale "no lyrics" answer can be asked again without touching the rest of the cache.
+    /// Stores the ranked list the version selector shows, so opening it in a later session costs no
+    /// request at all.
+    /// </summary>
+    /// <remarks>
+    /// The list is a by-product of the search that resolved the track, and it is the expensive part
+    /// of a resolution: one search answer is twenty records, roughly twenty times the bytes of an
+    /// exact lookup. Throwing it away when the result was written meant re-downloading all of it the
+    /// next time somebody opened the selector.
+    /// </remarks>
+    public void SetCandidates(string key, IReadOnlyList<LyricsCandidate> candidates)
+    {
+        if (string.IsNullOrEmpty(key) || candidates.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            var cached = new List<CachedCandidate>(candidates.Count);
+
+            foreach (var candidate in candidates)
+            {
+                cached.Add(new CachedCandidate
+                {
+                    Id = candidate.Id,
+                    TrackName = candidate.TrackName,
+                    ArtistName = candidate.ArtistName,
+                    AlbumName = candidate.AlbumName,
+                    DurationSeconds = candidate.DurationSeconds,
+                    HasSynced = candidate.HasSynced,
+                    HasPlain = candidate.HasPlain,
+                    HasWordSync = candidate.HasWordSync,
+                    IsInstrumental = candidate.IsInstrumental,
+                    SyncedLineCount = candidate.SyncedLineCount,
+                    PlainLineCount = candidate.PlainLineCount,
+                });
+            }
+
+            var entry = new LyricsCandidatesEntry
+            {
+                Key = key,
+                MatchVersion = CurrentMatchVersion,
+                WrittenAt = Now(),
+                Candidates = cached,
+            };
+
+            var json = JsonSerializer.Serialize(entry, LyricsCacheJsonContext.Default.LyricsCandidatesEntry);
+            WriteAtomic(CandidatesPath(key), json);
+        }
+        catch (Exception)
+        {
+            // The selector can always ask lrclib again; losing this write is only a lost shortcut.
+        }
+    }
+
+    /// <summary>
+    /// Reads the stored candidate list. Returns false when there is none, when it was written by an
+    /// older matcher, or when it cannot be read - every one of which means "ask lrclib instead".
+    /// </summary>
+    public bool TryGetCandidates(string key, out IReadOnlyList<LyricsCandidate> candidates)
+    {
+        candidates = Array.Empty<LyricsCandidate>();
+
+        if (string.IsNullOrEmpty(key))
+        {
+            return false;
+        }
+
+        try
+        {
+            var path = CandidatesPath(key);
+            if (!File.Exists(path))
+            {
+                return false;
+            }
+
+            var json = File.ReadAllText(path, Encoding.UTF8);
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return false;
+            }
+
+            var entry = JsonSerializer.Deserialize(json, LyricsCacheJsonContext.Default.LyricsCandidatesEntry);
+
+            if (entry?.Candidates is not { Count: > 0 }
+                || !string.Equals(entry.Key, key, StringComparison.Ordinal)
+                || entry.MatchVersion < CurrentMatchVersion)
+            {
+                return false;
+            }
+
+            var list = new List<LyricsCandidate>(entry.Candidates.Count);
+
+            foreach (var candidate in entry.Candidates)
+            {
+                if (candidate.Id <= 0)
+                {
+                    continue;
+                }
+
+                list.Add(new LyricsCandidate
+                {
+                    Id = candidate.Id,
+                    TrackName = candidate.TrackName,
+                    ArtistName = candidate.ArtistName,
+                    AlbumName = candidate.AlbumName,
+                    DurationSeconds = candidate.DurationSeconds,
+                    HasSynced = candidate.HasSynced,
+                    HasPlain = candidate.HasPlain,
+                    HasWordSync = candidate.HasWordSync,
+                    IsInstrumental = candidate.IsInstrumental,
+                    SyncedLineCount = candidate.SyncedLineCount,
+                    PlainLineCount = candidate.PlainLineCount,
+                });
+            }
+
+            candidates = list;
+            return list.Count > 0;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Removes the positive entry, any tombstone and the stored candidate list for a track. Refresh
+    /// uses this so a wrong record or a stale "no lyrics" answer can be asked again without touching
+    /// the rest of the cache.
     /// </summary>
     public bool Forget(string key)
     {
@@ -222,7 +366,7 @@ public sealed class LyricsCache
 
         try
         {
-            foreach (var path in new[] { EntryPath(key), MissPath(key) })
+            foreach (var path in new[] { EntryPath(key), MissPath(key), CandidatesPath(key) })
             {
                 if (File.Exists(path))
                 {
@@ -254,7 +398,10 @@ public sealed class LyricsCache
 
             foreach (var path in Directory.EnumerateFiles(_directory, "*.json"))
             {
-                entries++;
+                if (!path.EndsWith(CandidatesExtension, StringComparison.Ordinal))
+                {
+                    entries++;
+                }
 
                 try
                 {
@@ -315,6 +462,25 @@ public sealed class LyricsCache
     private string MissPath(string key)
     {
         return Path.Combine(_directory, Hash(key) + MissExtension);
+    }
+
+    private string CandidatesPath(string key)
+    {
+        return Path.Combine(_directory, Hash(key) + CandidatesExtension);
+    }
+
+    private static long Now() => DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+    private static bool IsStale(long writtenAt)
+    {
+        // No timestamp means the file predates the field, so its age is unknown and unknowable.
+        // Ageing it out is the safe reading: it re-queries once instead of trusting forever.
+        if (writtenAt <= 0)
+        {
+            return true;
+        }
+
+        return Now() - writtenAt >= (long)TombstoneLifetime.TotalSeconds;
     }
 
     private void WriteAtomic(string path, string json)
@@ -397,6 +563,14 @@ internal sealed class LyricsCacheEntry
     /// </summary>
     [JsonPropertyName("matchVersion")]
     public int MatchVersion { get; init; }
+
+    /// <summary>
+    /// When the entry was written, in Unix seconds. A tombstone older than
+    /// <see cref="TombstoneLifetime"/> stops being trusted; an entry with no timestamp at all was
+    /// written before the field existed and is aged out on first sight.
+    /// </summary>
+    [JsonPropertyName("writtenAt")]
+    public long WrittenAt { get; init; }
 
     /// <summary>Null marks a negative-cache tombstone.</summary>
     [JsonPropertyName("result")]
@@ -558,6 +732,61 @@ internal sealed class CachedWord
     public string? Text { get; init; }
 }
 
+/// <summary>On-disk envelope for the version selector's candidate list.</summary>
+internal sealed class LyricsCandidatesEntry
+{
+    [JsonPropertyName("key")]
+    public string? Key { get; init; }
+
+    /// <summary>The matcher that produced the badges, so a change to them invalidates the list.</summary>
+    [JsonPropertyName("matchVersion")]
+    public int MatchVersion { get; init; }
+
+    [JsonPropertyName("writtenAt")]
+    public long WrittenAt { get; init; }
+
+    [JsonPropertyName("candidates")]
+    public List<CachedCandidate>? Candidates { get; init; }
+}
+
+/// <summary>Serialisable mirror of <see cref="LyricsCandidate"/>.</summary>
+internal sealed class CachedCandidate
+{
+    [JsonPropertyName("id")]
+    public long Id { get; init; }
+
+    [JsonPropertyName("trackName")]
+    public string? TrackName { get; init; }
+
+    [JsonPropertyName("artistName")]
+    public string? ArtistName { get; init; }
+
+    [JsonPropertyName("albumName")]
+    public string? AlbumName { get; init; }
+
+    [JsonPropertyName("durationSeconds")]
+    public double? DurationSeconds { get; init; }
+
+    [JsonPropertyName("hasSynced")]
+    public bool HasSynced { get; init; }
+
+    [JsonPropertyName("hasPlain")]
+    public bool HasPlain { get; init; }
+
+    [JsonPropertyName("hasWordSync")]
+    public bool HasWordSync { get; init; }
+
+    [JsonPropertyName("isInstrumental")]
+    public bool IsInstrumental { get; init; }
+
+    [JsonPropertyName("syncedLineCount")]
+    public int SyncedLineCount { get; init; }
+
+    [JsonPropertyName("plainLineCount")]
+    public int PlainLineCount { get; init; }
+}
+
 /// <summary>Source-generated serialisation metadata for the cache file format (NativeAOT safe).</summary>
 [JsonSerializable(typeof(LyricsCacheEntry))]
+[JsonSerializable(typeof(LyricsCandidatesEntry))]
 internal sealed partial class LyricsCacheJsonContext : JsonSerializerContext;

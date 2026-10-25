@@ -15,7 +15,6 @@ namespace Overlyric.App;
 /// </summary>
 internal sealed class AppHost
 {
-    private const string UserAgent = "Overlyric/0.1.0 (https://github.com/overlyric/overlyric)";
     private const uint TimerId = 1;
     private const uint FastIntervalMs = 250;
     private const uint SlowIntervalMs = 1000;
@@ -281,7 +280,7 @@ internal sealed class AppHost
             var overrides = VersionOverrides.Load(Path.Combine(AppConfig.DataDirectory, "versions.json"));
 
             _lyrics = new LyricsService(
-                new LrclibClient(UserAgent),
+                new LrclibClient(LrclibClient.DefaultUserAgent),
                 new LyricsCache(AppConfig.CacheDirectory),
                 overrides);
         }
@@ -1190,22 +1189,27 @@ internal sealed class AppHost
                     }
 
                     // Nothing to show: line up another attempt unless lrclib answered definitively.
+                    // A definitive miss is already a tombstone, so retrying it would only re-read the
+                    // cache; an outage is exactly what the retry exists for.
                     _nextLyricsRetryAt =
-                        _lines.Length == 0 && !_isInstrumental && attempt < MaxLyricsRetries
+                        _lines.Length == 0 && !_isInstrumental && !lookup.Definitive && attempt < MaxLyricsRetries
                             ? Environment.TickCount64 + RetryDelaysMs[Math.Min(attempt, RetryDelaysMs.Length - 1)]
                             : 0;
 
                     // Missing or untimed lyrics are exactly where a listener is likely to want a
                     // different version, so the alternative list is fetched up front to keep the menu
-                    // instant. Good synced lyrics need no extra request.
-                    needsVersions = _lines.Length == 0 || !_lyricsSynced;
+                    // instant. Good synced lyrics need no extra request - and a lookup that could not
+                    // reach lrclib gets none either, or a failed resolution would be followed by two
+                    // more searches of the same unavailable server.
+                    needsVersions = (_lines.Length == 0 || !_lyricsSynced) && lookup.Definitive;
                 }
 
                 Interlocked.Increment(ref _lyricsStamp);
 
                 if (needsVersions)
                 {
-                    await LoadVersionsAsync(artist, title, album, duration, revision, token).ConfigureAwait(false);
+                    await LoadVersionsAsync(artist, title, album, duration, revision, token, refresh: false)
+                        .ConfigureAwait(false);
                 }
             },
             token);
@@ -1220,7 +1224,8 @@ internal sealed class AppHost
         string? album,
         double? durationSeconds,
         long revision,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool refresh)
     {
         if (_lyrics is null)
         {
@@ -1232,7 +1237,7 @@ internal sealed class AppHost
 
         try
         {
-            var candidates = await _lyrics.GetVersionsAsync(artist, title, album, durationSeconds, ct)
+            var candidates = await _lyrics.GetVersionsAsync(artist, title, album, durationSeconds, ct, refresh)
                 .ConfigureAwait(false);
 
             if (ct.IsCancellationRequested)
@@ -1768,8 +1773,18 @@ internal sealed class AppHost
         StartLyricsFetch(snapshot);
     }
 
-    /// <summary>Discard the memoised candidate list so the selector can look again.</summary>
-    private void RefreshVersions()
+    /// <summary>
+    /// Ask for the alternative records again, discarding everything already known about them. This
+    /// is what the selector's <c>Look again</c> means.
+    /// </summary>
+    private void RefreshVersions() => RefreshVersions(refresh: true);
+
+    /// <summary>
+    /// Fetch the alternative records. With <paramref name="refresh"/> false this still uses a list
+    /// the previous session stored, which is why opening the selector on an already-played track
+    /// costs no request at all.
+    /// </summary>
+    private void RefreshVersions(bool refresh)
     {
         var snapshot = _snapshot;
         if (!snapshot.HasTrack || _lyrics is null || IsVersionsLoading)
@@ -1793,7 +1808,8 @@ internal sealed class AppHost
             snapshot.Album,
             snapshot.DurationSeconds,
             snapshot.Revision,
-            CancellationToken.None);
+            CancellationToken.None,
+            refresh);
     }
 
     /// <summary>
@@ -2047,7 +2063,8 @@ internal sealed class AppHost
 
         if (!current)
         {
-            RefreshVersions();
+            // Not a "look again": a stored list from the last session is a perfectly good answer.
+            RefreshVersions(refresh: false);
         }
     }
 
