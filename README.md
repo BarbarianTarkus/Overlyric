@@ -248,6 +248,54 @@ and the tray menu has the same toggle.
 This is deliberately diagnostic rather than clever: there is no attempt to guess a position for a
 player that refuses to give one, because a wrong lyric is worse than an honest sentence.
 
+### Saying what the lookup found
+
+The overlay is deliberately quiet, but a track change is the one moment a listener wants to know what
+is playing and whether the words will actually follow the music. So a song starting — or the overlay
+being switched back on mid-song — raises a small pill inside the same overlay window for
+`InfoPopupSeconds` seconds (default five; `0` turns it off, the **Info pop-up** stepper in Settings →
+Overlay). It names the song, says one line about the lyric sheet, and then disappears on its own:
+nothing has to be dismissed. While the pill is up the dim track header is hidden, because the pill
+already names the song; its height stays reserved, so the lyrics do not jump when the header comes and
+goes.
+
+| The pill's second line | What it means |
+| --- | --- |
+| `Word-synced lyrics` | The record carries `lines[].words[]`, so the karaoke sweep follows real word timings |
+| `Synced lyrics (line timings)` | Timed lines only; the sweep is shared out across the line |
+| `Lyrics not synced` | The words were found, but with no timings, so they cannot follow the music |
+| `No lyrics found` | lrclib has no record with lyrics for this track |
+| `Instrumental — no lyrics to sync` | There is nothing to sing, which is an answer rather than a failure |
+| `Player reports no playback position` | The words exist, but there is no position to place them against |
+| `Looking up lyrics…` | Provisional: the lookup has not answered yet |
+
+The lookup takes a moment, so the pill first reads `Looking up lyrics…`; when the answer lands it is
+replaced by the verdict with a fresh deadline. A slow lookup therefore cannot keep the pill on screen,
+because the deadline belongs to the showing rather than to the request.
+
+**A miss the eyes cannot see is announced once per track.** With "hide when no lyrics" on, a missing
+sheet leaves no overlay at all, and untimed lyrics leave text that never moves; from the outside both
+look like Overlyric doing nothing. So when the lookup settles with either answer the tray raises a
+notification — "no lyrics found", or "lyrics are not synced" — and `NotifyWhenLyricsMissing`
+(Settings → Behaviour) turns it off. It is deliberately silent for an outage, because an outage is not
+evidence about the track: lrclib throttles bursts and regularly answers `503`, so `LookupDetailedAsync`
+reports whether an empty answer is definitive and only a definitive one is announced. That is the same
+rule the cache tombstones follow, and it is what stops one bad moment from telling the listener their
+track has no lyrics.
+
+**The notification is a tray balloon, not a toast, and that was measured rather than assumed.** A
+WinRT toast needs an AUMID registered with the shell, which for an unpackaged executable means a Start
+Menu shortcut carrying `System.AppUserModel.ID`. `probe\ToastProbe` walks the whole path:
+`CreateToastNotifier` returns a notifier, `ToastNotifier.Setting` throws `0x80070490`
+(`ERROR_NOT_FOUND`, the missing registration surfacing), and `Show()` returns without throwing while
+no toast appears. A silent no-op is worse than an exception, because the application believes it has
+told the user something. Overlyric therefore uses `Shell_NotifyIcon` with `NIF_INFO` — the same tray
+balloon the player warning already uses, with no AUMID or shortcut requirement.
+
+`probe\InfoTests` pins this logic down in 50 checks: the pop-up lifetime and its restart-on-verdict
+rule, every verdict line and its tone, and the notification decision, including the
+transient-versus-definitive distinction.
+
 ### Why the overlay is built this way
 
 - **`WS_EX_NOREDIRECTIONBITMAP` + DirectComposition.** Windows keeps no redirection surface for the
@@ -382,11 +430,12 @@ anything.
 
 ### Settings window
 
-`Settings…` in the tray, or `Overlyric.exe --settings`, opens a fixed-size dark window with seven
-sections down the left: **Overlay** (mode, lines shown, track info, progress bar, font sizes),
-**Shortcuts** (rebind the global hotkeys), **OLED** (burn-in controls, see below), **Behaviour** (the
-hide rules and the player warning), **Timing** (lyric offset), **Position** (anchor, offsets, reset)
-and **Advanced** (open the settings or cache folder, version).
+`Settings…` in the tray, or `Overlyric.exe --settings`, opens a fixed-size dark window with eight
+sections down the left: **Overlay** (mode, lines shown, track info, progress bar, font sizes, the info
+pop-up), **Shortcuts** (rebind the global hotkeys), **OLED** (burn-in controls, see below),
+**Behaviour** (the hide rules, the player warning and the missing-lyrics notification), **Timing**
+(lyric offset), **Position** (anchor, offsets, reset), **Advanced** (open the settings or cache folder,
+version) and **Source** (which player to follow, and the order to prefer them in).
 
 ![The settings window](docs/settings-window.png)
 

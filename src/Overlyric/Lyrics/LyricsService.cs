@@ -6,6 +6,17 @@ using System.Threading.Tasks;
 namespace Overlyric.Lyrics;
 
 /// <summary>
+/// One lyrics lookup, with the one fact a bare <see cref="LyricsResult"/> cannot carry: whether an
+/// empty answer is the truth or merely the absence of one.
+/// </summary>
+/// <remarks>
+/// <see cref="Definitive"/> is false only when lrclib could not be reached or refused to answer -
+/// throttling, an outage, a timeout. That distinction decides two things downstream: whether the
+/// answer may be cached as a tombstone, and whether it is fair to tell the user there are no lyrics.
+/// </remarks>
+public readonly record struct LyricsLookup(LyricsResult? Result, bool Definitive);
+
+/// <summary>
 /// Resolves the lyrics for a track: a version pinned by the listener, then the cache, then lrclib's
 /// exact endpoint using a <em>cleaned</em> title, then its fuzzy search ranked by likelihood.
 /// </summary>
@@ -51,6 +62,23 @@ public sealed class LyricsService
         double? durationSeconds,
         CancellationToken ct)
     {
+        var lookup = await LookupDetailedAsync(artist, track, album, durationSeconds, ct).ConfigureAwait(false);
+        return lookup.Result;
+    }
+
+    /// <summary>
+    /// The same lookup, reporting whether an empty answer is definitive. The host needs that to decide
+    /// between "lrclib has no lyrics for this track" - worth a notification - and "lrclib did not answer
+    /// just now", which must stay silent and be retried.
+    /// </summary>
+    /// <exception cref="OperationCanceledException">The caller's token was cancelled.</exception>
+    public async Task<LyricsLookup> LookupDetailedAsync(
+        string artist,
+        string track,
+        string? album,
+        double? durationSeconds,
+        CancellationToken ct)
+    {
         ct.ThrowIfCancellationRequested();
 
         var key = LyricsCache.MakeKey(artist, track, album);
@@ -65,7 +93,7 @@ public sealed class LyricsService
 
             if (_cache.TryGet(versionKey, out var pinnedResult) && pinnedResult is not null)
             {
-                return pinnedResult;
+                return new LyricsLookup(pinnedResult, true);
             }
 
             var pinnedLyrics = await LookupWithRetryAsync(
@@ -76,7 +104,7 @@ public sealed class LyricsService
             if (pinnedLyrics is not null)
             {
                 _cache.Set(versionKey, pinnedLyrics);
-                return pinnedLyrics;
+                return new LyricsLookup(pinnedLyrics, true);
             }
 
             // The pinned record has disappeared; fall through to automatic matching.
@@ -84,12 +112,13 @@ public sealed class LyricsService
 
         if (_cache.TryGet(key, out var cached) && cached is not null)
         {
-            return cached;
+            return new LyricsLookup(cached, true);
         }
 
         if (_cache.IsMiss(key))
         {
-            return null;
+            // A tombstone is only ever written for a definitive answer, so it stays one.
+            return new LyricsLookup(null, true);
         }
 
         var cleanTitle = MetadataNormaliser.CleanTitle(track);
@@ -125,7 +154,7 @@ public sealed class LyricsService
         if (best is not null)
         {
             _cache.Set(key, best);
-            return best;
+            return new LyricsLookup(best, true);
         }
 
         // Only a definitive "lrclib has nothing" is worth remembering. Caching a transient outage
@@ -135,7 +164,7 @@ public sealed class LyricsService
             _cache.SetMiss(key);
         }
 
-        return null;
+        return new LyricsLookup(null, !sawUnavailable);
     }
 
     /// <summary>

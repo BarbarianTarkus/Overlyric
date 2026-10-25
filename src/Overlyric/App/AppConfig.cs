@@ -49,6 +49,21 @@ internal sealed class AppConfig
     /// </summary>
     public int HeaderAutoHideSeconds { get; set; }
 
+    /// <summary>
+    /// Seconds the info pop-up stays on screen when a song starts or the overlay appears; 0 turns it
+    /// off. It says the song and whether the lyric sheet carries word timings, line timings, no
+    /// timings at all, or nothing - the question "is this as good as it gets" answered without
+    /// opening anything.
+    /// </summary>
+    public int InfoPopupSeconds { get; set; } = 5;
+
+    /// <summary>
+    /// Send a Windows notification when lrclib has no lyrics for the track, or has the words but no
+    /// timings. Both are invisible otherwise - the overlay is hidden or simply never moves - and
+    /// both are reported once per track rather than once per retry.
+    /// </summary>
+    public bool NotifyWhenLyricsMissing { get; set; } = true;
+
     /// <summary>Draw the bar behind the line being sung.</summary>
     public bool ShowActiveLineHighlight { get; set; } = true;
 
@@ -174,6 +189,7 @@ internal sealed class AppConfig
         BackgroundOpacity = Math.Clamp(BackgroundOpacity, 0.0, 1.0);
         InactiveLineOpacity = Math.Clamp(InactiveLineOpacity, 0.05, 1.0);
         HeaderAutoHideSeconds = Math.Clamp(HeaderAutoHideSeconds, 0, 120);
+        InfoPopupSeconds = Math.Clamp(InfoPopupSeconds, 0, 20);
         ActiveFontSize = Math.Clamp(ActiveFontSize, 12f, 72f);
         InactiveFontSize = Math.Clamp(InactiveFontSize, 10f, 72f);
         OffsetY = Math.Clamp(OffsetY, -4000, 4000);

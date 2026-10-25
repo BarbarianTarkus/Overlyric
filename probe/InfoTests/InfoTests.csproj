@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>InfoTests</AssemblyName>
+    <RootNamespace>Overlyric.InfoTests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Pure logic only: no Vortice, no WinRT, no window, no clock. -->
+    <Compile Include="..\..\src\Overlyric\Overlay\OverlayNotice.cs" />
+    <Compile Include="..\..\src\Overlyric\App\InfoPopup.cs" />
+    <Compile Include="..\..\src\Overlyric\App\LyricStatus.cs" />
+    <Compile Include="..\..\src\Overlyric\App\LyricsAlert.cs" />
+  </ItemGroup>
+
+</Project>

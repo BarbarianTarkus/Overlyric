@@ -138,7 +138,23 @@ internal sealed class SettingsWindow : WindowBase
         SourceDownBase = 90,
 
         /// <summary>Remove the entry in that slot from the list.</summary>
-        SourceRemoveBase = 100
+        SourceRemoveBase = 100,
+
+        /// <summary>
+        /// The two halves of the info pop-up stepper. A duration needs both directions, and 0 has to
+        /// be reachable from either side: it is the value that turns the pop-up off, not a missing
+        /// setting.
+        /// </summary>
+        InfoPopupDown = 72,
+
+        /// <summary>The other half of the info pop-up stepper; the clamp is the one the config load uses.</summary>
+        InfoPopupUp = 73,
+
+        /// <summary>
+        /// Say so when lrclib has nothing for the track. Appended past the source id ranges so those
+        /// blocks keep decoding to the same slots.
+        /// </summary>
+        NotifyMissingLyrics = 74
     }
 
     private const float WidthDip = 780f;
@@ -899,6 +915,21 @@ internal sealed class SettingsWindow : WindowBase
                 Apply(SettingsChange.Appearance);
                 return;
 
+            case Control.InfoPopupDown:
+                _config.InfoPopupSeconds = Math.Clamp(_config.InfoPopupSeconds - 1, 0, 20);
+                Apply(SettingsChange.Visibility);
+                return;
+
+            case Control.InfoPopupUp:
+                _config.InfoPopupSeconds = Math.Clamp(_config.InfoPopupSeconds + 1, 0, 20);
+                Apply(SettingsChange.Visibility);
+                return;
+
+            case Control.NotifyMissingLyrics:
+                _config.NotifyWhenLyricsMissing = !_config.NotifyWhenLyricsMissing;
+                Apply(SettingsChange.Visibility);
+                return;
+
             case Control.Close:
                 Hide();
                 return;
@@ -1239,6 +1270,13 @@ internal sealed class SettingsWindow : WindowBase
 
         Row(context, 6, "Karaoke sweep");
         Toggle(context, Control.KaraokeToggle, _config.Karaoke);
+
+        Row(context, 7, "Info pop-up");
+        Stepper(
+            context,
+            _config.InfoPopupSeconds == 0 ? "Off" : $"{_config.InfoPopupSeconds} s",
+            Control.InfoPopupDown,
+            Control.InfoPopupUp);
     }
 
     private void DrawOledSection(ID2D1DeviceContext context)
@@ -1267,6 +1305,10 @@ internal sealed class SettingsWindow : WindowBase
 
         Row(context, 6, "Outline text");
         Toggle(context, Control.OledOutline, _config.TextOutline);
+
+        // The preset does not touch the pop-up: it is up for a few seconds at a time, which is too
+        // little for a stuck pixel, so suppressing it would cost an answer without buying anything.
+        Hint(context, 7, "The info pop-up still appears: it is transient, so it adds no burn-in risk.");
     }
 
     private void DrawShortcutsSection(ID2D1DeviceContext context)
@@ -1345,6 +1387,9 @@ internal sealed class SettingsWindow : WindowBase
 
         Row(context, 3, "Warn when a player does not publish");
         Toggle(context, Control.WarnPlayer, _config.WarnWhenPlayerDoesNotPublish);
+
+        Row(context, 4, "Notify when lyrics are missing");
+        Toggle(context, Control.NotifyMissingLyrics, _config.NotifyWhenLyricsMissing);
     }
 
     private void DrawTimingSection(ID2D1DeviceContext context)
@@ -1723,6 +1768,7 @@ internal sealed class SettingsWindow : WindowBase
         Control.FontActiveDown or Control.FontActiveUp => 4,
         Control.FontInactiveDown or Control.FontInactiveUp => 5,
         Control.KaraokeToggle => 6,
+        Control.InfoPopupDown or Control.InfoPopupUp => 7,
         Control.OledPreset => 0,
         Control.OledOpacitySlider => 1,
         Control.OledAutoHideDown or Control.OledAutoHideUp => 2,
@@ -1734,6 +1780,7 @@ internal sealed class SettingsWindow : WindowBase
         Control.HideNoLyrics => 1,
         Control.HideInstrumental => 2,
         Control.WarnPlayer => 3,
+        Control.NotifyMissingLyrics => 4,
         Control.OffsetDown or Control.OffsetUp => 0,
         Control.OffsetReset => 1,
         Control.AnchorBottom or Control.AnchorTop or Control.AnchorCentre => 0,

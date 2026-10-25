@@ -29,6 +29,26 @@ public sealed class OverlayTheme
     public uint ProgressColor { get; init; } = 0xCC7CC4FF;
     public uint ProgressTrackColor { get; init; } = 0x33FFFFFF;
 
+    /// <summary>
+    /// Backdrop of the transient notice. It is drawn even when the lyric backdrop is fully
+    /// transparent, because the notice is the one thing on an OLED screen whose whole point is that
+    /// it goes away again - and it has to stay legible over whatever is behind it until then.
+    /// </summary>
+    public uint NoticeBackgroundColor { get; init; } = 0xF00C0E12;
+
+    public uint NoticeTitleColor { get; init; } = 0xFFF5F7FA;
+
+    /// <summary>Detail colour for <see cref="NoticeTone.Info"/>.</summary>
+    public uint NoticeAccentColor { get; init; } = 0xFF7CC4FF;
+
+    /// <summary>Detail colour for <see cref="NoticeTone.Warning"/>.</summary>
+    public uint NoticeWarningColor { get; init; } = 0xFFE0A458;
+
+    public float NoticeTitleFontSize { get; init; } = 13.5f;
+    public float NoticeDetailFontSize { get; init; } = 12f;
+    public float NoticePaddingX { get; init; } = 14f;
+    public float NoticePaddingY { get; init; } = 8f;
+
     public float CornerRadius { get; init; } = 14f;
     public float PaddingX { get; init; } = 26f;
     public float PaddingY { get; init; } = 12f;
@@ -68,6 +88,14 @@ public sealed record OverlayVisual
 
     /// <summary>Status text shown instead of lyrics, for example "No lyrics found".</summary>
     public string? Status { get; init; }
+
+    /// <summary>
+    /// Transient message drawn over the top of the content: the song that just started and what the
+    /// lyric lookup found. Null when nothing is being announced. The renderer places it where it
+    /// does not collide with the lyrics and gives it its own backdrop, so it survives the OLED
+    /// preset's transparent backdrop.
+    /// </summary>
+    public OverlayNotice? Notice { get; init; }
 
     public bool ShowProgressBar { get; init; }
     public bool ShowHeader { get; init; }

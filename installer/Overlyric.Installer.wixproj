@@ -1,0 +1,53 @@
+<Project Sdk="WixToolset.Sdk/6.0.2">
+
+  <!--
+    Single build definition for the Overlyric per-user MSI.
+
+    Build it through installer\build-installer.ps1 (the reproducible entry point); the script
+    passes OverlyricVersion, PublishDir and EstimatedSizeKb, then copies the MSI to dist\.
+
+    This project is deliberately NOT part of Overlyric.slnx: a clean clone must still be able to
+    run `dotnet publish src\Overlyric\Overlyric.csproj` without restoring WiX.
+  -->
+
+  <PropertyGroup>
+    <OutputName>Overlyric</OutputName>
+    <OutputType>Package</OutputType>
+        <InstallerPlatform>x64</InstallerPlatform>
+
+    <!-- Version: -p:OverlyricVersion=... (build-installer.ps1 -Version) or -p:ProductVersion=...
+         Both work; OverlyricVersion wins when both are supplied. -->
+    <OverlyricVersion Condition="'$(OverlyricVersion)' == '' and '$(ProductVersion)' != ''">$(ProductVersion)</OverlyricVersion>
+    <OverlyricVersion Condition="'$(OverlyricVersion)' == ''">0.1.0</OverlyricVersion>
+
+    <Configuration Condition="'$(Configuration)' == ''">Release</Configuration>
+    <PublishDir Condition="'$(PublishDir)' == ''">$(MSBuildThisFileDirectory)..\src\Overlyric\bin\$(Configuration)\net10.0-windows10.0.26100.0\win-x64\publish</PublishDir>
+
+    <!-- Installed size in Add/Remove Programs is computed by Windows Installer from the File table,
+         so the build passes no explicit size. -->
+    <DefineConstants>OverlyricVersion=$(OverlyricVersion);PublishDir=$(PublishDir)</DefineConstants>
+
+    <!--
+      ICE61 (AllowSameVersionUpgrades means the upgrade row's VersionMax equals the current
+      version) and ICE91 (files in a per-user directory "won't be copied to each user's profile")
+      are both expected and intentional for a deliberately per-user package: the product is
+      installed once per user account, and a same-version rebuild must replace the previous one
+      instead of leaving two Add/Remove Programs entries.
+    -->
+    <SuppressIces>ICE61;ICE91</SuppressIces>
+
+    <!-- Keep intermediate/build output inside the installer folder (already git-ignored). -->
+    <BaseIntermediateOutputPath Condition="'$(BaseIntermediateOutputPath)' == ''">$(MSBuildThisFileDirectory)obj\</BaseIntermediateOutputPath>
+    <BaseOutputPath Condition="'$(BaseOutputPath)' == ''">$(MSBuildThisFileDirectory)bin\</BaseOutputPath>
+  </PropertyGroup>
+
+  <!-- WixToolset.Sdk globs **\*.wxs, so installer\Overlyric.wxs is picked up automatically. -->
+  <ItemGroup>
+    <PackageReference Include="WixToolset.Util.wixext" Version="6.0.2" />
+    <PackageReference Include="WixToolset.UI.wixext" Version="6.0.2" />
+  </ItemGroup>
+
+</Project>
+
+
+

@@ -68,6 +68,29 @@ internal sealed class AppHost
     private long _nextLyricsRetryAt;
     private long _lyricsRevision = -1;
 
+    /// <summary>
+    /// The transient "what just started, and what did the lookup find" notice. It lives in the same
+    /// overlay as the lyrics, which is also the only surface an OLED preset has left: it is dynamic,
+    /// so it disappears again instead of lighting the same pixels for hours.
+    /// </summary>
+    private readonly InfoPopup _infoPopup = new();
+
+    /// <summary>True while a notice has been asked for but its lyric verdict is still outstanding.</summary>
+    private bool _popupRequested;
+    private bool _popupStarted;
+
+    /// <summary>Whether the resolved sheet carries word-level timings, which is the distinction the pop-up names.</summary>
+    private bool _lyricsWordSynced;
+
+    /// <summary>Whether the last empty lookup was a definitive "lrclib has nothing" rather than an outage.</summary>
+    private bool _lyricsDefinitive;
+
+    /// <summary>
+    /// Revision whose missing or untimed lyrics have already been announced. Announcing per poll - or
+    /// per retry - would be a notification nobody reads; once per track is the contract.
+    /// </summary>
+    private long _alertedRevision = -1;
+
     private CancellationTokenSource? _fetchCts;
     private OverlayVisual _visual = new();
     private long _lastRevision = -1;
@@ -202,8 +225,6 @@ internal sealed class AppHost
 
         _currentInterval = SlowIntervalMs;
         SetTimer(_messageWindow.Handle, TimerId, _currentInterval, 0);
-
-        _messageWindow.Show();
 
         if (_openSettings)
         {
@@ -360,6 +381,10 @@ internal sealed class AppHost
             _lastRevision = snapshot.Revision;
             _headerShownAt = Stopwatch.GetTimestamp();
 
+            // A new song - or the first one seen after start-up - is exactly when a listener wants
+            // to know what is playing and what the lyric lookup made of it.
+            RequestInfoPopup(snapshot);
+
             if (!_demo)
             {
                 _lyricsRetryAttempt = 0;
@@ -373,7 +398,12 @@ internal sealed class AppHost
             StartLyricsFetch(snapshot);
         }
 
+        // After the track-change block, never before it: the block clears the previous track's
+        // verdict, and the notification must not be decided on facts that belong to the song before.
+        UpdateLyricsAlert(snapshot);
+
         var visual = BuildVisual(snapshot, position, positionIsUsable);
+        visual = WithInfoPopup(visual, snapshot, positionIsUsable);
 
         // The burn-in nudge rides on the visual rather than the window, so placement, dragging and
         // hit testing are unaffected.
@@ -573,6 +603,152 @@ internal sealed class AppHost
         text = text.Trim(' ', '\u2014');
 
         return text.Length == 0 ? null : Truncate(text, 80);
+    }
+
+    /// <summary>
+    /// Ask for the info notice. What it says is decided on the tick instead of here, because a lyric
+    /// lookup that has just started has no verdict to report yet.
+    /// </summary>
+    private void RequestInfoPopup(NowPlayingSnapshot snapshot)
+    {
+        if (!snapshot.HasTrack || _config.InfoPopupSeconds <= 0)
+        {
+            _infoPopup.Clear();
+            _popupRequested = false;
+            _popupStarted = false;
+            return;
+        }
+
+        _popupRequested = true;
+        _popupStarted = false;
+    }
+
+    /// <summary>
+    /// Fold the info notice into the frame. While the lookup is still running the notice says so; when
+    /// the answer lands it gets a fresh showing, because "looking up lyrics" and "no synced lyrics"
+    /// are different statements and only the second is the one the listener was waiting for. That
+    /// also means a slow lookup cannot keep the notice on screen: the deadline belongs to the
+    /// showing, not to the request.
+    /// </summary>
+    private OverlayVisual WithInfoPopup(OverlayVisual visual, NowPlayingSnapshot snapshot, bool positionIsUsable)
+    {
+        var now = Environment.TickCount64;
+
+        if (_config.InfoPopupSeconds <= 0 || !snapshot.HasTrack)
+        {
+            _infoPopup.Clear();
+            _popupRequested = false;
+            _popupStarted = false;
+            return visual with { Notice = null };
+        }
+
+        if (_popupRequested)
+        {
+            bool completed;
+            bool instrumental;
+            bool hasLines;
+            bool synced;
+            bool wordSynced;
+
+            lock (_gate)
+            {
+                completed = _fetchCompleted;
+                instrumental = _isInstrumental;
+                hasLines = _lines.Length > 0;
+                synced = _lyricsSynced;
+                wordSynced = _lyricsWordSynced;
+            }
+
+            // The provisional notice is drawn once; the verdict replaces it and restarts the clock.
+            if (completed || !_popupStarted)
+            {
+                var (detail, tone) = LyricStatus.Describe(
+                    completed,
+                    instrumental,
+                    hasLines,
+                    synced,
+                    wordSynced,
+                    positionIsUsable);
+
+                _infoPopup.Start(BuildNoticeTitle(snapshot), detail, tone, now, _config.InfoPopupSeconds);
+                _popupStarted = true;
+            }
+
+            if (completed)
+            {
+                _popupRequested = false;
+                _popupStarted = false;
+            }
+        }
+
+        _infoPopup.Expire(now);
+
+        return visual with { Notice = _infoPopup.Current };
+    }
+
+    /// <summary>
+    /// One Windows notification per track, when the lookup settles with something the listener needs
+    /// to know and cannot otherwise see: lrclib has no lyrics, or has the words but no timings. An
+    /// outage is neither of those - it is not evidence about the track at all - which is what the
+    /// definitive flag is for.
+    /// </summary>
+    private void UpdateLyricsAlert(NowPlayingSnapshot snapshot)
+    {
+        if (_demo || _tray is null || !_config.NotifyWhenLyricsMissing || !snapshot.HasTrack)
+        {
+            return;
+        }
+
+        if (snapshot.Revision == _alertedRevision)
+        {
+            return;
+        }
+
+        bool completed;
+        bool definitive;
+        bool instrumental;
+        bool hasLines;
+        bool synced;
+
+        lock (_gate)
+        {
+            completed = _fetchCompleted;
+            definitive = _lyricsDefinitive;
+            instrumental = _isInstrumental;
+            hasLines = _lines.Length > 0;
+            synced = _lyricsSynced;
+        }
+
+        if (!completed)
+        {
+            return;
+        }
+
+        // Recorded before the decision, so a track that is fine - or one still waiting on a retry -
+        // is not re-examined on every tick for the rest of the song.
+        _alertedRevision = snapshot.Revision;
+
+        var kind = LyricsAlert.Decide(definitive, instrumental, hasLines, synced);
+        if (kind == LyricsAlertKind.None)
+        {
+            return;
+        }
+
+        var (title, text) = LyricsAlert.Describe(kind, NoticeTrack(snapshot));
+        _tray.Alert(title, text);
+    }
+
+    /// <summary>The song, cleaned and short enough for the notice's first line.</summary>
+    private static string BuildNoticeTitle(NowPlayingSnapshot snapshot) => Truncate(NoticeTrack(snapshot), 64);
+
+    /// <summary><c>Artist - Title</c>, with the release noise the header also strips.</summary>
+    private static string NoticeTrack(NowPlayingSnapshot snapshot)
+    {
+        var title = MetadataNormaliser.CleanTitle(snapshot.Title);
+
+        return string.IsNullOrWhiteSpace(snapshot.Artist)
+            ? title.Trim()
+            : $"{snapshot.Artist} \u2014 {title}".Trim();
     }
 
     private static float ResolveTrackProgress(TimeSpan position, double? durationSeconds)
@@ -838,6 +1014,8 @@ internal sealed class AppHost
             _isInstrumental = false;
             _fetchCompleted = false;
             _lyricsRevision = revision;
+            _lyricsWordSynced = false;
+            _lyricsDefinitive = false;
         }
 
         var artist = snapshot.Artist;
@@ -848,11 +1026,11 @@ internal sealed class AppHost
         _ = Task.Run(
             async () =>
             {
-                LyricsResult? result = null;
+                LyricsLookup lookup = default;
 
                 try
                 {
-                    result = await _lyrics!.GetLyricsAsync(artist, title, album, duration, token)
+                    lookup = await _lyrics!.LookupDetailedAsync(artist, title, album, duration, token)
                         .ConfigureAwait(false);
                 }
                 catch (Exception)
@@ -865,6 +1043,7 @@ internal sealed class AppHost
                     return;
                 }
 
+                var result = lookup.Result;
                 var needsVersions = false;
 
                 lock (_gate)
@@ -875,6 +1054,8 @@ internal sealed class AppHost
                     }
 
                     _fetchCompleted = true;
+                    _lyricsDefinitive = lookup.Definitive;
+                    _lyricsWordSynced = false;
 
                     if (result is null)
                     {
@@ -897,6 +1078,7 @@ internal sealed class AppHost
                     {
                         _lines = [.. result.Lines];
                         _lyricsSynced = result.IsSynced;
+                        _lyricsWordSynced = result.HasWordTimings;
                         _isInstrumental = false;
                         _lyricsStatus = null;
                     }
@@ -1009,6 +1191,7 @@ internal sealed class AppHost
             || a.OffsetY != b.OffsetY
             || !string.Equals(a.Header, b.Header, StringComparison.Ordinal)
             || !string.Equals(a.Status, b.Status, StringComparison.Ordinal)
+            || !Equals(a.Notice, b.Notice)
             || a.Lines.Count != b.Lines.Count)
         {
             return false;
@@ -1160,6 +1343,13 @@ internal sealed class AppHost
         {
             case Commands.ToggleOverlay:
                 _overlayEnabled = !_overlayEnabled;
+
+                // Turning the overlay back on mid-song is the second "overlay starts" moment: the
+                // notice tells the listener what this overlay is showing before the next line.
+                if (_overlayEnabled)
+                {
+                    RequestInfoPopup(_snapshot);
+                }
 
                 // Visibility is applied on the tick, so without this the overlay would take up to a
                 // second to answer the click that just asked for it.

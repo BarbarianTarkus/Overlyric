@@ -4,3 +4,5 @@ obj/
 *.suo
 .vs/
 publish/
+dist/
+installer/Payload.wxs

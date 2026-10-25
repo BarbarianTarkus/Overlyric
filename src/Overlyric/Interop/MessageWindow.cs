@@ -7,6 +7,13 @@ namespace Overlyric.Interop;
 /// callbacks and the application timer. Keeping these off the overlay window means the overlay
 /// can be recreated (for example on a display-mode change) without losing input registrations.
 /// </summary>
+/// <remarks>
+/// It is a tool window and it is never shown, which is what keeps the application out of the
+/// taskbar while none of its real windows are open: the shell lists a top-level window on the
+/// taskbar when it is visible, unowned and not <c>WS_EX_TOOLWINDOW</c>. Everything this window
+/// does - posted and sent messages, timers, hotkeys, tray callbacks - works while it is hidden,
+/// so there is nothing to gain from showing it.
+/// </remarks>
 internal sealed class MessageWindow : WindowBase
 {
     private readonly Lock _gate = new();
@@ -17,7 +24,8 @@ internal sealed class MessageWindow : WindowBase
 
     protected override int WindowStyle => 0;
 
-    protected override int WindowExtraStyle => 0;
+    /// <summary>Never a taskbar entry, never in Alt+Tab: it is plumbing, not a window.</summary>
+    protected override int WindowExtraStyle => WS_EX_TOOLWINDOW;
 
     public void Create()
     {
@@ -31,8 +39,6 @@ internal sealed class MessageWindow : WindowBase
             _handler = handler;
         }
     }
-
-    public void Show() => ShowWindow(Handle, SW_SHOWNA);
 
     protected override void OnCreated()
     {
