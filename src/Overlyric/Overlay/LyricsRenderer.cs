@@ -488,10 +488,16 @@ internal sealed class LyricsRenderer : IDisposable
     }
 
     /// <summary>
-    /// The bar that appears when the mouse is over an unlocked overlay: Settings, the timing nudge,
-    /// and the two lyric windows. It is drawn above the lyrics when there is room and below them when
-    /// there is not, and it never moves under the pointer with the burn-in nudge.
+    /// The bar that appears when the mouse is over an unlocked overlay: the layout it is in, the timing
+    /// nudge, the two lyric windows, settings, and the lock that ends the session. It is drawn above
+    /// the lyrics when there is room and below them when there is not, and it never moves under the
+    /// pointer with the burn-in nudge.
     /// </summary>
+    /// <remarks>
+    /// The order is status, correct, read, finish. Two things were missing from the old bar: the layout
+    /// the hotkey had just set, and a lock, which only existed as a remembered chord. The word "Reset"
+    /// is gone - one glyph says the same thing in a quarter of the width.
+    /// </remarks>
     private void DrawControls(
         ID2D1DeviceContext context,
         OverlayVisual visual,
@@ -501,23 +507,37 @@ internal sealed class LyricsRenderer : IDisposable
     {
         const float labelSize = 12.5f;
 
-        var settingsWidth = MathF.Max(76f, MeasureWidth("Settings", labelSize) + 26f);
+        var modeLabel = visual.Mode switch
+        {
+            OverlayMode.SingleLine => "Single",
+            OverlayMode.SingleLineWithNext => "Single +1",
+            _ => $"Multi {_theme.MultiLineCount}"
+        };
+
+        var modeWidth = MathF.Max(78f, MeasureWidth(modeLabel, labelSize) + 40f);
         var backWidth = 32f;
         var forwardWidth = 32f;
         var valueWidth = MathF.Max(64f, MeasureWidth(visual.OffsetLabel, labelSize) + 22f);
-        var resetWidth = MathF.Max(56f, MeasureWidth("Reset", labelSize) + 24f);
-        var viewWidth = MathF.Max(94f, MeasureWidth("Full lyrics", labelSize) + 26f);
-        var chooseWidth = MathF.Max(112f, MeasureWidth("Choose lyrics", labelSize) + 26f);
+        var resetWidth = 34f;
+        var sheetWidth = MathF.Max(66f, MeasureWidth("Lyrics", labelSize) + 26f);
+        var versionsWidth = MathF.Max(84f, MeasureWidth("Versions", labelSize) + 26f);
+        var settingsWidth = MathF.Max(76f, MeasureWidth("Settings", labelSize) + 26f);
+        var lockWidth = MathF.Max(56f, MeasureWidth("Lock", labelSize) + 26f);
 
-        var offsetWidth = backWidth + valueWidth + forwardWidth + resetWidth + (ControlButtonGap * 3f);
+        var timingWidth = backWidth + valueWidth + forwardWidth + resetWidth + (ControlButtonGap * 3f);
+
         var totalWidth = (ControlBarPadding * 2f)
-                         + settingsWidth
+                         + modeWidth
                          + ControlGroupGap
-                         + offsetWidth
+                         + timingWidth
                          + ControlGroupGap
-                         + viewWidth
+                         + sheetWidth
                          + ControlButtonGap
-                         + chooseWidth;
+                         + versionsWidth
+                         + ControlGroupGap
+                         + settingsWidth
+                         + ControlButtonGap
+                         + lockWidth;
 
         if (totalWidth > width - (2f * margin))
         {
@@ -537,11 +557,10 @@ internal sealed class LyricsRenderer : IDisposable
         var x = left + ControlBarPadding;
         var y = top + ControlBarPadding;
 
-        DrawControlButton(context, visual, OverlayControl.Settings, "Settings", x, y, settingsWidth);
-        x += settingsWidth;
+        DrawModeChip(context, visual, modeLabel, x, y, modeWidth);
+        x += modeWidth + ControlGroupGap;
 
-        DrawControlDivider(context, x + (ControlGroupGap / 2f), y, ControlButtonHeight);
-        x += ControlGroupGap;
+        DrawControlDivider(context, x - (ControlGroupGap / 2f), y, ControlButtonHeight);
 
         DrawControlButton(context, visual, OverlayControl.OffsetBack, "\u2212", x, y, backWidth);
         x += backWidth + ControlButtonGap;
@@ -556,20 +575,64 @@ internal sealed class LyricsRenderer : IDisposable
             context,
             visual,
             OverlayControl.OffsetReset,
-            "Reset",
+            "\u21ba",
             x,
             y,
             resetWidth,
             visual.OffsetIsDefault);
-        x += resetWidth;
+        x += resetWidth + ControlGroupGap;
 
-        DrawControlDivider(context, x + (ControlGroupGap / 2f), y, ControlButtonHeight);
-        x += ControlGroupGap;
+        DrawControlDivider(context, x - (ControlGroupGap / 2f), y, ControlButtonHeight);
 
-        DrawControlButton(context, visual, OverlayControl.ViewLyrics, "Full lyrics", x, y, viewWidth);
-        x += viewWidth + ControlButtonGap;
+        DrawControlButton(context, visual, OverlayControl.ViewLyrics, "Lyrics", x, y, sheetWidth);
+        x += sheetWidth + ControlButtonGap;
 
-        DrawControlButton(context, visual, OverlayControl.ChooseLyrics, "Choose lyrics", x, y, chooseWidth);
+        DrawControlButton(context, visual, OverlayControl.ChooseLyrics, "Versions", x, y, versionsWidth);
+        x += versionsWidth + ControlGroupGap;
+
+        DrawControlDivider(context, x - (ControlGroupGap / 2f), y, ControlButtonHeight);
+
+        DrawControlButton(context, visual, OverlayControl.Settings, "Settings", x, y, settingsWidth);
+        x += settingsWidth + ControlButtonGap;
+
+        DrawControlButton(context, visual, OverlayControl.Lock, "Lock", x, y, lockWidth);
+    }
+
+    /// <summary>
+    /// The layout chip. It is filled and hover-highlighted like a readout rather than transparent like
+    /// the buttons, because it reports the mode before it changes it: after Ctrl+Alt+M there is
+    /// otherwise nothing on screen that says what the mode became.
+    /// </summary>
+    private void DrawModeChip(
+        ID2D1DeviceContext context,
+        OverlayVisual visual,
+        string label,
+        float left,
+        float top,
+        float width)
+    {
+        var hot = visual.HoveredControl == OverlayControl.Layout;
+
+        context.FillRoundedRectangle(
+            Rounded(left, top, width, ControlButtonHeight, 8f),
+            GetBrush(context, hot ? _theme.ControlHoverColor : _theme.ControlButtonColor));
+
+        var layout = GetControlLayout(
+            label,
+            (int)MathF.Ceiling(width - 18f),
+            (int)ControlButtonHeight,
+            12.5f,
+            FontWeight.SemiBold);
+
+        var origin = new Vector2(left + 9f, top + MathF.Max(0f, (ControlButtonHeight - layout.Metrics.Height) / 2f));
+        context.DrawTextLayout(origin, layout, GetBrush(context, _theme.ControlTextColor));
+
+        _controlHits.Add(new OverlayControlHit(
+            OverlayControl.Layout,
+            left,
+            top,
+            left + width,
+            top + ControlButtonHeight));
     }
 
     /// <summary>

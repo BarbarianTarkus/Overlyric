@@ -3,9 +3,9 @@
 An OLED panel wears where the same pixels stay lit for hours, and a lyric overlay is exactly that: the
 backdrop is a large static rectangle, the progress bar never moves except at one edge, the track info
 is identical for the whole song, and the surrounding lines sit in the same place for minutes. The
-**OLED** section exists to take all of that away.
+**Appearance** section exists to take all of that away.
 
-![The OLED section](images/settings-oled.png)
+![The Appearance section](images/settings-oled.png)
 
 **Apply preset** sets the whole bundle in one click: backdrop to zero, progress bar off, track info
 gone after eight seconds, no highlight bar, surrounding lines dimmed to 40 %, the unsung half of the

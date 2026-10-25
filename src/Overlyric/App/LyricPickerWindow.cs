@@ -38,12 +38,13 @@ internal sealed class LyricPickerWindow : PanelWindow
     private const float RowHeight = 46f;
 
     /// <summary>
-    /// The three fixed columns after the title. They are left edges rather than right edges so the
-    /// title, the length, the delta and the badges cannot drift into one another.
+    /// The fixed columns after the title. They are left edges rather than right edges so the title,
+    /// the match delta, the length and the badges cannot drift into one another. The delta leads: it
+    /// is the number that decides the choice, and the length only explains it.
     /// </summary>
     private const float TitleWidth = 438f;
-    private const float DurationLeft = 505f;
-    private const float DeltaLeft = 570f;
+    private const float MatchLeft = 505f;
+    private const float DurationLeft = 578f;
 
     private readonly Func<LyricPickerModel> _model;
     private readonly Action<long?> _select;
@@ -278,19 +279,8 @@ internal sealed class LyricPickerWindow : PanelWindow
         Label(context, "VERSION", Pad + 34f, y, 300f, 20f, 9.5f, FontWeight.SemiBold, ColorTextFaint);
         Label(
             context,
-            "LENGTH",
-            DurationLeft,
-            y,
-            60f,
-            20f,
-            9.5f,
-            FontWeight.SemiBold,
-            ColorTextFaint,
-            TextAlignment.Trailing);
-        Label(
-            context,
             "MATCH",
-            DeltaLeft,
+            MatchLeft,
             y,
             70f,
             20f,
@@ -300,10 +290,23 @@ internal sealed class LyricPickerWindow : PanelWindow
             TextAlignment.Trailing);
         Label(
             context,
-            "KIND",
-            WidthDip - 250f,
+            "LENGTH",
+            DurationLeft,
             y,
-            170f,
+            60f,
+            20f,
+            9.5f,
+            FontWeight.SemiBold,
+            ColorTextFaint,
+            TextAlignment.Trailing);
+
+        // "KIND" labelled a column that only ever repeated the badges at the end of the row.
+        Label(
+            context,
+            "BADGES",
+            ListRight - 220f,
+            y,
+            220f,
             20f,
             9.5f,
             FontWeight.SemiBold,
@@ -349,7 +352,23 @@ internal sealed class LyricPickerWindow : PanelWindow
             DrawEmpty(
                 context,
                 "No alternative versions",
-                "lrclib has nothing else for this track right now. Look again in a moment.");
+                "lrclib has nothing else for this track right now.");
+
+            // The empty state carries its own fix. This is the only moment the refresh matters, and a
+            // button four rows up in the toolbar is a button nobody looks for. Same control id, so
+            // the two of them dispatch the same command.
+            const float retryWidth = 132f;
+
+            Button(
+                context,
+                RefreshControl,
+                "Search again",
+                (WidthDip - retryWidth) / 2f,
+                ((ListTop + ListBottom) / 2f) + 52f,
+                retryWidth,
+                30f,
+                !model.Loading);
+
             return;
         }
 
@@ -503,6 +522,21 @@ internal sealed class LyricPickerWindow : PanelWindow
             FontWeight.Normal,
             ColorTextDim);
 
+        var delta = LyricText.FormatDurationDelta(candidate.DurationSeconds, model.DurationSeconds);
+        var deltaColor = delta == "matches" ? ColorGood : ColorTextDim;
+
+        Label(
+            context,
+            delta,
+            MatchLeft,
+            top + 4f,
+            70f,
+            RowHeight - 8f,
+            11.5f,
+            FontWeight.SemiBold,
+            deltaColor,
+            TextAlignment.Trailing);
+
         Label(
             context,
             LyricText.FormatDuration(candidate.DurationSeconds),
@@ -513,21 +547,6 @@ internal sealed class LyricPickerWindow : PanelWindow
             11.5f,
             FontWeight.Normal,
             ColorTextDim,
-            TextAlignment.Trailing);
-
-        var delta = LyricText.FormatDurationDelta(candidate.DurationSeconds, model.DurationSeconds);
-        var deltaColor = delta == "matches" ? ColorGood : ColorTextFaint;
-
-        Label(
-            context,
-            delta,
-            DeltaLeft,
-            top + 4f,
-            70f,
-            RowHeight - 8f,
-            11.5f,
-            FontWeight.Normal,
-            deltaColor,
             TextAlignment.Trailing);
 
         var right = ListRight - 8f;

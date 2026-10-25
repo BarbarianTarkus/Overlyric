@@ -100,6 +100,15 @@ internal static class Commands
     /// <summary>Drive the overlay from the demo track for a few seconds.</summary>
     public const int PreviewOverlay = 174;
 
+    // The tray's Layout submenu picks one mode instead of cycling: three checkable rows say which one
+    // is in force, where "Mode: multi line" only said what a click would leave behind.
+    public const int LayoutSingle = 175;
+    public const int LayoutPeek = 176;
+    public const int LayoutMulti = 177;
+
+    /// <summary>Open the full lyric sheet, which until now only the overlay bar could do.</summary>
+    public const int OpenLyricSheet = 178;
+
     // The source menu is tray-only - no hotkey is bound to a player - but its ids live here with the
     // rest, because this class is the one id namespace: the tray and the hotkey table are dispatched
     // by the same switch, and a second place to look for "what is 200" is how collisions happen.

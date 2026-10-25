@@ -95,6 +95,12 @@ internal sealed class OverlayWindow : WindowBase
     /// <summary>Raised when the user asks to choose another lyric version.</summary>
     public event Action? ChooseLyricsRequested;
 
+    /// <summary>Raised when the user cycles the layout from the bar. The host owns the mode.</summary>
+    public event Action? LayoutRequested;
+
+    /// <summary>Raised when the user locks the overlay from the bar.</summary>
+    public event Action? LockRequested;
+
     public bool IsVisible => _visible;
 
     public bool IsLocked => _locked;
@@ -567,6 +573,17 @@ internal sealed class OverlayWindow : WindowBase
 
             case OverlayControl.OffsetReset:
                 OffsetResetRequested?.Invoke();
+                return;
+
+            case OverlayControl.Layout:
+                LayoutRequested?.Invoke();
+                return;
+
+            case OverlayControl.Lock:
+                // The bar belongs to the unlocked state, so locking from it also dismisses it - the
+                // window stops answering the mouse on the same tick.
+                HideControls();
+                LockRequested?.Invoke();
                 return;
         }
     }

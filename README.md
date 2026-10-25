@@ -40,15 +40,15 @@ is the capture background, not a theme. Run `Overlyric.exe --demo` to try it wit
 | ![Multi-line overlay in demo mode](docs/images/overlay-multi-line.png) | ![The full lyric sheet](docs/images/lyric-viewer.png) |
 | The same game, `--demo` driving a canned track. | Every line and timestamp, with the line being sung highlighted. |
 
-| Settings | Shortcuts |
+| Lyrics | Shortcuts |
 | --- | --- |
-| ![The main settings window](docs/images/settings-window.png) | ![The Shortcuts settings section](docs/images/settings-shortcuts.png) |
-| Mode, lines, track info, progress bar, text sizes, karaoke and the info pop-up. | Every global hotkey, rebound by pressing the new combination. |
+| ![The Lyrics settings section](docs/images/settings-window.png) | ![The Shortcuts settings section](docs/images/settings-shortcuts.png) |
+| Mode, lines shown, text sizes, the karaoke sweep, and the track info and info pop-up it owns. | Every global hotkey, rebound by pressing the new combination. |
 
-| OLED preset | Source |
+| Appearance | Players |
 | --- | --- |
-| ![The OLED settings section](docs/images/settings-oled.png) | ![The Source settings section](docs/images/settings-source.png) |
-| Nothing static: no backdrop, no highlight bar, dimmed surrounding lines. | Pin one player, or prefer a list; it is tried before Windows' own choice. |
+| ![The Appearance settings section](docs/images/settings-oled.png) | ![The Players settings section](docs/images/settings-source.png) |
+| Backdrop, what stays lit, and the burn-in preset and tools. | Who is followed, and the order the rest are tried in. |
 
 Settings captures show one machine's configuration, not the defaults. The
 [screenshot gallery](docs/README.md#screenshots) has the lyric selector and the rest of the settings

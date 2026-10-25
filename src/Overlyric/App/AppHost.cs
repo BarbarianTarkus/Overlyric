@@ -256,6 +256,11 @@ internal sealed class AppHost
         _overlay.ViewLyricsRequested += OpenLyricViewer;
         _overlay.ChooseLyricsRequested += OpenLyricPicker;
 
+        // The bar's layout chip and lock button are the same commands as the hotkeys, so there is one
+        // implementation of "cycle the mode" and one of "lock", not a second pair behind a click.
+        _overlay.LayoutRequested += () => Execute(Commands.ToggleMode);
+        _overlay.LockRequested += () => Execute(Commands.ToggleLock);
+
         if (_demo)
         {
             // Preview mode: drive the overlay from a canned synced track so the rendering
@@ -1573,6 +1578,22 @@ internal sealed class AppHost
                 _config.Save();
                 break;
 
+            case Commands.LayoutSingle:
+                SetLayout(OverlayMode.SingleLine);
+                break;
+
+            case Commands.LayoutPeek:
+                SetLayout(OverlayMode.SingleLineWithNext);
+                break;
+
+            case Commands.LayoutMulti:
+                SetLayout(OverlayMode.MultiLine);
+                break;
+
+            case Commands.OpenLyricSheet:
+                OpenLyricViewer();
+                break;
+
             case Commands.ToggleLock:
                 SetLocked(!_locked);
                 break;
@@ -1708,6 +1729,23 @@ internal sealed class AppHost
                 Shutdown();
                 break;
         }
+    }
+
+    /// <summary>
+    /// Switch to one named layout, and redraw only when it changed. The tray's three rows, the hotkey
+    /// cycle and the bar's chip all end up here so they cannot disagree about what the mode is.
+    /// </summary>
+    private void SetLayout(OverlayMode mode)
+    {
+        if (_config.Mode == mode)
+        {
+            return;
+        }
+
+        _config.Mode = mode;
+        _overlay?.SetMode(mode);
+        ForceRedraw();
+        _config.Save();
     }
 
     /// <summary>
@@ -2003,7 +2041,7 @@ internal sealed class AppHost
     private void OpenSourceSettings()
     {
         OpenSettings();
-        _settings?.ShowSourceSection();
+        _settings?.ShowPlayersSection();
     }
 
     /// <summary>
@@ -2327,20 +2365,22 @@ internal sealed class AppHost
             ? $"{status.SourceAppFriendly}: {Truncate(status.TrackDescription, 48)}"
             : "Nothing playing";
 
-        // The top level keeps what is worth reaching for while music is playing. Everything that is
-        // set once and then left alone lives in the settings window, which - unlike a menu - stays
-        // open while it is being used.
+        // The top level keeps what is worth reaching for while music is playing: the lyric commands
+        // lead, the player list that explains a silent overlay follows, then the three state
+        // switches. Everything set once and left alone lives in the settings window, which - unlike a
+        // menu - stays open while it is being used.
         var items = new List<TrayMenuItem>
         {
             // Informational, and previously selectable while doing nothing.
             TrayMenuItem.Disabled(trackLine),
-            new(Commands.OpenLyricPicker, "Lyrics\u2026"),
+            new(Commands.OpenLyricSheet, "Full lyrics\u2026"),
+            new(Commands.OpenLyricPicker, "Versions\u2026"),
             new(Commands.RefreshLyrics, "Refresh lyrics"),
             new(Commands.PreviewOverlay, "Preview overlay"),
-            TrayMenuItem.Submenu("Source", SourceMenuItems()),
+            TrayMenuItem.Submenu("Players", SourceMenuItems()),
             TrayMenuItem.Separator,
             new(Commands.ToggleOverlay, "Show overlay", _overlayEnabled),
-            new(Commands.ToggleMode, $"Mode: {ModeName(_config.Mode)}"),
+            TrayMenuItem.Submenu("Layout", LayoutMenuItems()),
             new(Commands.ToggleLock, "Locked (click-through)", _locked),
             TrayMenuItem.Separator,
             new(Commands.OpenSettings, "Settings\u2026"),
@@ -2418,12 +2458,19 @@ internal sealed class AppHost
         return items;
     }
 
-    private static string ModeName(OverlayMode mode) => mode switch
+    /// <summary>
+    /// The three layouts as checkable rows. The old row cycled them blind: it named what a click would
+    /// leave behind, and never showed that there were three or which one was in force.
+    /// </summary>
+    private IReadOnlyList<TrayMenuItem> LayoutMenuItems()
     {
-        OverlayMode.SingleLine => "single line",
-        OverlayMode.SingleLineWithNext => "single + next",
-        _ => "multi line"
-    };
+        return
+        [
+            new(Commands.LayoutSingle, "Single line", _config.Mode == OverlayMode.SingleLine),
+            new(Commands.LayoutPeek, "Single +1", _config.Mode == OverlayMode.SingleLineWithNext),
+            new(Commands.LayoutMulti, "Multi line", _config.Mode == OverlayMode.MultiLine)
+        ];
+    }
 
     private static string Truncate(string value, int maxLength) =>
         value.Length <= maxLength ? value : value[..(maxLength - 1)] + "\u2026";

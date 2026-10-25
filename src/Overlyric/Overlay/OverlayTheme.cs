@@ -20,12 +20,18 @@ public enum OverlayMode
 /// <summary>The actions on the bar that appears over an unlocked overlay.</summary>
 public enum OverlayControl
 {
+    /// <summary>The layout readout, which cycles the mode the way Ctrl+Alt+M does.</summary>
+    Layout,
+
     Settings,
     OffsetBack,
     OffsetReset,
     OffsetForward,
     ViewLyrics,
-    ChooseLyrics
+    ChooseLyrics,
+
+    /// <summary>Lock the overlay. It only exists here because the bar only exists unlocked.</summary>
+    Lock
 }
 
 /// <summary>One live region of the control bar, in device-independent window coordinates.</summary>

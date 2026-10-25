@@ -59,11 +59,16 @@ the overlay is locked — locked is click-through, which means no surface to hov
 
 | Control | What it does |
 | --- | --- |
-| **Settings** | Opens the settings window |
+| **Single / Single +1 / Multi 2** | The layout in force. Click it to cycle, exactly as `Ctrl+Alt+M` does — it is a readout before it is an action |
 | **− / +** | Nudge the lyric timing by 0.25 s; the value shows the resulting total |
-| **Reset** | Return the timing offset to zero; dimmed when there is nothing to reset |
-| **Full lyrics** | Open the complete lyric sheet |
-| **Choose lyrics** | Open the lyric selector |
+| **↺** | Return the timing offset to zero; dimmed when there is nothing to reset |
+| **Lyrics** | Open the complete lyric sheet |
+| **Versions** | Open the lyric selector |
+| **Settings** | Opens the settings window |
+| **Lock** | Lock the overlay. The bar only exists unlocked, so this is the end-of-session gesture, and it needs no remembered chord |
+
+The bar reads left to right as status, correction, windows, finish: what you are looking at, the timing
+you are fixing, the two windows that show the words, then the two things that end the session.
 
 ![The overlay control bar](images/overlay-controls.png)
 
@@ -77,7 +82,7 @@ is hard to hit. The settings window is topmost like the overlay, and the overlay
 its own z-order while one of Overlyric's windows is open — otherwise the lyrics would climb back over
 the window you are reading every few ticks.
 
-The **Single +1** layout — Settings → Overlay, or `Ctrl+Alt+M` — keeps the active line at full size
+The **Single +1** layout — Settings → Lyrics, or `Ctrl+Alt+M` — keeps the active line at full size
 and shows the next line dimmed underneath. During a wait longer than three seconds, such as an intro
 or an instrumental break, a thin line under the lyrics fills with the wait. It is a sign that the
 player is still moving, not a second track progress bar.
@@ -85,10 +90,13 @@ player is still moving, not a second track progress bar.
 ## Tray icon
 
 Left-click toggles the overlay. Right-click opens a deliberately short menu: the track line
-(informational — greyed out and not selectable), **Lyrics…** (which opens the selector window),
-**Refresh lyrics**, **Preview overlay**, the three switches worth reaching for mid-song (show overlay,
-mode, lock), and **Settings…**. Everything else moved into the settings window, because a menu that
-dismisses itself on every click is a poor place to change anything.
+(informational — greyed out and not selectable), **Full lyrics…** (the sheet), **Versions…** (the
+selector), **Refresh lyrics**, **Preview overlay**, **Players** (automatic, whatever is publishing now,
+and the priority order), then the three state switches worth reaching for mid-song — **Show overlay**,
+**Layout** and **Locked** — and finally **Settings…** and **Exit**. **Layout** opens a submenu with the
+three modes ticked, because a row that cycles them cannot show which one is in force. Everything else
+moved into the settings window, because a menu that dismisses itself on every click is a poor place to
+change anything.
 
 **Refresh lyrics** throws away the cached answer for the current track and asks LRCLIB again. It is
 the escape hatch for a record that is wrong, or for a lookup that failed while the network was down.
@@ -119,14 +127,20 @@ stack and the settings window's palette, so they add no new UI framework.
 ## Settings window
 
 `Settings…` in the tray, or `Overlyric.exe --settings`, opens a fixed-size dark window with eight
-sections down the left: **Overlay** (mode, lines shown, track info, progress bar, font sizes, the info
-pop-up), **Shortcuts** (rebind the global hotkeys), **OLED** (burn-in controls, see below),
-**Behaviour** (the hide rules, the player warning and the missing-lyrics notification), **Timing**
-(lyric offset), **Position** (anchor, offsets, reset), **Advanced** (open the folders, cache size and
-clear, start with Windows, version) and **Source** (which player to follow, and the order to prefer
-them in). **OLED** is covered in [OLED and burn-in](oled.md).
+sections down the left, in two groups. **ON SCREEN** holds **Lyrics** (mode, lines shown, text sizes,
+the karaoke sweep, and the track info and info pop-up that belong together), **Appearance** (the
+backdrop, what stays lit, and the burn-in preset and tools — see [OLED and burn-in](oled.md)),
+**Timing** (the offset), **Position** (anchor, offsets, reset) and **Behaviour** (the hide rules, the
+warnings, and start with Windows). **SETUP** holds **Players** (which music client to follow, and the
+order to prefer them in), **Shortcuts** (rebind the global hotkeys) and **Advanced** (the folders, the
+cache and its size, clearing it, and the version).
 
-![The settings window, on the Overlay section](images/settings-window.png)
+The sections are ordered by the job rather than by the order the features shipped: what it looks like,
+then the two corrections made most often, then when it gets out of the way, then the setup. Inside a
+section, a row that only means something because of another row sits under it, indented, and stays
+dead until that row is on — turn **Show track info** off and **Info pop-up** greys out with it.
+
+![The settings window, on the Lyrics section](images/settings-window.png)
 
 *One user's configuration, not the defaults: this is the window as it opens after the settings have
 been changed.*

@@ -87,9 +87,9 @@ having. Nothing in the list matching falls back to Windows rather than to silenc
 list can never leave the overlay with nothing to follow, and with both empty the watcher follows
 `GetCurrentSession()` exactly as it did before the setting existed.
 
-The order is edited in Settings → Source: six fixed slots, moved with the arrows, because the window
+The order is edited in Settings → Players: six fixed slots, moved with the arrows, because the window
 has no scrollbar and a list that grew would push the footer off the bottom. The pin is one click in the
-tray menu's **Source** submenu, which lists every player publishing at that moment. Both are stored in
+tray menu's **Players** submenu, which lists every player publishing at that moment. Both are stored in
 `config.json` as the app user model id plus a label, so the list stays readable while a player is
 closed — the identity is a string like `Brave._crx_…` that nobody would recognise.
 `probe\SourcePreferenceTests` covers the rule in 46 checks: pin beating list and Windows, order

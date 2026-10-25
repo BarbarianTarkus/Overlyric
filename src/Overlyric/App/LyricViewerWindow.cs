@@ -214,19 +214,23 @@ internal sealed class LyricViewerWindow : PanelWindow
             ColorTextFaint,
             TextAlignment.Trailing);
 
+        // The status used to float on the right, twenty pixels under the record id, in the same
+        // corner. As a strip under the header it cannot collide with anything, and it only occupies
+        // space when there is something to say.
         if (!string.IsNullOrWhiteSpace(sheet.Status))
         {
+            FillRound(context, Pad, 70f, WidthDip - (2 * Pad), 22f, 6f, ColorControl);
+            FillRound(context, Pad, 70f, 3f, 22f, 1.5f, ColorWarning);
             Label(
                 context,
-                LyricText.Fit(sheet.Status, 58),
-                WidthDip - Pad - 440f,
-                66f,
-                440f,
-                18f,
-                11f,
+                LyricText.Fit(sheet.Status, 110),
+                Pad + 12f,
+                70f,
+                WidthDip - (2 * Pad) - 24f,
+                22f,
+                11.5f,
                 FontWeight.Normal,
-                ColorWarning,
-                TextAlignment.Trailing);
+                ColorWarning);
         }
 
         Fill(context, R(Pad, HeaderHeight - 1f, WidthDip - Pad, HeaderHeight), ColorLine);

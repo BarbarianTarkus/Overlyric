@@ -47,39 +47,36 @@ internal enum SettingsChange
 /// </summary>
 internal sealed class SettingsWindow : WindowBase
 {
+    /// <summary>
+    /// The sections, in the order the side bar lists them. Appearance follows Lyrics because the two
+    /// together decide what the overlay looks like; timing and position follow because they are the
+    /// corrections made most often; the setup sections close the list because they are set once.
+    /// </summary>
     private enum Section
     {
-        Overlay = 0,
-        Shortcuts = 1,
-        Oled = 2,
-        Behaviour = 3,
-        Timing = 4,
-        Position = 5,
-        Advanced = 6,
-
-        /// <summary>
-        /// Which player the overlay follows. Appended rather than slotted in next to Behaviour so the
-        /// existing navigation ids keep their values; the order here is the order in the side bar.
-        /// </summary>
-        Source = 7
+        Lyrics = 0,
+        Appearance = 1,
+        Timing = 2,
+        Position = 3,
+        Behaviour = 4,
+        Players = 5,
+        Shortcuts = 6,
+        Advanced = 7
     }
 
     /// <summary>Identifiers for every clickable thing. Values must stay unique.</summary>
     private enum Control
     {
-        NavOverlay = 1,
-        NavShortcuts = 2,
-        NavOled = 3,
-        NavBehaviour = 4,
-        NavTiming = 5,
-        NavPosition = 6,
-        NavAdvanced = 7,
-
-        /// <summary>
-        /// The Source section's navigation entry. It has to follow the others with no gap, because the
-        /// click decoder turns a nav id back into a <see cref="Section"/> by subtracting NavOverlay.
-        /// </summary>
-        NavSource = 8,
+        // The navigation ids follow the Section order with no gap: the click decoder turns a nav id
+        // back into a Section by subtracting NavLyrics, so these eight values are a table, not labels.
+        NavLyrics = 1,
+        NavAppearance = 2,
+        NavTiming = 3,
+        NavPosition = 4,
+        NavBehaviour = 5,
+        NavPlayers = 6,
+        NavShortcuts = 7,
+        NavAdvanced = 8,
 
         /// <summary>One active lyric line with the next one previewed underneath.</summary>
         ModePeek = 9,
@@ -209,19 +206,27 @@ internal sealed class SettingsWindow : WindowBase
     private const uint ColorWarning = 0xFFE0A458;
 
     private static readonly string[] SectionTitles =
-        ["Overlay", "Shortcuts", "OLED", "Behaviour", "Timing", "Position", "Advanced", "Source"];
+        ["Lyrics", "Appearance", "Timing", "Position", "Behaviour", "Players", "Shortcuts", "Advanced"];
 
     private static readonly string[] SectionHints =
     [
-        "How the lyrics look on screen.",
-        "Click a shortcut, then press the keys you want.",
-        "Leave nothing static on the screen for long.",
-        "When the overlay should get out of the way.",
+        "How the words look, line by line.",
+        "The surface behind the words, and what keeps an OLED panel clean.",
         "Correct lyrics that run early or late.",
         "Where the overlay sits on the monitor.",
-        "Folders and version information.",
-        "A pinned player always wins, then this order, then Windows."
+        "When the overlay should get out of the way.",
+        "Which music client Overlyric follows, and in what order.",
+        "Click a shortcut, then press the keys you want.",
+        "Folders, cache and version information."
     ];
+
+    /// <summary>
+    /// The caption above the navigation entry at the same index, or empty for an entry that follows
+    /// one. Two captions split eight sections into what the overlay does and how it is wired, which is
+    /// the distinction the flat list was missing.
+    /// </summary>
+    private static readonly string[] NavCaptions =
+        ["ON SCREEN", "", "", "", "", "SETUP", "", ""];
 
     private readonly AppConfig _config;
     private readonly Action<SettingsChange> _changed;
@@ -245,7 +250,7 @@ internal sealed class SettingsWindow : WindowBase
     private readonly List<(int Id, Rect Rect)> _hits = [];
 
     private CompositionHost? _host;
-    private Section _section = Section.Overlay;
+    private Section _section = Section.Lyrics;
     private int _hover = -1;
     private bool _open;
     private bool _draggingOpacity;
@@ -353,9 +358,9 @@ internal sealed class SettingsWindow : WindowBase
     /// shows the window itself rather than assuming the caller has already done so: a section that is
     /// selected but invisible looks exactly like the deep link not working.
     /// </summary>
-    public void ShowSourceSection()
+    public void ShowPlayersSection()
     {
-        _section = Section.Source;
+        _section = Section.Players;
         Show();
     }
 
@@ -762,20 +767,16 @@ internal sealed class SettingsWindow : WindowBase
             return;
         }
 
+        // The nav ids are contiguous and in Section order, so the range check is the decoder.
+        if (id >= (int)Control.NavLyrics && id <= (int)Control.NavAdvanced)
+        {
+            _section = (Section)(id - (int)Control.NavLyrics);
+            Render();
+            return;
+        }
+
         switch ((Control)id)
         {
-            case Control.NavOverlay:
-            case Control.NavShortcuts:
-            case Control.NavOled:
-            case Control.NavBehaviour:
-            case Control.NavTiming:
-            case Control.NavPosition:
-            case Control.NavAdvanced:
-            case Control.NavSource:
-                _section = (Section)(id - (int)Control.NavOverlay);
-                Render();
-                return;
-
             case Control.SourcePin:
                 TogglePinned();
                 return;
@@ -1160,17 +1161,11 @@ internal sealed class SettingsWindow : WindowBase
 
         switch (_section)
         {
-            case Section.Overlay:
-                DrawOverlaySection(context);
+            case Section.Lyrics:
+                DrawLyricsSection(context);
                 break;
-            case Section.Shortcuts:
-                DrawShortcutsSection(context);
-                break;
-            case Section.Oled:
-                DrawOledSection(context);
-                break;
-            case Section.Behaviour:
-                DrawBehaviourSection(context);
+            case Section.Appearance:
+                DrawAppearanceSection(context);
                 break;
             case Section.Timing:
                 DrawTimingSection(context);
@@ -1178,8 +1173,14 @@ internal sealed class SettingsWindow : WindowBase
             case Section.Position:
                 DrawPositionSection(context);
                 break;
-            case Section.Source:
-                DrawSourceSection(context);
+            case Section.Behaviour:
+                DrawBehaviourSection(context);
+                break;
+            case Section.Players:
+                DrawPlayersSection(context);
+                break;
+            case Section.Shortcuts:
+                DrawShortcutsSection(context);
                 break;
             default:
                 DrawAdvancedSection(context);
@@ -1245,15 +1246,31 @@ internal sealed class SettingsWindow : WindowBase
     {
         Label(context, "SETTINGS", 30f, 40f, NavWidthDip - 60f, 20f, 10.5f, FontWeight.SemiBold, ColorTextFaint);
 
+        // Laid out as a running offset rather than index arithmetic: a caption costs height the item
+        // grid does not know about, and two captions of eighteen pixels still leave the list 90 DIP
+        // clear of the footer.
+        var top = 70f;
+
         for (var i = 0; i < SectionTitles.Length; i++)
         {
-            var id = (int)Control.NavOverlay + i;
-            var top = 78f + (i * 42f);
+            var caption = NavCaptions[i];
+
+            if (caption.Length > 0)
+            {
+                Label(context, caption, 30f, top, NavWidthDip - 60f, 18f, 10.5f, FontWeight.SemiBold, ColorTextFaint);
+                top += 24f;
+            }
+
+            var id = (int)Control.NavLyrics + i;
             var selected = (int)_section == i;
 
             if (selected)
             {
                 FillRound(context, 16f, top, NavWidthDip - 32f, 34f, 8f, ColorNavSelected);
+
+                // A rail as well as the fill: the fill alone is a shade of the panel behind it, and at
+                // 100 % scaling it is the rail that says which section is open.
+                FillRound(context, 16f, top + 7f, 2f, 20f, 1f, ColorAccent);
             }
             else if (_hover == id)
             {
@@ -1263,20 +1280,28 @@ internal sealed class SettingsWindow : WindowBase
             Label(
                 context,
                 SectionTitles[i],
-                30f,
+                32f,
                 top,
-                NavWidthDip - 60f,
+                NavWidthDip - 64f,
                 34f,
                 13f,
                 selected ? FontWeight.SemiBold : FontWeight.Normal,
                 selected ? ColorText : ColorTextDim);
 
             Hit(id, R(16f, top, NavWidthDip - 16f, top + 34f));
+            top += 42f;
         }
     }
 
-    private void DrawOverlaySection(ID2D1DeviceContext context)
+    /// <summary>
+    /// The words: how many lines, how big, and the sweep that follows the voice. Grouped layout, type,
+    /// motion and chrome, with the two rows that only mean something because of another row indented
+    /// beneath it and dead until that row is on.
+    /// </summary>
+    private void DrawLyricsSection(ID2D1DeviceContext context)
     {
+        var multi = _config.Mode == OverlayMode.MultiLine;
+
         Row(context, 0, "Mode");
         Segmented(
             context,
@@ -1286,52 +1311,70 @@ internal sealed class SettingsWindow : WindowBase
                 ("Multi line", Control.ModeMulti, _config.Mode == OverlayMode.MultiLine)
             ]);
 
-        Row(context, 1, "Lines shown");
-        Stepper(context, _config.MultiLineCount.ToString(), Control.LinesDown, Control.LinesUp);
+        // A line count is only a question in multi-line mode, and it used to sit live in single-line
+        // mode where changing it does nothing at all.
+        Row(context, 1, "Lines shown", child: true, enabled: multi);
+        Stepper(context, _config.MultiLineCount.ToString(), Control.LinesDown, Control.LinesUp, multi);
 
-        Row(context, 2, "Show track info");
-        Toggle(context, Control.Header, _config.ShowHeader);
+        Group(context, 2, "TYPE");
 
-        Row(context, 3, "Show progress bar");
-        Toggle(context, Control.ProgressBar, _config.ShowProgressBar);
-
-        Row(context, 4, "Lyric size");
+        Row(context, 2, "Lyric size");
         Stepper(context, _config.ActiveFontSize.ToString("0"), Control.FontActiveDown, Control.FontActiveUp);
 
-        Row(context, 5, "Surrounding lines size");
+        Row(context, 3, "Surrounding lines size");
         Stepper(context, _config.InactiveFontSize.ToString("0"), Control.FontInactiveDown, Control.FontInactiveUp);
 
-        Row(context, 6, "Karaoke sweep");
+        Group(context, 4, "MOTION");
+
+        Row(context, 4, "Karaoke sweep");
         Toggle(context, Control.KaraokeToggle, _config.Karaoke);
 
-        Row(context, 7, "Info pop-up");
+        Group(context, 5, "CHROME");
+
+        Row(context, 5, "Show track info");
+        Toggle(context, Control.Header, _config.ShowHeader);
+
+        // The pop-up is the header's lifetime, not a sibling setting five rows away.
+        Row(context, 6, "Info pop-up", child: true, enabled: _config.ShowHeader);
         Stepper(
             context,
             _config.InfoPopupSeconds == 0 ? "Off" : $"{_config.InfoPopupSeconds} s",
             Control.InfoPopupDown,
-            Control.InfoPopupUp);
+            Control.InfoPopupUp,
+            _config.ShowHeader);
+
+        Row(context, 7, "Show progress bar");
+        Toggle(context, Control.ProgressBar, _config.ShowProgressBar);
     }
 
-    private void DrawOledSection(ID2D1DeviceContext context)
+    /// <summary>
+    /// The surface behind the words. The preset leads and states what it overwrites, then the levers
+    /// that decide what stays lit, then the two that are set once and forgotten.
+    /// </summary>
+    private void DrawAppearanceSection(ID2D1DeviceContext context)
     {
-        Row(context, 0, "OLED preset");
+        RowWithNote(context, 0, "OLED preset", "backdrop 0 · progress off · dim 40 % · blackout · pixel shift");
         Button(context, ContentRight - 132f, RowTop(0) + 8f, 132f, 30f, "Apply preset", Control.OledPreset);
 
         Row(context, 1, "Backdrop opacity");
         Slider(context, Control.OledOpacitySlider, $"{Math.Round(_config.BackgroundOpacity * 100)}%");
 
-        Row(context, 2, "Auto-hide track info");
-        Stepper(
-            context,
-            _config.HeaderAutoHideSeconds == 0 ? "Never" : $"{_config.HeaderAutoHideSeconds} s",
-            Control.OledAutoHideDown,
-            Control.OledAutoHideUp);
+        Group(context, 2, "WHAT STAYS LIT");
 
-        Row(context, 3, "Highlight the active line");
+        Row(context, 2, "Highlight the active line");
         Toggle(context, Control.OledHighlight, _config.ShowActiveLineHighlight);
 
-        Row(context, 4, "Dim surrounding lines");
+        Row(context, 3, "Dim surrounding lines");
         Stepper(context, $"{Math.Round(_config.InactiveLineOpacity * 100)}%", Control.OledDimDown, Control.OledDimUp);
+
+        // The one part of a swept line that is both static and lit is the half waiting to be sung.
+        // Pure black is an unlit pixel on the panel, so the words appear only as the sweep reaches
+        // them. It draws nothing while the sweep is off, which is why the preset turns the sweep on;
+        // until the scroll viewport lets this row live under Karaoke sweep, it says so here.
+        Row(context, 4, "Black out unsung words", child: true, enabled: _config.Karaoke);
+        Toggle(context, Control.OledBlackout, _config.KaraokeBlackout, _config.Karaoke);
+
+        Group(context, 5, "BURN-IN TOOLS");
 
         Row(context, 5, "Pixel shift");
         Toggle(context, Control.OledPixelShift, _config.PixelShift);
@@ -1339,17 +1382,34 @@ internal sealed class SettingsWindow : WindowBase
         Row(context, 6, "Outline text");
         Toggle(context, Control.OledOutline, _config.TextOutline);
 
-        // The one part of a swept line that is both static and lit is the half waiting to be sung.
-        // Pure black is an unlit pixel on the panel, so the words appear only as the sweep reaches
-        // them. It does nothing while the sweep is off, which is why the preset turns the sweep on.
-        Row(context, 7, "Black out unsung words");
-        Toggle(context, Control.OledBlackout, _config.KaraokeBlackout);
+        // The header's lifetime, so it follows the header rather than sitting three rows above it.
+        Row(context, 7, "Auto-hide track info", child: true, enabled: _config.ShowHeader);
+        Stepper(
+            context,
+            _config.HeaderAutoHideSeconds == 0 ? "Never" : $"{_config.HeaderAutoHideSeconds} s",
+            Control.OledAutoHideDown,
+            Control.OledAutoHideUp,
+            _config.ShowHeader);
     }
 
     private void DrawShortcutsSection(ID2D1DeviceContext context)
     {
         for (var i = 0; i < ShortcutActions.All.Length; i++)
         {
+            // Caption at the first row of each group; eight rows still fit under the section header.
+            if (i == 0)
+            {
+                Group(context, i, "OVERLAY");
+            }
+            else if (i == 3)
+            {
+                Group(context, i, "TIMING");
+            }
+            else if (i == 6)
+            {
+                Group(context, i, "WINDOWS");
+            }
+
             var action = ShortcutActions.All[i];
             Row(context, i, action.Label);
             ShortcutChip(context, i, action);
@@ -1411,6 +1471,8 @@ internal sealed class SettingsWindow : WindowBase
 
     private void DrawBehaviourSection(ID2D1DeviceContext context)
     {
+        Group(context, 0, "HIDE");
+
         Row(context, 0, "Hide when paused");
         Toggle(context, Control.HidePaused, _config.HideWhenPaused);
 
@@ -1420,39 +1482,53 @@ internal sealed class SettingsWindow : WindowBase
         Row(context, 2, "Hide instrumentals");
         Toggle(context, Control.HideInstrumental, _config.HideWhenInstrumental);
 
+        Group(context, 3, "WARN");
+
         Row(context, 3, "Warn when a player does not publish");
         Toggle(context, Control.WarnPlayer, _config.WarnWhenPlayerDoesNotPublish);
 
         Row(context, 4, "Notify when lyrics are missing");
         Toggle(context, Control.NotifyMissingLyrics, _config.NotifyWhenLyricsMissing);
+
+        // Moved out of Advanced: starting with Windows is a behaviour, not housekeeping.
+        Group(context, 5, "STARTUP");
+
+        Row(context, 5, "Start with Windows");
+        Toggle(context, Control.StartWithWindows, _config.StartWithWindows);
     }
 
     private void DrawTimingSection(ID2D1DeviceContext context)
     {
-        Row(context, 0, "Lyric offset");
-        Stepper(context, LyricText.FormatOffset(_config.LyricsOffsetMs), Control.OffsetDown, Control.OffsetUp);
+        // The value leads and is set at twenty pixels, because it is the one number this section is
+        // about; the nudges either side are the same quarter second as the bar and the hotkeys.
+        RowWithNote(context, 0, "Lyric offset", "applies to every track");
+        TimingReadout(context, 0, LyricText.FormatOffset(_config.LyricsOffsetMs));
 
         Row(context, 1, "Reset to zero");
-        Button(context, ContentRight - 132f, RowTop(1) + 8f, 132f, 30f, "Reset timing", Control.OffsetReset);
+        Button(
+            context,
+            ContentRight - 132f,
+            RowTop(1) + 8f,
+            132f,
+            30f,
+            "Reset timing",
+            Control.OffsetReset,
+            _config.LyricsOffsetMs != 0);
 
         Hint(context, 2, "Positive shows the lyrics later; use this when they run ahead of the music.");
     }
 
     private void DrawPositionSection(ID2D1DeviceContext context)
     {
+        // Three monitors instead of three words: the anchor is a position, and the offsets below are
+        // measured from the edge this draws.
         Row(context, 0, "Anchor");
-        Segmented(
-            context,
-            [
-                ("Bottom", Control.AnchorBottom, _config.Anchor == OverlayAnchor.BottomCenter),
-                ("Top", Control.AnchorTop, _config.Anchor == OverlayAnchor.TopCenter),
-                ("Centre", Control.AnchorCentre, _config.Anchor == OverlayAnchor.Center)
-            ]);
+        AnchorDiagram(context, 0);
 
         Row(context, 1, "Offset from the anchor");
         Label(
             context,
-            $"{_config.OffsetX} , {_config.OffsetY} px",
+            $"{_config.OffsetX}, {_config.OffsetY} px",
             ContentRight - 200f,
             RowTop(1),
             200f,
@@ -1473,17 +1549,17 @@ internal sealed class SettingsWindow : WindowBase
         Row(context, 0, "Settings folder");
         Button(context, ContentRight - 132f, RowTop(0) + 8f, 132f, 30f, "Open", Control.OpenData);
 
-        Row(context, 1, "Lyrics cache");
+        // The size belongs on the row it describes, not in a footer sentence that also carried the
+        // version number.
+        var (entries, bytes) = _cacheStats();
+        RowWithNote(context, 1, "Lyrics cache", $"{entries} entries \u00b7 {FormatBytes(bytes)}");
         Button(context, ContentRight - 132f, RowTop(1) + 8f, 132f, 30f, "Open", Control.OpenCache);
 
         Row(context, 2, "Clear lyrics cache");
         Button(context, ContentRight - 132f, RowTop(2) + 8f, 132f, 30f, "Clear", Control.ClearCache);
 
-        Row(context, 3, "Start with Windows");
-        Toggle(context, Control.StartWithWindows, _config.StartWithWindows);
-
-        var (entries, bytes) = _cacheStats();
-        Hint(context, 4, $"{entries} cache entries \u00b7 {FormatBytes(bytes)} \u00b7 Version {_version}");
+        // Start with Windows left for Behaviour; what is left here is housekeeping, and the one
+        // destructive action closes the section. The version is in the footer, said once.
     }
 
     private static string FormatBytes(long bytes)
@@ -1497,12 +1573,12 @@ internal sealed class SettingsWindow : WindowBase
     }
 
     /// <summary>
-    /// The source section: the pin, then the priority order, then the one button that can be pressed
-    /// without knowing an app user model id. The grid is fixed at eight rows - one pin, six priority
-    /// slots and one add row - because the window has no scrollbar and a list that grew would push the
-    /// footer off the bottom.
+    /// The players: who is being followed, then the priority order, then the one button that can be
+    /// pressed without knowing an app user model id. The grid is fixed at eight rows - one status row,
+    /// six priority slots and one add row - because the window has no scrollbar and a list that grew
+    /// would push the footer off the bottom.
     /// </summary>
-    private void DrawSourceSection(ID2D1DeviceContext context)
+    private void DrawPlayersSection(ID2D1DeviceContext context)
     {
         // Asked once for the whole section: three separate calls could disagree if a player was closed
         // in between, and the pin, the slots and the add row all describe the same moment.
@@ -1513,10 +1589,10 @@ internal sealed class SettingsWindow : WindowBase
 
         var pinned = !string.IsNullOrWhiteSpace(_config.SourcePinned);
 
-        // Row 0: the pin, drawn above the list because it outranks it. The value is the pinned
-        // player's name derived from the app user model id - the player may well be closed while it is
-        // pinned, so the name cannot be read off a live session.
-        Row(context, 0, "Pin one player");
+        // Row 0: the state and its switch. The value is the pinned player's name derived from the app
+        // user model id - the player may well be closed while it is pinned, so the name cannot be read
+        // off a live session. It reads as one line: Following, the name, the switch that pins it.
+        Row(context, 0, "Following");
         Label(
             context,
             pinned ? Fit(NowPlayingSnapshot.FriendlyNameFor(_config.SourcePinned), 28) : "Automatic",
@@ -1549,7 +1625,8 @@ internal sealed class SettingsWindow : WindowBase
             var left = ContentRight - RankButtonsWidth;
 
             // The label is never blank: NormalisePriority fills in the app user model id on load.
-            Row(context, row, Fit(_config.SourcePriority[slot].Label, 36));
+            // The number is part of the label: six rows only read as an order if the order is written.
+            Row(context, row, Fit($"{slot + 1} \u00b7 {_config.SourcePriority[slot].Label}", 36));
 
             // The arrow that cannot do anything is drawn dimmed rather than left out: a row with a
             // different number of buttons would shift the column as the list changes length.
@@ -1665,8 +1742,45 @@ internal sealed class SettingsWindow : WindowBase
 
     private static float RowTop(int index) => RowsTopDip + (index * RowHeightDip);
 
-    private void Row(ID2D1DeviceContext context, int index, string label) =>
-        Label(context, label, ContentLeft, RowTop(index), ContentWidth - 200f, RowHeightDip, 13.5f, FontWeight.Normal, ColorText);
+    private void Row(ID2D1DeviceContext context, int index, string label, bool child = false, bool enabled = true)
+    {
+        if (child)
+        {
+            // The rail marks a row that exists because of the row above it; the same 40 % accent the
+            // navigation uses for the section that is open.
+            FillRound(context, ContentLeft, RowTop(index) + 14f, 2f, 18f, 1f, ColorAccent & 0x66FFFFFF);
+        }
+
+        Label(
+            context,
+            label,
+            child ? ContentLeft + 14f : ContentLeft,
+            RowTop(index),
+            ContentWidth - 200f,
+            RowHeightDip,
+            13.5f,
+            FontWeight.Normal,
+            enabled ? ColorText : ColorTextFaint);
+    }
+
+    /// <summary>
+    /// A rule and a caption at the top of a row. It costs no height: the row's own gap is the space it
+    /// uses, which is what keeps the eight-row budget intact while the section gains four groups.
+    /// </summary>
+    private void Group(ID2D1DeviceContext context, int index, string caption)
+    {
+        var y = RowTop(index) + 1f;
+
+        Label(context, caption, ContentLeft, y - 8f, 104f, 18f, 9.5f, FontWeight.SemiBold, ColorTextFaint);
+        Fill(context, R(ContentLeft + 112f, y, ContentRight, y + 1f), ColorLine);
+    }
+
+    /// <summary>A row whose label carries a second, quieter line: what the preset sets, how big the cache is.</summary>
+    private void RowWithNote(ID2D1DeviceContext context, int index, string label, string note)
+    {
+        Label(context, label, ContentLeft, RowTop(index) - 7f, ContentWidth - 200f, RowHeightDip, 13.5f, FontWeight.Normal, ColorText);
+        Label(context, note, ContentLeft, RowTop(index) + 22f, ContentWidth - 180f, 16f, 11f, FontWeight.Normal, ColorTextFaint);
+    }
 
     private void Hint(ID2D1DeviceContext context, int index, string text) =>
         Label(context, text, ContentLeft, RowTop(index) + 12f, ContentWidth, 40f, 12f, FontWeight.Normal, ColorTextFaint);
@@ -1685,12 +1799,18 @@ internal sealed class SettingsWindow : WindowBase
         var top = RowTop(RowOf(id)) + ((RowHeightDip - height) / 2f);
         var hot = enabled && _hover == (int)id;
 
-        FillRound(context, left, top, width, height, height / 2f, value ? ColorAccent : (hot ? ColorControlHot : ColorControl));
+        // A switch that cannot act stays neutral rather than lit: an accent track with a faint knob
+        // reads as "on but broken", where a grey track reads as "not now".
+        FillRound(context, left, top, width, height, height / 2f,
+            value && enabled ? ColorAccent : (hot ? ColorControlHot : ColorControl));
 
         var knobLeft = value ? left + width - knob - 3f : left + 3f;
         FillRound(context, knobLeft, top + 3f, knob, knob, knob / 2f, enabled ? ColorKnob : ColorTextFaint);
 
-        Hit((int)id, R(left - 8f, top - 8f, left + width + 8f, top + height + 8f));
+        if (enabled)
+        {
+            Hit((int)id, R(left - 8f, top - 8f, left + width + 8f, top + height + 8f));
+        }
     }
 
     private void Segmented(ID2D1DeviceContext context, (string Text, Control Id, bool Selected)[] options)
@@ -1726,7 +1846,7 @@ internal sealed class SettingsWindow : WindowBase
         }
     }
 
-    private void Stepper(ID2D1DeviceContext context, string value, Control down, Control up)
+    private void Stepper(ID2D1DeviceContext context, string value, Control down, Control up, bool enabled = true)
     {
         const float height = 30f;
         const float button = 30f;
@@ -1737,7 +1857,7 @@ internal sealed class SettingsWindow : WindowBase
         var left = ContentRight - total;
         var top = RowTop(RowOf(down)) + ((RowHeightDip - height) / 2f);
 
-        Button(context, left, top, button, height, "\u2212", down);
+        Button(context, left, top, button, height, "\u2212", down, enabled);
         FillRound(context, left + button + gap, top, valueWidth, height, 8f, ColorControl);
         Label(
             context,
@@ -1748,10 +1868,76 @@ internal sealed class SettingsWindow : WindowBase
             height,
             12.5f,
             FontWeight.SemiBold,
-            ColorText,
+            enabled ? ColorText : ColorTextFaint,
             TextAlignment.Center);
 
-        Button(context, left + button + gap + valueWidth + gap, top, button, height, "+", up);
+        Button(context, left + button + gap + valueWidth + gap, top, button, height, "+", up, enabled);
+    }
+
+    /// <summary>
+    /// The offset as the bar prints it: the total at twenty pixels with the two nudges either side. The
+    /// three gestures - this, the overlay bar and the hotkeys - are one step of a quarter second.
+    /// </summary>
+    private void TimingReadout(ID2D1DeviceContext context, int index, string value)
+    {
+        const float button = 30f;
+        const float valueWidth = 96f;
+        const float gap = 6f;
+
+        var total = (button * 2) + valueWidth + (gap * 2);
+        var left = ContentRight - total;
+        var top = RowTop(index) + 8f;
+
+        Button(context, left, top, button, 30f, "\u2212", Control.OffsetDown);
+        Label(context, value, left + button + gap, top, valueWidth, 30f, 20f, FontWeight.SemiBold, ColorText, TextAlignment.Center);
+        Button(context, left + button + gap + valueWidth + gap, top, button, 30f, "+", Control.OffsetUp);
+    }
+
+    /// <summary>
+    /// Three monitors, one per anchor, with a bar where the overlay would sit. A position is easier to
+    /// recognise than to read, and the offsets below are measured from the edge this shows.
+    /// </summary>
+    private void AnchorDiagram(ID2D1DeviceContext context, int index)
+    {
+        const float tileWidth = 54f;
+        const float tileHeight = 34f;
+        const float gap = 8f;
+
+        var total = (tileWidth * 3f) + (gap * 2f);
+        var left = ContentRight - total;
+        var top = RowTop(index) + 6f;
+
+        for (var i = 0; i < 3; i++)
+        {
+            var anchor = i switch
+            {
+                0 => OverlayAnchor.BottomCenter,
+                1 => OverlayAnchor.TopCenter,
+                _ => OverlayAnchor.Center
+            };
+
+            var id = i switch
+            {
+                0 => Control.AnchorBottom,
+                1 => Control.AnchorTop,
+                _ => Control.AnchorCentre
+            };
+
+            // Nine pixels in from either side, so the bar reads as the overlay's own width.
+            var barTop = i switch
+            {
+                0 => top + 24f,
+                1 => top + 6f,
+                _ => top + 15f
+            };
+
+            var selected = _config.Anchor == anchor;
+            var tileLeft = left + (i * (tileWidth + gap));
+
+            FillRound(context, tileLeft, top, tileWidth, tileHeight, 6f, selected ? ColorSelected : ColorControl);
+            FillRound(context, tileLeft + 9f, barTop, tileWidth - 18f, 4f, 2f, selected ? ColorAccent : ColorTextFaint);
+            Hit((int)id, R(tileLeft, top, tileLeft + tileWidth, top + tileHeight));
+        }
     }
 
     private void Slider(ID2D1DeviceContext context, Control id, string value)
@@ -1807,41 +1993,60 @@ internal sealed class SettingsWindow : WindowBase
         var hot = enabled && _hover == (int)id;
         FillRound(context, left, top, width, height, 8f, hot ? ColorControlHot : ColorControl);
         Label(context, text, left, top, width, height, 12.5f, FontWeight.Normal, enabled ? ColorText : ColorTextFaint, TextAlignment.Center);
-        Hit((int)id, R(left, top, left + width, top + height));
+
+        // A dead button takes no hover and no click: the row that depends on another row has to look
+        // and behave like it is waiting for it.
+        if (enabled)
+        {
+            Hit((int)id, R(left, top, left + width, top + height));
+        }
     }
 
     /// <summary>The row each control lives in, so a control can be positioned without a second table.</summary>
     private int RowOf(Control id) => id switch
     {
+        // Lyrics
         Control.ModeSingle or Control.ModePeek or Control.ModeMulti => 0,
         Control.LinesDown or Control.LinesUp => 1,
-        Control.Header => 2,
-        Control.ProgressBar => 3,
-        Control.FontActiveDown or Control.FontActiveUp => 4,
-        Control.FontInactiveDown or Control.FontInactiveUp => 5,
-        Control.KaraokeToggle => 6,
-        Control.InfoPopupDown or Control.InfoPopupUp => 7,
+        Control.FontActiveDown or Control.FontActiveUp => 2,
+        Control.FontInactiveDown or Control.FontInactiveUp => 3,
+        Control.KaraokeToggle => 4,
+        Control.Header => 5,
+        Control.InfoPopupDown or Control.InfoPopupUp => 6,
+        Control.ProgressBar => 7,
+
+        // Appearance
         Control.OledPreset => 0,
         Control.OledOpacitySlider => 1,
-        Control.OledAutoHideDown or Control.OledAutoHideUp => 2,
-        Control.OledHighlight => 3,
-        Control.OledDimDown or Control.OledDimUp => 4,
+        Control.OledHighlight => 2,
+        Control.OledDimDown or Control.OledDimUp => 3,
+        Control.OledBlackout => 4,
         Control.OledPixelShift => 5,
         Control.OledOutline => 6,
-        Control.OledBlackout => 7,
+        Control.OledAutoHideDown or Control.OledAutoHideUp => 7,
+
+        // Behaviour
         Control.HidePaused => 0,
         Control.HideNoLyrics => 1,
         Control.HideInstrumental => 2,
         Control.WarnPlayer => 3,
         Control.NotifyMissingLyrics => 4,
+        Control.StartWithWindows => 5,
+
+        // Timing
         Control.OffsetDown or Control.OffsetUp => 0,
         Control.OffsetReset => 1,
+
+        // Position
         Control.AnchorBottom or Control.AnchorTop or Control.AnchorCentre => 0,
         Control.ResetPosition => 2,
+
+        // Advanced
         Control.OpenData => 0,
         Control.OpenCache => 1,
         Control.ClearCache => 2,
-        Control.StartWithWindows => 3,
+
+        // Players
         Control.SourcePin => 0,
         _ => 0
     };

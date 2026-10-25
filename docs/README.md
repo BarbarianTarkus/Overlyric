@@ -43,14 +43,14 @@ backdrop, so the black is the capture background rather than a theme.
 
 ### Settings
 
-| Overlay | Shortcuts |
+| Lyrics | Shortcuts |
 | --- | --- |
-| ![The Overlay settings section](images/settings-window.png) | ![The Shortcuts settings section](images/settings-shortcuts.png) |
-| Mode, lines, track info, progress bar, text sizes, karaoke and the info pop-up. | Click a chord, press the new combination, and it registers immediately. |
+| ![The Lyrics settings section](images/settings-window.png) | ![The Shortcuts settings section](images/settings-shortcuts.png) |
+| Mode, lines shown, text sizes, the karaoke sweep, and the track info and info pop-up it owns. | Click a chord, press the new combination, and it registers immediately. |
 
-| OLED | Source |
+| Appearance | Players |
 | --- | --- |
-| ![The OLED settings section](images/settings-oled.png) | ![The Source settings section](images/settings-source.png) |
-| After **Apply preset**: no backdrop, no highlight bar, dimmed surrounding lines. | Pin one player, or order the ones to prefer; the list is tried before Windows' own choice. |
+| ![The Appearance settings section](images/settings-oled.png) | ![The Players settings section](images/settings-source.png) |
+| After **Apply preset**: no backdrop, no highlight bar, dimmed surrounding lines. | Who is followed, and the order the rest are tried in; the list comes before Windows' own choice. |
 
 The [README](../README.md) uses a shorter selection.
