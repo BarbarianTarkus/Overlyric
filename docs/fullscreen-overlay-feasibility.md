@@ -3,7 +3,7 @@
 *Investigation only: no product code, README text or installer was changed. Evidence: a code-level review
 ([codebase-impact.md](feasibility/codebase-impact.md)), platform research with primary sources
 ([platform-research.md](feasibility/platform-research.md)), and a measurement probe
-([probe/FullscreenProbe](../probe/FullscreenProbe), [probe-results.md](feasibility/probe-results.md)).*
+([probe/FullscreenProbe](../probe/FullscreenProbe)).*
 
 ## The short answer
 

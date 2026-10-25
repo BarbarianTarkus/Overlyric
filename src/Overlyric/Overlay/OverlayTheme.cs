@@ -11,6 +11,29 @@ public enum OverlayMode
     MultiLine = 1
 }
 
+/// <summary>The actions on the bar that appears over an unlocked overlay.</summary>
+public enum OverlayControl
+{
+    Settings,
+    OffsetBack,
+    OffsetReset,
+    OffsetForward,
+    ViewLyrics,
+    ChooseLyrics
+}
+
+/// <summary>One live region of the control bar, in device-independent window coordinates.</summary>
+public readonly record struct OverlayControlHit(
+    OverlayControl Control,
+    float Left,
+    float Top,
+    float Right,
+    float Bottom)
+{
+    public bool Contains(float x, float y) =>
+        x >= Left && x < Right && y >= Top && y < Bottom;
+}
+
 /// <summary>Visual configuration. Colours are 0xAARRGGBB.</summary>
 public sealed class OverlayTheme
 {
@@ -63,6 +86,28 @@ public sealed class OverlayTheme
     public float LineSpacing { get; init; } = 6f;
     public float ProgressBarHeight { get; init; } = 3f;
     public float ProgressBarInset { get; init; } = 10f;
+
+    /// <summary>
+    /// Backdrop of the control bar. It is drawn even when the lyric backdrop has been turned
+    /// transparent: the bar is what lets the user act on the lyrics, so it has to stay readable over
+    /// whatever is behind the overlay.
+    /// </summary>
+    public uint ControlBarColor { get; init; } = 0xE80B0D12;
+
+    public uint ControlButtonColor { get; init; } = 0x14FFFFFF;
+
+    public uint ControlHoverColor { get; init; } = 0x33FFFFFF;
+
+    public uint ControlTextColor { get; init; } = 0xFFF5F7FA;
+
+    public uint ControlMutedColor { get; init; } = 0x99F5F7FA;
+
+    public uint ControlAccentColor { get; init; } = 0xFF7CC4FF;
+
+    public uint ControlDividerColor { get; init; } = 0x22FFFFFF;
+
+    /// <summary>Height of the button row, before its own padding.</summary>
+    public float ControlHeight { get; init; } = 32f;
 
     /// <summary>How many lyric lines a multi-line overlay shows at once.</summary>
     public int MultiLineCount { get; init; } = 5;
@@ -127,4 +172,19 @@ public sealed record OverlayVisual
     public float OffsetX { get; init; }
 
     public float OffsetY { get; init; }
+
+    /// <summary>
+    /// True while the mouse is over an unlocked overlay. The bar is deliberately a property of the
+    /// frame rather than of the renderer, so hovering repaints without disturbing the lyric state.
+    /// </summary>
+    public bool ShowControls { get; init; }
+
+    /// <summary>Current timing correction, as the bar prints it: "0.00 s", "+0.25 s".</summary>
+    public string OffsetLabel { get; init; } = "0.00 s";
+
+    /// <summary>Dim the reset affordance when there is nothing to reset.</summary>
+    public bool OffsetIsDefault { get; init; } = true;
+
+    /// <summary>Which bar button the mouse is over, if any.</summary>
+    public OverlayControl? HoveredControl { get; init; }
 }

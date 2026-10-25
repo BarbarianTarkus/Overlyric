@@ -323,6 +323,9 @@ internal static partial class NativeMethods
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     internal static extern IntPtr LoadCursorW(IntPtr hInstance, IntPtr lpCursorName);
 
+    [DllImport("user32.dll")]
+    internal static extern IntPtr SetCursor(IntPtr hCursor);
+
     [DllImport("user32.dll", SetLastError = true)]
     internal static extern IntPtr SetWindowLongPtrW(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
 

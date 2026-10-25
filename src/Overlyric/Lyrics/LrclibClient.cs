@@ -532,19 +532,66 @@ public sealed class LrclibClient : IDisposable
                 continue;
             }
 
-            candidates.Add(new LyricsCandidate
-            {
-                Id = record.Id,
-                TrackName = record.TrackName,
-                AlbumName = record.AlbumName,
-                DurationSeconds = record.Duration,
-                HasSynced = !string.IsNullOrWhiteSpace(record.SyncedLyrics),
-                HasPlain = !string.IsNullOrWhiteSpace(record.PlainLyrics),
-                IsInstrumental = record.Instrumental ?? false
-            });
+            candidates.Add(ToCandidate(record));
         }
 
         return candidates;
+    }
+
+    /// <summary>
+    /// One ranked record described for the selector. The bodies are inspected rather than trusted:
+    /// "syncedLyrics is not null" is also true for a record whose whole body is the word
+    /// "[Instrumental]", and a badge that promises timings must be able to keep the promise.
+    /// </summary>
+    private static LyricsCandidate ToCandidate(LrclibGetResponse record)
+    {
+        var fileLines = record.HasWordSync == true
+            ? LyricsFile.ParseLines(record.LyricsFile)
+            : Array.Empty<LyricLine>();
+
+        var wordSync = false;
+        foreach (var line in fileLines)
+        {
+            if (line.HasWordTimings)
+            {
+                wordSync = true;
+                break;
+            }
+        }
+
+        var fileUsable = fileLines.Count > 0 && !InstrumentalDetector.IsPlaceholderOnly(fileLines);
+
+        IReadOnlyList<LyricLine> synced = string.IsNullOrWhiteSpace(record.SyncedLyrics)
+            ? []
+            : LrcParser.Parse(record.SyncedLyrics!);
+        var syncedUsable = synced.Count > 0 && !InstrumentalDetector.IsPlaceholderOnly(synced);
+
+        IReadOnlyList<LyricLine> plain = string.IsNullOrWhiteSpace(record.PlainLyrics)
+            ? []
+            : SplitPlainLyrics(record.PlainLyrics!);
+        var plainUsable = plain.Count > 0 && !InstrumentalDetector.IsPlaceholderOnly(plain);
+
+        var bodyDeclaresInstrumental =
+            InstrumentalDetector.IsPlaceholderText(record.SyncedLyrics)
+            || InstrumentalDetector.IsPlaceholderText(record.PlainLyrics);
+
+        var hasSynced = fileUsable || syncedUsable;
+
+        return new LyricsCandidate
+        {
+            Id = record.Id,
+            TrackName = record.TrackName,
+            ArtistName = record.ArtistName,
+            AlbumName = record.AlbumName,
+            DurationSeconds = record.Duration,
+            HasSynced = hasSynced,
+            HasPlain = plainUsable,
+            HasWordSync = wordSync && fileUsable,
+            IsInstrumental = (record.Instrumental ?? false)
+                             || (!hasSynced && !plainUsable && bodyDeclaresInstrumental),
+            SyncedLineCount = fileUsable ? fileLines.Count : syncedUsable ? synced.Count : 0,
+            PlainLineCount = plainUsable ? plain.Count : 0
+        };
     }
 
     private static LyricsResult? ToResult(LrclibGetResponse? record)

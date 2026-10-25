@@ -27,11 +27,19 @@ internal sealed class LyricsRenderer : IDisposable
     /// </summary>
     private const float NoticeContentGap = 4f;
 
+    private const float ControlButtonHeight = 32f;
+    private const float ControlButtonGap = 4f;
+    private const float ControlGroupGap = 10f;
+    private const float ControlBarPadding = 5f;
+    private const float ControlGap = 6f;
+
     private readonly IDWriteFactory _writeFactory;
     private OverlayTheme _theme;
     private readonly Dictionary<(float Size, FontWeight Weight), IDWriteTextFormat> _formats = [];
     private readonly Dictionary<uint, ID2D1SolidColorBrush> _brushes = [];
     private readonly Dictionary<(string Text, float Size, FontWeight Weight), IDWriteTextLayout> _layouts = [];
+    private readonly Dictionary<(string Text, int Width, int Height, float Size, FontWeight Weight), IDWriteTextLayout> _controlLayouts = [];
+    private readonly List<OverlayControlHit> _controlHits = [];
 
     private float _layoutWidth = -1f;
     private float _layoutHeight = 200f;
@@ -45,6 +53,15 @@ internal sealed class LyricsRenderer : IDisposable
 
     /// <summary>Bounds of the drawn content in device-independent pixels, for hit testing.</summary>
     public Rect ContentBounds { get; private set; }
+
+    /// <summary>
+    /// The live buttons of the control bar, in device-independent window coordinates. Empty while the
+    /// bar is not drawn, which is what keeps a locked or idle overlay click-through.
+    /// </summary>
+    public IReadOnlyList<OverlayControlHit> ControlHits => _controlHits;
+
+    /// <summary>The bar itself, including its padding; used for hit testing the gap under it.</summary>
+    public Rect ControlsBounds { get; private set; }
 
     /// <summary>
     /// Adopt a new theme without rebuilding the renderer. Text formats, cached layouts and brushes
@@ -77,6 +94,8 @@ internal sealed class LyricsRenderer : IDisposable
     public void Draw(ID2D1DeviceContext context, Size viewport, OverlayVisual visual)
     {
         ContentBounds = default;
+        ControlsBounds = default;
+        _controlHits.Clear();
 
         var width = viewport.Width;
         var height = viewport.Height;
@@ -112,6 +131,13 @@ internal sealed class LyricsRenderer : IDisposable
             // notice with the rest of the pixels, otherwise it would sit still and defeat the point.
             DrawNotice(context, visual, width, height, margin);
         });
+
+        if (visual.ShowControls)
+        {
+            // Deliberately outside the burn-in transform: a button that moves under the pointer is
+            // a button that is hard to hit, and the hit rectangles have to match the pixels exactly.
+            DrawControls(context, visual, width, height, margin);
+        }
     }
 
     /// <summary>
@@ -446,6 +472,225 @@ internal sealed class LyricsRenderer : IDisposable
     }
 
     /// <summary>
+    /// The bar that appears when the mouse is over an unlocked overlay: Settings, the timing nudge,
+    /// and the two lyric windows. It is drawn above the lyrics when there is room and below them when
+    /// there is not, and it never moves under the pointer with the burn-in nudge.
+    /// </summary>
+    private void DrawControls(
+        ID2D1DeviceContext context,
+        OverlayVisual visual,
+        float width,
+        float height,
+        float margin)
+    {
+        const float labelSize = 12.5f;
+
+        var settingsWidth = MathF.Max(76f, MeasureWidth("Settings", labelSize) + 26f);
+        var backWidth = 32f;
+        var forwardWidth = 32f;
+        var valueWidth = MathF.Max(64f, MeasureWidth(visual.OffsetLabel, labelSize) + 22f);
+        var resetWidth = MathF.Max(56f, MeasureWidth("Reset", labelSize) + 24f);
+        var viewWidth = MathF.Max(94f, MeasureWidth("Full lyrics", labelSize) + 26f);
+        var chooseWidth = MathF.Max(112f, MeasureWidth("Choose lyrics", labelSize) + 26f);
+
+        var offsetWidth = backWidth + valueWidth + forwardWidth + resetWidth + (ControlButtonGap * 3f);
+        var totalWidth = (ControlBarPadding * 2f)
+                         + settingsWidth
+                         + ControlGroupGap
+                         + offsetWidth
+                         + ControlGroupGap
+                         + viewWidth
+                         + ControlButtonGap
+                         + chooseWidth;
+
+        if (totalWidth > width - (2f * margin))
+        {
+            return;
+        }
+
+        var barHeight = ControlButtonHeight + (ControlBarPadding * 2f);
+        var left = (width - totalWidth) / 2f;
+        var top = ResolveControlTop(visual, height, margin, barHeight);
+
+        ControlsBounds = new Rect(RectangleF.FromLTRB(left, top, left + totalWidth, top + barHeight));
+
+        context.FillRoundedRectangle(
+            Rounded(left, top, totalWidth, barHeight, MathF.Max(6f, _theme.CornerRadius * 0.55f)),
+            GetBrush(context, _theme.ControlBarColor));
+
+        var x = left + ControlBarPadding;
+        var y = top + ControlBarPadding;
+
+        DrawControlButton(context, visual, OverlayControl.Settings, "Settings", x, y, settingsWidth);
+        x += settingsWidth;
+
+        DrawControlDivider(context, x + (ControlGroupGap / 2f), y, ControlButtonHeight);
+        x += ControlGroupGap;
+
+        DrawControlButton(context, visual, OverlayControl.OffsetBack, "\u2212", x, y, backWidth);
+        x += backWidth + ControlButtonGap;
+
+        DrawOffsetChip(context, visual, x, y, valueWidth);
+        x += valueWidth + ControlButtonGap;
+
+        DrawControlButton(context, visual, OverlayControl.OffsetForward, "+", x, y, forwardWidth);
+        x += forwardWidth + ControlButtonGap;
+
+        DrawControlButton(
+            context,
+            visual,
+            OverlayControl.OffsetReset,
+            "Reset",
+            x,
+            y,
+            resetWidth,
+            visual.OffsetIsDefault);
+        x += resetWidth;
+
+        DrawControlDivider(context, x + (ControlGroupGap / 2f), y, ControlButtonHeight);
+        x += ControlGroupGap;
+
+        DrawControlButton(context, visual, OverlayControl.ViewLyrics, "Full lyrics", x, y, viewWidth);
+        x += viewWidth + ControlButtonGap;
+
+        DrawControlButton(context, visual, OverlayControl.ChooseLyrics, "Choose lyrics", x, y, chooseWidth);
+    }
+
+    /// <summary>
+    /// Above the lyrics when the window has room, below them when it does not, and over the top of
+    /// the content when neither fits. A visible notice already occupies the top, so the bar gives way
+    /// to it whenever it can.
+    /// </summary>
+    private float ResolveControlTop(OverlayVisual visual, float height, float margin, float barHeight)
+    {
+        var hasContent = ContentBounds.Right > ContentBounds.Left
+                         && ContentBounds.Bottom > ContentBounds.Top;
+
+        if (!hasContent)
+        {
+            return margin;
+        }
+
+        var above = ContentBounds.Top - barHeight - ControlGap;
+        var below = ContentBounds.Bottom + ControlGap;
+        var belowFits = below + barHeight <= height - margin;
+        var noticeAtTop = visual.Notice is { IsEmpty: false };
+
+        if (noticeAtTop && belowFits)
+        {
+            return below;
+        }
+
+        if (above >= margin)
+        {
+            return above;
+        }
+
+        return belowFits ? below : margin;
+    }
+
+    private void DrawControlButton(
+        ID2D1DeviceContext context,
+        OverlayVisual visual,
+        OverlayControl control,
+        string label,
+        float left,
+        float top,
+        float width,
+        bool muted = false)
+    {
+        var hot = visual.HoveredControl == control;
+
+        if (hot)
+        {
+            context.FillRoundedRectangle(
+                Rounded(left, top, width, ControlButtonHeight, 8f),
+                GetBrush(context, _theme.ControlHoverColor));
+        }
+
+        var layout = GetControlLayout(
+            label,
+            (int)MathF.Ceiling(width - 12f),
+            (int)ControlButtonHeight,
+            12.5f,
+            FontWeight.SemiBold);
+
+        var origin = new Vector2(left + 6f, top + MathF.Max(0f, (ControlButtonHeight - layout.Metrics.Height) / 2f));
+        var color = muted ? _theme.ControlMutedColor : _theme.ControlTextColor;
+        context.DrawTextLayout(origin, layout, GetBrush(context, color));
+
+        _controlHits.Add(new OverlayControlHit(control, left, top, left + width, top + ControlButtonHeight));
+    }
+
+    private void DrawOffsetChip(
+        ID2D1DeviceContext context,
+        OverlayVisual visual,
+        float left,
+        float top,
+        float width)
+    {
+        context.FillRoundedRectangle(
+            Rounded(left, top, width, ControlButtonHeight, 8f),
+            GetBrush(context, _theme.ControlButtonColor));
+
+        var layout = GetControlLayout(
+            visual.OffsetLabel,
+            (int)MathF.Ceiling(width - 10f),
+            (int)ControlButtonHeight,
+            12.5f,
+            FontWeight.SemiBold);
+
+        var origin = new Vector2(left + 5f, top + MathF.Max(0f, (ControlButtonHeight - layout.Metrics.Height) / 2f));
+        context.DrawTextLayout(
+            origin,
+            layout,
+            GetBrush(context, visual.OffsetIsDefault ? _theme.ControlMutedColor : _theme.ControlAccentColor));
+    }
+
+    private void DrawControlDivider(ID2D1DeviceContext context, float x, float top, float height)
+    {
+        context.FillRectangle(
+            new Rect(RectangleF.FromLTRB(x, top + 6f, x + 1f, top + height - 6f)),
+            GetBrush(context, _theme.ControlDividerColor));
+    }
+
+    private float MeasureWidth(string text, float size) =>
+        GetLayout(text, size, FontWeight.SemiBold).Metrics.Width;
+
+    /// <summary>
+    /// A layout constrained to one button. The shared lyric layouts are measured against the whole
+    /// window, so drawing them in a button would centre them in the wrong box.
+    /// </summary>
+    private IDWriteTextLayout GetControlLayout(string text, int width, int height, float size, FontWeight weight)
+    {
+        var key = (text, width, height, size, weight);
+
+        if (_controlLayouts.TryGetValue(key, out var cached))
+        {
+            return cached;
+        }
+
+        var layout = _writeFactory.CreateTextLayout(
+            text,
+            GetFormat(size, weight),
+            Math.Max(8, width),
+            Math.Max(8, height));
+
+        _controlLayouts[key] = layout;
+        return layout;
+    }
+
+    private void ClearControlLayouts()
+    {
+        foreach (var layout in _controlLayouts.Values)
+        {
+            layout.Dispose();
+        }
+
+        _controlLayouts.Clear();
+    }
+
+    /// <summary>
     /// Text is drawn more than once so it stays readable over bright or busy backgrounds. The
     /// default is a soft shadow; an outline is the same idea with a hard edge, which is what a
     /// transparent backdrop needs to keep light text legible.
@@ -623,6 +868,7 @@ internal sealed class LyricsRenderer : IDisposable
         }
 
         _layouts.Clear();
+        ClearControlLayouts();
     }
 
     private IDWriteTextFormat GetFormat(float size, FontWeight weight)

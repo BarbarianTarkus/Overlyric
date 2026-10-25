@@ -272,11 +272,12 @@ internal sealed class SettingsWindow : WindowBase
     protected override int WindowStyle => WS_POPUP;
 
     /// <summary>
-    /// Frameless, like the overlay. A themed window frame does not get painted for a window whose
-    /// content comes from DirectComposition - the desktop shows through a few pixels of each side -
-    /// so the title bar is drawn here instead and the whole window is client area.
+    /// Frameless, like the overlay: a themed window frame is not painted for a window whose content
+    /// comes from DirectComposition, so the title bar is drawn here instead. Topmost, also like the
+    /// overlay, because a settings window that slips underneath the lyrics is a window the user cannot
+    /// read; it is only created on request.
     /// </summary>
-    protected override int WindowExtraStyle => WS_EX_NOREDIRECTIONBITMAP | WS_EX_APPWINDOW;
+    protected override int WindowExtraStyle => WS_EX_NOREDIRECTIONBITMAP | WS_EX_APPWINDOW | WS_EX_TOPMOST;
 
     /// <summary>COLORREF is 0x00BBGGRR; this is the window's #0F1116.</summary>
     protected override IntPtr BackgroundBrush
@@ -1395,7 +1396,7 @@ internal sealed class SettingsWindow : WindowBase
     private void DrawTimingSection(ID2D1DeviceContext context)
     {
         Row(context, 0, "Lyric offset");
-        Stepper(context, FormatOffset(_config.LyricsOffsetMs), Control.OffsetDown, Control.OffsetUp);
+        Stepper(context, LyricText.FormatOffset(_config.LyricsOffsetMs), Control.OffsetDown, Control.OffsetUp);
 
         Row(context, 1, "Reset to zero");
         Button(context, ContentRight - 132f, RowTop(1) + 8f, 132f, 30f, "Reset timing", Control.OffsetReset);
@@ -1793,16 +1794,6 @@ internal sealed class SettingsWindow : WindowBase
     };
 
     private void Hit(int id, Rect rect) => _hits.Add((id, rect));
-
-    private static string FormatOffset(int milliseconds)
-    {
-        if (milliseconds == 0)
-        {
-            return "0 s";
-        }
-
-        return (milliseconds / 1000.0).ToString("+0.00;-0.00", System.Globalization.CultureInfo.InvariantCulture) + " s";
-    }
 
     private void Fill(ID2D1DeviceContext context, Rect rect, uint argb) =>
         context.FillRectangle(rect, GetBrush(context, argb));

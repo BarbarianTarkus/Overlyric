@@ -90,8 +90,9 @@ internal static class Commands
     public const int OpenCacheFolder = 160;
     public const int OpenConfigFolder = 161;
     public const int OpenSettings = 180;
-    public const int AutoVersion = 170;
-    public const int RefreshVersions = 171;
+
+    /// <summary>Open the lyric selector window, from the tray or the overlay's control bar.</summary>
+    public const int OpenLyricPicker = 172;
 
     // The source menu is tray-only - no hotkey is bound to a player - but its ids live here with the
     // rest, because this class is the one id namespace: the tray and the hotkey table are dispatched
@@ -102,8 +103,8 @@ internal static class Commands
     /// <summary>Source-menu entries carry the index of the entry they were built for in the id.</summary>
     public const int PinSourceBase = 210;
 
-    /// <summary>Command ids for version-menu entries are this base plus the candidate index.</summary>
-    public const int SelectVersionBase = 1000;
+    /// <summary>One past the source block, so its indices can be decoded by subtraction.</summary>
+    public const int PinSourceEnd = 300;
 
     public const int Exit = 199;
 }

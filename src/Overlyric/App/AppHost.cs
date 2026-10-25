@@ -69,6 +69,30 @@ internal sealed class AppHost
     private long _nextLyricsRetryAt;
     private long _lyricsRevision = -1;
 
+    /// <summary>The lrclib record behind the lines on screen, when the answer carried one.</summary>
+    private long? _lyricsRecordId;
+
+    /// <summary>How many version searches are in flight; the selector shows a loading state while it is not zero.</summary>
+    private int _versionsInFlight;
+
+    /// <summary>
+    /// Bumped whenever the lyric answer changes, so the open windows can redraw on the UI thread
+    /// instead of being rendered from the lookup's background thread.
+    /// </summary>
+    private int _lyricsStamp;
+
+    /// <summary>Bumped whenever the candidate list changes, for the same reason.</summary>
+    private int _versionsStamp;
+
+    /// <summary>
+    /// The track revision whose alternative list has already been asked for. It stops the selector's
+    /// live refresh from re-asking every tick after a failed search; Look again resets the intent.
+    /// </summary>
+    private long _versionsAttemptedRevision = -1;
+
+    private int _uiLyricsStamp = -1;
+    private int _uiVersionsStamp = -1;
+
     /// <summary>
     /// The transient "what just started, and what did the lookup find" notice. It lives in the same
     /// overlay as the lyrics, which is also the only surface an OLED preset has left: it is dynamic,
@@ -115,6 +139,8 @@ internal sealed class AppHost
     private string? _lastTooltip;
     private int _topmostTicks;
     private SettingsWindow? _settings;
+    private LyricPickerWindow? _picker;
+    private LyricViewerWindow? _viewer;
     private readonly bool _openSettings;
 
     /// <summary>Action names whose default chord another application already owns.</summary>
@@ -192,6 +218,11 @@ internal sealed class AppHost
 
         _overlay.OpacityScrolled += OnOpacityScrolled;
         _overlay.Moved += OnOverlayMoved;
+        _overlay.SettingsRequested += OpenSettings;
+        _overlay.OffsetStepRequested += NudgeLyrics;
+        _overlay.OffsetResetRequested += ResetLyricsOffset;
+        _overlay.ViewLyricsRequested += OpenLyricViewer;
+        _overlay.ChooseLyricsRequested += OpenLyricPicker;
 
         if (_demo)
         {
@@ -381,6 +412,7 @@ internal sealed class AppHost
         {
             _lastRevision = snapshot.Revision;
             _headerShownAt = Stopwatch.GetTimestamp();
+            Interlocked.Increment(ref _versionsStamp);
 
             // A new song - or the first one seen after start-up - is exactly when a listener wants
             // to know what is playing and what the lyric lookup made of it.
@@ -390,7 +422,7 @@ internal sealed class AppHost
             {
                 _lyricsRetryAttempt = 0;
                 _nextLyricsRetryAt = 0;
-                StartLyricsFetch(snapshot);
+                StartLyricsFetch(snapshot, clearVersions: true);
             }
         }
         else if (!_demo && ShouldRetryLyrics())
@@ -409,7 +441,13 @@ internal sealed class AppHost
         // The burn-in nudge rides on the visual rather than the window, so placement, dragging and
         // hit testing are unaffected.
         var (shiftX, shiftY) = PixelShiftOffset(position);
-        visual = visual with { OffsetX = shiftX, OffsetY = shiftY };
+        visual = visual with
+        {
+            OffsetX = shiftX,
+            OffsetY = shiftY,
+            OffsetLabel = LyricText.FormatOffset(_config.LyricsOffsetMs),
+            OffsetIsDefault = _config.LyricsOffsetMs == 0
+        };
 
         if (!VisualEquals(_visual, visual))
         {
@@ -424,6 +462,7 @@ internal sealed class AppHost
 
         UpdateVisibility(snapshot);
         UpdateTimerInterval(snapshot);
+        RefreshLyricWindows();
     }
 
     private OverlayVisual BuildVisual(NowPlayingSnapshot snapshot, TimeSpan position, bool positionIsUsable)
@@ -535,7 +574,7 @@ internal sealed class AppHost
             };
         }
 
-        var index = FindActiveLine(lines, position);
+        var index = LyricText.ActiveLine(lines, position);
         if (index < 0)
         {
             index = 0;
@@ -766,29 +805,6 @@ internal sealed class AppHost
     private static float Quantise(float value) =>
         value < 0f ? -1f : MathF.Round(value * 200f) / 200f;
 
-    private static int FindActiveLine(LyricLine[] lines, TimeSpan position)
-    {
-        var low = 0;
-        var high = lines.Length - 1;
-        var result = -1;
-
-        while (low <= high)
-        {
-            var mid = low + ((high - low) / 2);
-            if (lines[mid].Start <= position)
-            {
-                result = mid;
-                low = mid + 1;
-            }
-            else
-            {
-                high = mid - 1;
-            }
-        }
-
-        return result;
-    }
-
     private bool IsOverlayVisible(NowPlayingSnapshot snapshot)
     {
         if (!_overlayEnabled || !snapshot.HasTrack)
@@ -910,7 +926,11 @@ internal sealed class AppHost
 
         // Full-screen applications sometimes displace other topmost windows, so re-asserting the
         // z-order is worthwhile insurance - but a few times a minute, not several times a second.
-        if (++_topmostTicks >= TopmostReassertTicks)
+        //
+        // Not while one of Overlyric's own lyric windows is open: they are topmost as well, and every
+        // re-assert would lift the overlay back over the window the user is reading. The overlay can
+        // wait; the moment the panel closes, the next tick puts it back on top.
+        if (!IsOwnWindowOpen && ++_topmostTicks >= TopmostReassertTicks)
         {
             _topmostTicks = 0;
             _overlay.ReassertTopmost();
@@ -934,7 +954,7 @@ internal sealed class AppHost
 
         // The tray is the only place the lock state shows, and unlocking is the one state in which
         // the overlay takes the mouse, so it is worth naming there.
-        var header = _locked ? "Overlyric" : "Overlyric (unlocked - draggable)";
+        var header = _locked ? "Overlyric" : "Overlyric (unlocked - hover for controls)";
 
         var text = snapshot.HasTrack
             ? $"{header}\n{snapshot.SourceAppFriendly}: {snapshot.TrackDescription}"
@@ -998,7 +1018,7 @@ internal sealed class AppHost
         return true;
     }
 
-    private void StartLyricsFetch(NowPlayingSnapshot snapshot)
+    private void StartLyricsFetch(NowPlayingSnapshot snapshot, bool clearVersions = false)
     {
         _fetchCts?.Cancel();
         _fetchCts?.Dispose();
@@ -1017,7 +1037,20 @@ internal sealed class AppHost
             _lyricsRevision = revision;
             _lyricsWordSynced = false;
             _lyricsDefinitive = false;
+            _lyricsRecordId = null;
+
+            if (clearVersions)
+            {
+                // The list belongs to the previous track; offering it for the new one would let a
+                // click pin a record that has nothing to do with what is playing.
+                _candidates = [];
+                _candidatesRevision = -1;
+                _versionsAttemptedRevision = -1;
+            }
         }
+
+        Interlocked.Increment(ref _lyricsStamp);
+        Interlocked.Increment(ref _versionsStamp);
 
         var artist = snapshot.Artist;
         var title = snapshot.Title;
@@ -1057,6 +1090,7 @@ internal sealed class AppHost
                     _fetchCompleted = true;
                     _lyricsDefinitive = lookup.Definitive;
                     _lyricsWordSynced = false;
+                    _lyricsRecordId = result?.LrclibId;
 
                     if (result is null)
                     {
@@ -1096,6 +1130,8 @@ internal sealed class AppHost
                     needsVersions = _lines.Length == 0 || !_lyricsSynced;
                 }
 
+                Interlocked.Increment(ref _lyricsStamp);
+
                 if (needsVersions)
                 {
                     await LoadVersionsAsync(artist, title, album, duration, revision, token).ConfigureAwait(false);
@@ -1105,7 +1141,7 @@ internal sealed class AppHost
     }
 
     /// <summary>
-    /// Fetches the alternative lrclib records for the current track, for the version menu.
+    /// Fetches the alternative lrclib records for the current track, for the selector window.
     /// </summary>
     private async Task LoadVersionsAsync(
         string artist,
@@ -1119,6 +1155,9 @@ internal sealed class AppHost
         {
             return;
         }
+
+        Interlocked.Increment(ref _versionsInFlight);
+        Interlocked.Increment(ref _versionsStamp);
 
         try
         {
@@ -1143,9 +1182,16 @@ internal sealed class AppHost
         }
         catch (Exception)
         {
-            // Best effort: the menu simply offers to look again.
+            // Best effort: the selector simply offers to look again.
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _versionsInFlight);
+            Interlocked.Increment(ref _versionsStamp);
         }
     }
+
+    private bool IsVersionsLoading => Volatile.Read(ref _versionsInFlight) > 0;
 
     /// <summary>
     /// Whether the track info is still within its on-screen time. It is the most static thing the
@@ -1190,6 +1236,8 @@ internal sealed class AppHost
             || a.SungChars != b.SungChars
             || a.OffsetX != b.OffsetX
             || a.OffsetY != b.OffsetY
+            || a.OffsetIsDefault != b.OffsetIsDefault
+            || !string.Equals(a.OffsetLabel, b.OffsetLabel, StringComparison.Ordinal)
             || !string.Equals(a.Header, b.Header, StringComparison.Ordinal)
             || !string.Equals(a.Status, b.Status, StringComparison.Ordinal)
             || !Equals(a.Notice, b.Notice)
@@ -1405,15 +1453,8 @@ internal sealed class AppHost
             return;
         }
 
-        // Version-menu entries carry their candidate index in the command id.
-        if (command >= Commands.SelectVersionBase)
-        {
-            SelectVersion(command - Commands.SelectVersionBase);
-            return;
-        }
-
         // Source-menu entries carry the index of the entry they were built for, in their own id range.
-        if (command >= Commands.PinSourceBase && command < Commands.SelectVersionBase)
+        if (command >= Commands.PinSourceBase && command < Commands.PinSourceEnd)
         {
             PinSource(command - Commands.PinSourceBase);
             return;
@@ -1550,17 +1591,8 @@ internal sealed class AppHost
                 OpenFolder(AppConfig.DataDirectory);
                 break;
 
-            case Commands.AutoVersion:
-                if (_snapshot.HasTrack && _lyrics is not null)
-                {
-                    _lyrics.ClearVersion(_snapshot.Artist, _snapshot.Title, _snapshot.Album);
-                    StartLyricsFetch(_snapshot);
-                }
-
-                break;
-
-            case Commands.RefreshVersions:
-                RefreshVersions();
+            case Commands.OpenLyricPicker:
+                OpenLyricPicker();
                 break;
 
             case Commands.OpenSettings:
@@ -1603,45 +1635,65 @@ internal sealed class AppHost
         _config.Save();
     }
 
-    /// <summary>Pin the chosen lrclib record for this track and re-resolve straight away.</summary>
-    private void SelectVersion(int index)
+    /// <summary>
+    /// Pin the chosen lrclib record for this track and re-resolve straight away. A null id means the
+    /// automatic pick, which is the row at the top of the selector.
+    /// </summary>
+    private void ChooseVersion(long? lrclibId)
     {
-        IReadOnlyList<LyricsCandidate> candidates;
-
-        lock (_gate)
-        {
-            candidates = _candidates;
-        }
-
-        if (index < 0 || index >= candidates.Count)
-        {
-            return;
-        }
-
         var snapshot = _snapshot;
         if (!snapshot.HasTrack || _lyrics is null)
         {
             return;
         }
 
-        _lyrics.PinVersion(snapshot.Artist, snapshot.Title, snapshot.Album, candidates[index].Id);
+        var hasPinned = _lyrics.TryGetPinnedVersion(
+            snapshot.Artist,
+            snapshot.Title,
+            snapshot.Album,
+            out var pinnedId);
+
+        if (lrclibId is { } id)
+        {
+            // Clicking the record that is already pinned is not a reason to ask lrclib again.
+            if (hasPinned && pinnedId == id)
+            {
+                return;
+            }
+
+            _lyrics.PinVersion(snapshot.Artist, snapshot.Title, snapshot.Album, id);
+        }
+        else
+        {
+            if (!hasPinned)
+            {
+                return;
+            }
+
+            _lyrics.ClearVersion(snapshot.Artist, snapshot.Title, snapshot.Album);
+        }
+
         StartLyricsFetch(snapshot);
     }
 
-    /// <summary>Discard the memoised candidate list so the menu can look again.</summary>
+    /// <summary>Discard the memoised candidate list so the selector can look again.</summary>
     private void RefreshVersions()
     {
         var snapshot = _snapshot;
-        if (!snapshot.HasTrack || _lyrics is null)
+        if (!snapshot.HasTrack || _lyrics is null || IsVersionsLoading)
         {
             return;
         }
+
+        _versionsAttemptedRevision = snapshot.Revision;
 
         lock (_gate)
         {
             _candidates = [];
             _candidatesRevision = -1;
         }
+
+        Interlocked.Increment(ref _versionsStamp);
 
         _ = LoadVersionsAsync(
             snapshot.Artist,
@@ -1659,6 +1711,19 @@ internal sealed class AppHost
         if (_watcher is not null)
         {
             _watcher.Clock.ManualOffset = TimeSpan.FromMilliseconds(_config.LyricsOffsetMs);
+        }
+
+        ForceRedraw();
+        _config.Save();
+    }
+
+    private void ResetLyricsOffset()
+    {
+        _config.LyricsOffsetMs = 0;
+
+        if (_watcher is not null)
+        {
+            _watcher.Clock.ManualOffset = TimeSpan.Zero;
         }
 
         ForceRedraw();
@@ -1737,6 +1802,232 @@ internal sealed class AppHost
     {
         OpenSettings();
         _settings?.ShowSourceSection();
+    }
+
+    /// <summary>
+    /// Open the lyric selector. It is created once and hidden on close, so reopening is instant; the
+    /// monitor is the one the overlay is on, because that is the screen the click came from.
+    /// </summary>
+    private void OpenLyricPicker()
+    {
+        _picker ??= new LyricPickerWindow(
+            BuildPickerModel,
+            ChooseVersion,
+            RefreshVersions,
+            OpenLyricViewer);
+
+        var monitor = _overlay is { IsVisible: true }
+            ? MonitorFromWindow(_overlay.Handle, MONITOR_DEFAULTTONEAREST)
+            : nint.Zero;
+
+        _picker.ShowPanel(monitor);
+        EnsureVersionsForPicker();
+        _picker.Invalidate();
+    }
+
+    private bool IsOwnWindowOpen =>
+        _picker is { IsOpen: true } || _viewer is { IsOpen: true } || _settings is { IsOpen: true };
+
+    /// <summary>Open the complete lyric sheet for the track that is playing.</summary>
+    private void OpenLyricViewer()
+    {
+        _viewer ??= new LyricViewerWindow();
+        _viewer.ShowSheet(BuildSheet());
+    }
+
+    /// <summary>
+    /// Ask lrclib for the alternative records when the selector opens without a usable list. A good
+    /// synced sheet costs no extra request, because the lookup only fetches the list when the answer
+    /// was missing or unsynced - which is exactly when someone is likely to open this window.
+    /// </summary>
+    private void EnsureVersionsForPicker()
+    {
+        var snapshot = _snapshot;
+        if (_demo || !snapshot.HasTrack || _lyrics is null || IsVersionsLoading)
+        {
+            return;
+        }
+
+        bool current;
+        lock (_gate)
+        {
+            // Revision is the whole answer: an empty list that was fetched for this track is also a
+            // definitive "no alternatives", and re-asking every time the window opens would be rude
+            // to lrclib. An attempt that failed also counts, or the live refresh would retry on every
+            // tick; Look again is the explicit way to ask twice.
+            current = _candidatesRevision == snapshot.Revision
+                      || _versionsAttemptedRevision == snapshot.Revision;
+        }
+
+        if (!current)
+        {
+            RefreshVersions();
+        }
+    }
+
+    /// <summary>
+    /// The selector's snapshot. Pulled on the UI thread every time the window draws: it stays open
+    /// while the lookup lands, the track changes and the listener picks another record.
+    /// </summary>
+    private LyricPickerModel BuildPickerModel()
+    {
+        var snapshot = _snapshot;
+
+        IReadOnlyList<LyricsCandidate> candidates;
+        long? recordId;
+        bool complete;
+        bool instrumental;
+        bool synced;
+        bool wordSynced;
+        int lineCount;
+        string? status;
+
+        lock (_gate)
+        {
+            // A list memoised for the previous track is not an answer for this one.
+            candidates = _candidatesRevision == snapshot.Revision ? _candidates : [];
+            recordId = _lyricsRecordId;
+            complete = _fetchCompleted;
+            instrumental = _isInstrumental;
+            synced = _lyricsSynced;
+            wordSynced = _lyricsWordSynced;
+            lineCount = _lines.Length;
+            status = _lyricsStatus;
+        }
+
+        long? pinned = null;
+        if (snapshot.HasTrack && _lyrics is not null
+            && _lyrics.TryGetPinnedVersion(snapshot.Artist, snapshot.Title, snapshot.Album, out var pinnedId))
+        {
+            pinned = pinnedId;
+        }
+
+        return new LyricPickerModel
+        {
+            HasTrack = snapshot.HasTrack,
+            IsDemo = _demo,
+            Title = MetadataNormaliser.CleanTitle(snapshot.Title),
+            Artist = snapshot.Artist,
+            Album = snapshot.Album,
+            SourceApp = snapshot.SourceAppFriendly,
+            DurationSeconds = snapshot.DurationSeconds,
+            Revision = snapshot.Revision,
+            Versions = candidates,
+            PinnedId = pinned,
+            Loading = IsVersionsLoading,
+            LookupComplete = complete,
+            IsInstrumental = instrumental,
+            IsSynced = synced,
+            HasWordTimings = wordSynced,
+            LineCount = lineCount,
+            CurrentRecordId = recordId,
+            Status = status
+        };
+    }
+
+    /// <summary>The immutable document the complete-lyrics window shows.</summary>
+    private LyricSheet BuildSheet()
+    {
+        var snapshot = _snapshot;
+
+        LyricLine[] lines;
+        long? recordId;
+        bool complete;
+        bool instrumental;
+        bool synced;
+        bool wordSynced;
+        string? status;
+
+        lock (_gate)
+        {
+            lines = _lines;
+            recordId = _lyricsRecordId;
+            complete = _fetchCompleted;
+            instrumental = _isInstrumental;
+            synced = _lyricsSynced;
+            wordSynced = _lyricsWordSynced;
+            status = _lyricsStatus;
+        }
+
+        var position = _demo ? DemoPosition() : _watcher?.Clock.Position ?? TimeSpan.Zero;
+
+        // A corrected body can arrive for the same record id and the same number of lines, so the
+        // document key has to include the words, not only the shape of the sheet. The viewer rebuilds
+        // its measured rows when this changes.
+        var fingerprint = 17;
+        foreach (var line in lines)
+        {
+            fingerprint = unchecked((fingerprint * 31) + line.Text.GetHashCode());
+            fingerprint = unchecked((fingerprint * 31) + line.Start.GetHashCode());
+        }
+
+        var key = string.Concat(
+            snapshot.Revision,
+            "|",
+            recordId?.ToString() ?? "-",
+            "|",
+            lines.Length,
+            "|",
+            synced ? "s" : "p",
+            "|",
+            wordSynced ? "w" : "-",
+            "|",
+            instrumental ? "i" : "-",
+            "|",
+            complete ? "c" : "-",
+            "|",
+            fingerprint);
+
+        return new LyricSheet
+        {
+            Key = key,
+            Title = MetadataNormaliser.CleanTitle(snapshot.Title),
+            Artist = snapshot.Artist,
+            Album = snapshot.Album,
+            SourceApp = snapshot.SourceAppFriendly,
+            DurationSeconds = snapshot.DurationSeconds,
+            Lines = lines,
+            IsSynced = synced,
+            HasWordTimings = wordSynced,
+            IsInstrumental = instrumental,
+            IsComplete = complete,
+            Status = status,
+            RecordId = recordId,
+            Position = position
+        };
+    }
+
+    /// <summary>
+    /// Bring the open lyric windows up to date. The lookup finishes on a background thread, and both
+    /// windows are Direct2D surfaces that must only be drawn on this one, so the stamps are read here
+    /// rather than redrawing from the task.
+    /// </summary>
+    private void RefreshLyricWindows()
+    {
+        var lyricStamp = Volatile.Read(ref _lyricsStamp);
+        var versionStamp = Volatile.Read(ref _versionsStamp);
+
+        if (lyricStamp == _uiLyricsStamp && versionStamp == _uiVersionsStamp)
+        {
+            return;
+        }
+
+        var lyricsChanged = lyricStamp != _uiLyricsStamp;
+        _uiLyricsStamp = lyricStamp;
+        _uiVersionsStamp = versionStamp;
+
+        _picker?.Invalidate();
+
+        if (_picker is { IsOpen: true })
+        {
+            // A track that changed (or appeared after the panel opened) needs its own record list.
+            EnsureVersionsForPicker();
+        }
+
+        if (lyricsChanged && _viewer is { IsOpen: true })
+        {
+            _viewer.UpdateSheet(BuildSheet());
+        }
     }
 
     /// <summary>
@@ -1820,45 +2111,6 @@ internal sealed class AppHost
             ? $"{status.SourceAppFriendly}: {Truncate(status.TrackDescription, 48)}"
             : "Nothing playing";
 
-        IReadOnlyList<LyricsCandidate> candidates;
-        long candidatesRevision;
-
-        lock (_gate)
-        {
-            candidates = _candidates;
-            candidatesRevision = _candidatesRevision;
-        }
-
-        long pinnedId = 0;
-        var hasPinned = status.HasTrack
-                        && _lyrics is not null
-                        && _lyrics.TryGetPinnedVersion(status.Artist, status.Title, status.Album, out pinnedId);
-
-        var versionItems = new List<TrayMenuItem>();
-
-        if (!status.HasTrack)
-        {
-            versionItems.Add(TrayMenuItem.Disabled("Nothing playing"));
-        }
-        else if (candidates.Count == 0 || candidatesRevision != status.Revision)
-        {
-            versionItems.Add(new TrayMenuItem(Commands.RefreshVersions, "Look for other versions\u2026"));
-        }
-        else
-        {
-            versionItems.Add(new TrayMenuItem(Commands.AutoVersion, "Automatic (best match)", !hasPinned));
-            versionItems.Add(TrayMenuItem.Separator);
-
-            var limit = Math.Min(candidates.Count, 12);
-            for (var i = 0; i < limit; i++)
-            {
-                versionItems.Add(new TrayMenuItem(
-                    Commands.SelectVersionBase + i,
-                    Truncate(candidates[i].Describe(), 70),
-                    hasPinned && candidates[i].Id == pinnedId));
-            }
-        }
-
         // The top level keeps what is worth reaching for while music is playing. Everything that is
         // set once and then left alone lives in the settings window, which - unlike a menu - stays
         // open while it is being used.
@@ -1866,7 +2118,7 @@ internal sealed class AppHost
         {
             // Informational, and previously selectable while doing nothing.
             TrayMenuItem.Disabled(trackLine),
-            TrayMenuItem.Submenu("Lyrics version", versionItems),
+            new(Commands.OpenLyricPicker, "Lyrics\u2026"),
             TrayMenuItem.Submenu("Source", SourceMenuItems()),
             TrayMenuItem.Separator,
             new(Commands.ToggleOverlay, "Show overlay", _overlayEnabled),
@@ -1968,6 +2220,12 @@ internal sealed class AppHost
 
         _settings?.Dispose();
         _settings = null;
+
+        _picker?.Dispose();
+        _picker = null;
+
+        _viewer?.Dispose();
+        _viewer = null;
 
         _toast?.Dispose();
         _toast = null;

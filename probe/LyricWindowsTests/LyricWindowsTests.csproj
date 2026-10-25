@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>LyricWindowsTests</AssemblyName>
+    <RootNamespace>Overlyric.LyricWindowsTests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The selector and viewer share their wording and badge rules through these files; both are
+         pure, so the decisions can be checked without a display, a window or a network. -->
+    <Compile Include="..\..\src\Overlyric\App\LyricBadges.cs" />
+    <Compile Include="..\..\src\Overlyric\App\LyricSheet.cs" />
+    <Compile Include="..\..\src\Overlyric\App\LyricText.cs" />
+    <Compile Include="..\..\src\Overlyric\Lyrics\LyricLine.cs" />
+    <Compile Include="..\..\src\Overlyric\Lyrics\LyricsCandidate.cs" />
+  </ItemGroup>
+
+</Project>

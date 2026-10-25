@@ -17,13 +17,31 @@ internal sealed class OverlayWindow : WindowBase
 {
     private const int WmEnterSizeMove = 0x0231;
     private const int WmExitSizeMove = 0x0232;
+    private const int WmSetCursor = 0x0020;
+    private const int WmCaptureChanged = 0x0215;
+    private const int WmNcMouseMove = 0x00A0;
+    private const int WmNcMouseLeave = 0x02A2;
+    private const uint TmeNonClient = 0x00000010;
     private const uint SwpFramechanged = 0x0020;
     private const uint SwpNoZOrder = 0x0004;
+
+    /// <summary>Identifier of the short timer that hides the controls after the pointer leaves.</summary>
+    private const ulong ControlsTimerId = 2;
+
+    /// <summary>
+    /// Long enough to cross the gap between the lyrics and the bar, short enough that the bar is
+    /// gone as soon as the mouse has moved on.
+    /// </summary>
+    private const uint ControlsHideDelayMs = 450;
+
+    private const int IdcHand = 32649;
 
     private const float SingleLineWidthDip = 1200f;
     private const float SingleLineHeightDip = 200f;
     private const float MultiLineWidthDip = 1040f;
     private const float MultiLineHeightDip = 430f;
+
+    private static nint _handCursor;
 
     private OverlayTheme _theme;
 
@@ -38,7 +56,9 @@ internal sealed class OverlayWindow : WindowBase
     private float _dpi = 96f;
     private bool _locked = true;
     private bool _visible;
-    private RECT _interactiveBounds;
+    private bool _showControls;
+    private OverlayControl? _hoverControl;
+    private OverlayControl? _pressedControl;
 
     public OverlayWindow(OverlayTheme theme)
     {
@@ -58,9 +78,27 @@ internal sealed class OverlayWindow : WindowBase
     /// <summary>Raised after the user finishes dragging the overlay.</summary>
     public event Action<int, int>? Moved;
 
+    /// <summary>Raised when the user presses the Settings button on the control bar.</summary>
+    public event Action? SettingsRequested;
+
+    /// <summary>Raised with +/-250 ms when the user nudges the timing from the bar.</summary>
+    public event Action<int>? OffsetStepRequested;
+
+    /// <summary>Raised when the user resets the timing from the bar.</summary>
+    public event Action? OffsetResetRequested;
+
+    /// <summary>Raised when the user asks for the complete lyric sheet.</summary>
+    public event Action? ViewLyricsRequested;
+
+    /// <summary>Raised when the user asks to choose another lyric version.</summary>
+    public event Action? ChooseLyricsRequested;
+
     public bool IsVisible => _visible;
 
     public bool IsLocked => _locked;
+
+    /// <summary>True while the hover bar is on screen; exposed for probes and for the host's tooltip.</summary>
+    public bool IsShowingControls => _showControls;
 
     public void Create(OverlayMode mode, OverlayAnchor anchor, int offsetX, int offsetY, nint monitor)
     {
@@ -142,6 +180,13 @@ internal sealed class OverlayWindow : WindowBase
 
         _locked = locked;
 
+        if (locked)
+        {
+            // Controls belong to the adjustment mode: a locked overlay must stay invisible to the
+            // mouse, including the bar that would otherwise be its only interactive surface.
+            HideControls();
+        }
+
         var style = GetWindowLongPtrW(Handle, GWL_EXSTYLE).ToInt64();
         if (locked)
         {
@@ -166,6 +211,12 @@ internal sealed class OverlayWindow : WindowBase
         }
 
         _visible = visible;
+
+        if (!visible)
+        {
+            HideControls();
+        }
+
         ShowWindow(Handle, visible ? SW_SHOWNA : SW_HIDE);
     }
 
@@ -194,10 +245,11 @@ internal sealed class OverlayWindow : WindowBase
         try
         {
             var context = _host.BeginDraw();
-            _renderer.Draw(context, _host.DipSize, _visual);
+            _renderer.Draw(context, _host.DipSize, _showControls
+                ? _visual with { ShowControls = true, HoveredControl = _hoverControl }
+                : _visual with { ShowControls = false, HoveredControl = null });
 
             var presented = _host.EndDraw();
-            UpdateInteractiveBounds();
 
             if (!presented)
             {
@@ -223,12 +275,56 @@ internal sealed class OverlayWindow : WindowBase
                 EndPaint(hWnd, ref paint);
                 return IntPtr.Zero;
 
+            case WM_MOUSEMOVE:
+                OnPointerMove(lParam);
+                return IntPtr.Zero;
+
+            // The lyrics themselves are HTCAPTION so they drag the window, which means the pointer
+            // over them is a non-client area: its movement and leave arrive as NC messages. Both
+            // paths have to feed the same hover state or the bar would never appear over the words.
+            case WmNcMouseMove:
+                OnNonClientPointerMove(lParam);
+                return IntPtr.Zero;
+
+            case WM_MOUSELEAVE:
+            case WmNcMouseLeave:
+                OnPointerLeave();
+                return IntPtr.Zero;
+
+            case WM_LBUTTONDOWN:
+                if (OnPointerDown(lParam))
+                {
+                    return IntPtr.Zero;
+                }
+
+                break;
+
+            case WM_LBUTTONUP:
+                if (OnPointerUp(lParam))
+                {
+                    return IntPtr.Zero;
+                }
+
+                break;
+
+            case WmCaptureChanged:
+                _pressedControl = null;
+                return IntPtr.Zero;
+
+            case WmSetCursor:
+                return OnSetCursor(hWnd, wParam, lParam);
+
             case WM_MOUSEWHEEL:
                 if (!_locked)
                 {
-                    OpacityScrolled?.Invoke((short)((lParam.ToInt64() >> 16) & 0xFFFF));
+                    // The delta is the high word of wParam; lParam carries the screen point.
+                    OpacityScrolled?.Invoke((short)((wParam.ToInt64() >> 16) & 0xFFFF));
                 }
 
+                return IntPtr.Zero;
+
+            case WM_TIMER when wParam == (nint)ControlsTimerId:
+                HideControlsAfterDelay();
                 return IntPtr.Zero;
 
             case WmExitSizeMove:
@@ -259,8 +355,16 @@ internal sealed class OverlayWindow : WindowBase
             default:
                 return DefaultWindowProc(hWnd, msg, wParam, lParam);
         }
+
+        return DefaultWindowProc(hWnd, msg, wParam, lParam);
     }
 
+    /// <summary>
+    /// Hit testing is the whole trick: the lyrics drag the window, the controls are a normal client
+    /// area, and everything else lets the click through to the application behind. When the bar is
+    /// visible its gap to the lyrics is included in the client area too, so moving the pointer from
+    /// one to the other never falls through and makes the bar disappear on the way there.
+    /// </summary>
     private IntPtr HitTest(nint lParam)
     {
         if (_locked)
@@ -268,6 +372,328 @@ internal sealed class OverlayWindow : WindowBase
             return new IntPtr(HTTRANSPARENT);
         }
 
+        if (!TryScreenPointToDip(lParam, out var x, out var y))
+        {
+            return new IntPtr(HTTRANSPARENT);
+        }
+
+        if (_showControls && (ControlAt(x, y) is not null || InControlBridge(x, y)))
+        {
+            return new IntPtr(HTCLIENT);
+        }
+
+        return new IntPtr(InsideContent(x, y) ? HTCAPTION : HTTRANSPARENT);
+    }
+
+    private void OnPointerMove(nint lParam)
+    {
+        if (_locked)
+        {
+            return;
+        }
+
+        // A move back inside means the pointer did not really leave after all.
+        KillTimer(Handle, ControlsTimerId);
+
+        if (!TryClientPointToDip(lParam, out var x, out var y))
+        {
+            return;
+        }
+
+        ShowControlsAt(x, y);
+        TrackLeave(nonClient: false);
+    }
+
+    private void OnNonClientPointerMove(nint lParam)
+    {
+        if (_locked)
+        {
+            return;
+        }
+
+        KillTimer(Handle, ControlsTimerId);
+
+        if (!TryScreenPointToDip(lParam, out var x, out var y))
+        {
+            return;
+        }
+
+        ShowControlsAt(x, y);
+        TrackLeave(nonClient: true);
+    }
+
+    private void ShowControlsAt(float x, float y)
+    {
+        var control = ControlAt(x, y);
+        var changed = false;
+
+        if (!_showControls)
+        {
+            _showControls = true;
+            changed = true;
+        }
+
+        if (control != _hoverControl)
+        {
+            _hoverControl = control;
+            changed = true;
+        }
+
+        if (changed)
+        {
+            Render();
+        }
+    }
+
+    /// <summary>
+    /// Hiding is delayed rather than immediate: the pointer has to cross the gap between the lyrics
+    /// and the bar, and a bar that vanishes mid-journey cannot be clicked.
+    /// </summary>
+    private void OnPointerLeave()
+    {
+        if (_locked)
+        {
+            return;
+        }
+
+        if (_showControls)
+        {
+            SetTimer(Handle, ControlsTimerId, ControlsHideDelayMs, 0);
+        }
+    }
+
+    private void HideControlsAfterDelay()
+    {
+        KillTimer(Handle, ControlsTimerId);
+
+        if (_locked || _pressedControl is not null)
+        {
+            return;
+        }
+
+        HideControls();
+    }
+
+    /// <summary>Drop the bar and any transient hover or press state. Safe to call when already hidden.</summary>
+    private void HideControls()
+    {
+        if (Handle != nint.Zero)
+        {
+            KillTimer(Handle, ControlsTimerId);
+        }
+
+        var changed = _showControls || _hoverControl is not null || _pressedControl is not null;
+
+        _showControls = false;
+        _hoverControl = null;
+        _pressedControl = null;
+
+        if (changed && Handle != nint.Zero)
+        {
+            Render();
+        }
+    }
+
+    private bool OnPointerDown(nint lParam)
+    {
+        if (_locked || !TryClientPointToDip(lParam, out var x, out var y))
+        {
+            return false;
+        }
+
+        var control = ControlAt(x, y);
+        if (control is null)
+        {
+            return false;
+        }
+
+        _pressedControl = control;
+        _hoverControl = control;
+        SetCapture(Handle);
+        Render();
+        return true;
+    }
+
+    private bool OnPointerUp(nint lParam)
+    {
+        if (_pressedControl is not { } pressed)
+        {
+            return false;
+        }
+
+        TryClientPointToDip(lParam, out var x, out var y);
+        var releasedOver = ControlAt(x, y);
+        _pressedControl = null;
+        ReleaseCapture();
+
+        if (releasedOver == pressed)
+        {
+            Activate(pressed);
+        }
+
+        UpdateHoverFromCursor();
+        Render();
+        return true;
+    }
+
+    private void Activate(OverlayControl control)
+    {
+        switch (control)
+        {
+            case OverlayControl.Settings:
+                HideControls();
+                SettingsRequested?.Invoke();
+                return;
+
+            case OverlayControl.ViewLyrics:
+                HideControls();
+                ViewLyricsRequested?.Invoke();
+                return;
+
+            case OverlayControl.ChooseLyrics:
+                HideControls();
+                ChooseLyricsRequested?.Invoke();
+                return;
+
+            case OverlayControl.OffsetBack:
+                OffsetStepRequested?.Invoke(-250);
+                return;
+
+            case OverlayControl.OffsetForward:
+                OffsetStepRequested?.Invoke(250);
+                return;
+
+            case OverlayControl.OffsetReset:
+                OffsetResetRequested?.Invoke();
+                return;
+        }
+    }
+
+    private IntPtr OnSetCursor(nint hWnd, nint wParam, nint lParam)
+    {
+        if (_locked || !_showControls || (lParam.ToInt64() & 0xFFFF) != HTCLIENT)
+        {
+            return DefaultWindowProc(hWnd, WmSetCursor, wParam, lParam);
+        }
+
+        if (ControlAtCursor() is null)
+        {
+            return DefaultWindowProc(hWnd, WmSetCursor, wParam, lParam);
+        }
+
+        _handCursor = _handCursor == nint.Zero
+            ? LoadCursorW(nint.Zero, new nint(IdcHand))
+            : _handCursor;
+
+        if (_handCursor == nint.Zero)
+        {
+            return DefaultWindowProc(hWnd, WmSetCursor, wParam, lParam);
+        }
+
+        SetCursor(_handCursor);
+        return new IntPtr(1);
+    }
+
+    private OverlayControl? ControlAtCursor()
+    {
+        if (!GetCursorPos(out var point) || !ScreenToClient(Handle, ref point))
+        {
+            return null;
+        }
+
+        var scale = _dpi / 96f;
+        return ControlAt(point.X / scale, point.Y / scale);
+    }
+
+    private void UpdateHoverFromCursor()
+    {
+        if (_locked || !_showControls)
+        {
+            return;
+        }
+
+        var control = ControlAtCursor();
+
+        if (control != _hoverControl)
+        {
+            _hoverControl = control;
+        }
+    }
+
+    private OverlayControl? ControlAt(float x, float y)
+    {
+        if (_renderer is null)
+        {
+            return null;
+        }
+
+        foreach (var hit in _renderer.ControlHits)
+        {
+            if (hit.Contains(x, y))
+            {
+                return hit.Control;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The strip between the bar and the lyrics, measured in device-independent coordinates. Only a
+    /// bridge, not a click target: it exists so hit testing does not fall through while the pointer
+    /// travels towards a button.
+    /// </summary>
+    private bool InControlBridge(float x, float y)
+    {
+        if (_renderer is null)
+        {
+            return false;
+        }
+
+        var bar = _renderer.ControlsBounds;
+        var content = _renderer.ContentBounds;
+
+        if (bar.Right <= bar.Left || content.Right <= content.Left)
+        {
+            return false;
+        }
+
+        if (x < bar.Left || x >= bar.Right)
+        {
+            return false;
+        }
+
+        if (bar.Bottom <= content.Top)
+        {
+            return y >= bar.Bottom && y < content.Top;
+        }
+
+        if (bar.Top >= content.Bottom)
+        {
+            return y >= content.Bottom && y < bar.Top;
+        }
+
+        return false;
+    }
+
+    private bool InsideContent(float x, float y)
+    {
+        if (_renderer is null)
+        {
+            return false;
+        }
+
+        var bounds = _renderer.ContentBounds;
+        return bounds.Right > bounds.Left
+               && bounds.Bottom > bounds.Top
+               && x >= bounds.Left
+               && x < bounds.Right
+               && y >= bounds.Top
+               && y < bounds.Bottom;
+    }
+
+    private bool TryScreenPointToDip(nint lParam, out float x, out float y)
+    {
         var raw = lParam.ToInt64();
         var point = new POINT
         {
@@ -277,39 +703,37 @@ internal sealed class OverlayWindow : WindowBase
 
         if (!ScreenToClient(Handle, ref point))
         {
-            return new IntPtr(HTTRANSPARENT);
-        }
-
-        var inside = point.X >= _interactiveBounds.Left
-                     && point.X < _interactiveBounds.Right
-                     && point.Y >= _interactiveBounds.Top
-                     && point.Y < _interactiveBounds.Bottom;
-
-        return new IntPtr(inside ? HTCAPTION : HTTRANSPARENT);
-    }
-
-    private void UpdateInteractiveBounds()
-    {
-        if (_renderer is null)
-        {
-            return;
-        }
-
-        var bounds = _renderer.ContentBounds;
-        if (bounds.Right <= bounds.Left || bounds.Bottom <= bounds.Top)
-        {
-            _interactiveBounds = default;
-            return;
+            x = 0f;
+            y = 0f;
+            return false;
         }
 
         var scale = _dpi / 96f;
-        _interactiveBounds = new RECT
+        x = point.X / scale;
+        y = point.Y / scale;
+        return true;
+    }
+
+    private bool TryClientPointToDip(nint lParam, out float x, out float y)
+    {
+        var raw = lParam.ToInt64();
+        var scale = _dpi / 96f;
+
+        x = (short)(raw & 0xFFFF) / scale;
+        y = (short)((raw >> 16) & 0xFFFF) / scale;
+        return true;
+    }
+
+    private void TrackLeave(bool nonClient)
+    {
+        var track = new TRACKMOUSEEVENT
         {
-            Left = (int)(bounds.Left * scale),
-            Top = (int)(bounds.Top * scale),
-            Right = (int)(bounds.Right * scale),
-            Bottom = (int)(bounds.Bottom * scale)
+            cbSize = Marshal.SizeOf<TRACKMOUSEEVENT>(),
+            dwFlags = TME_LEAVE | (nonClient ? TmeNonClient : 0u),
+            hwndTrack = Handle
         };
+
+        TrackMouseEvent(ref track);
     }
 
     private void NotifyMoved()
@@ -401,6 +825,11 @@ internal sealed class OverlayWindow : WindowBase
 
     public override void Dispose()
     {
+        if (Handle != nint.Zero)
+        {
+            KillTimer(Handle, ControlsTimerId);
+        }
+
         _renderer?.Dispose();
         _renderer = null;
         _host?.Dispose();
