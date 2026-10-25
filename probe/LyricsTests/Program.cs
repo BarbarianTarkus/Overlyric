@@ -226,6 +226,28 @@ File.WriteAllText(
     "{\"key\":" + JsonSerializer.Serialize(legacyMissKey) + ",\"result\":null}");
 Check("a tombstone with no matchVersion is not respected", !cache.IsMiss(legacyMissKey));
 
+var stats = cache.GetStats();
+Check(
+    "cache stats count entries and bytes",
+    stats.Entries > 0 && stats.Bytes > 0,
+    $"{stats.Entries} entries, {stats.Bytes} bytes");
+
+Check(
+    "forget removes the positive entry and its tombstone",
+    cache.Forget(key) && !cache.TryGet(key, out _) && !cache.IsMiss(key));
+
+cache.SetMiss(key);
+Check("forget removes a tombstone too", cache.Forget(key) && !cache.IsMiss(key));
+
+var clearCache = new LyricsCache(Path.Combine(runRoot, "clear"));
+clearCache.Set("a", sample);
+clearCache.SetMiss("b");
+var cleared = clearCache.Clear();
+Check(
+    "clear removes every cached answer",
+    cleared >= 2 && clearCache.GetStats().Entries == 0,
+    $"{cleared} removed, {clearCache.GetStats().Entries} left");
+
 var unusable = Path.Combine(Path.GetTempPath(), "overlyric|invalid*dir");
 Check(
     "cache never throws on an unusable directory",
@@ -236,6 +258,9 @@ Check(
         broken.TryGet("k", out _);
         broken.IsMiss("k");
         broken.SetMiss("k");
+        broken.Forget("k");
+        broken.GetStats();
+        broken.Clear();
     }));
 
 // ---------------------------------------------------------------------------------------------

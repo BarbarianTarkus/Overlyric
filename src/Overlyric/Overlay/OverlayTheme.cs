@@ -8,7 +8,13 @@ public enum OverlayMode
     SingleLine = 0,
 
     /// <summary>A block of surrounding lines with the active one emphasised.</summary>
-    MultiLine = 1
+    MultiLine = 1,
+
+    /// <summary>
+    /// One active line with the next line underneath it, smaller and dimmed. It is the middle ground
+    /// between a single line and the full five-line block, and it uses the multi-line drawing path.
+    /// </summary>
+    SingleLineWithNext = 2
 }
 
 /// <summary>The actions on the bar that appears over an unlocked overlay.</summary>
@@ -158,6 +164,12 @@ public sealed record OverlayVisual
 
     /// <summary>0..1 progress through the whole track; negative when unknown.</summary>
     public float TrackProgress { get; init; } = -1f;
+
+    /// <summary>
+    /// 0..1 progress through a wait before the next line: an intro, or an instrumental interlude.
+    /// Negative when the current line is being sung, so the renderer can skip the indicator entirely.
+    /// </summary>
+    public float GapProgress { get; init; } = -1f;
 
     /// <summary>
     /// How many characters of the active line have been sung, or -1 when the sweep is off. The

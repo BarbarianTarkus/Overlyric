@@ -38,6 +38,8 @@ internal sealed class OverlayWindow : WindowBase
 
     private const float SingleLineWidthDip = 1200f;
     private const float SingleLineHeightDip = 200f;
+    private const float SingleLineWithNextWidthDip = 1200f;
+    private const float SingleLineWithNextHeightDip = 250f;
     private const float MultiLineWidthDip = 1040f;
     private const float MultiLineHeightDip = 430f;
 
@@ -819,9 +821,12 @@ internal sealed class OverlayWindow : WindowBase
     private int ToPixels(float dip) => (int)MathF.Round(dip * _dpi / 96f);
 
     private static (float Width, float Height) DipSizeFor(OverlayMode mode) =>
-        mode == OverlayMode.SingleLine
-            ? (SingleLineWidthDip, SingleLineHeightDip)
-            : (MultiLineWidthDip, MultiLineHeightDip);
+        mode switch
+        {
+            OverlayMode.SingleLine => (SingleLineWidthDip, SingleLineHeightDip),
+            OverlayMode.SingleLineWithNext => (SingleLineWithNextWidthDip, SingleLineWithNextHeightDip),
+            _ => (MultiLineWidthDip, MultiLineHeightDip)
+        };
 
     public override void Dispose()
     {

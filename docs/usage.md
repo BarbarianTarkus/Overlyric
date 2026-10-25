@@ -14,8 +14,11 @@ To preview the overlay without playing anything:
 Overlyric.exe --demo
 ```
 
-Demo mode drives the overlay from a canned synced track, so you can judge the look, try both modes
-and drag it around with nothing playing.
+Demo mode drives the overlay from a canned synced track, so you can judge the look, try all three
+layouts and drag it around with nothing playing.
+
+To show the same canned track for fifteen seconds without restarting, right-click the tray icon and
+choose **Preview overlay**. `Overlyric.exe --preview` does the same for a script or a screenshot.
 
 To open the configuration window without going through the tray:
 
@@ -28,7 +31,7 @@ Overlyric.exe --settings
 | Shortcut | Action |
 | --- | --- |
 | `Ctrl+Alt+H` | Show / hide the overlay |
-| `Ctrl+Alt+M` | Switch between single-line and multi-line |
+| `Ctrl+Alt+M` | Cycle single line → single + next → multi line |
 | `Ctrl+Alt+L` | Lock / unlock. Unlocked, the overlay becomes draggable and accepts the mouse wheel |
 | `Ctrl+Alt+,` | Shift lyrics earlier by 0.25 s |
 | `Ctrl+Alt+.` | Shift lyrics later by 0.25 s |
@@ -74,13 +77,23 @@ is hard to hit. The settings window is topmost like the overlay, and the overlay
 its own z-order while one of Overlyric's windows is open — otherwise the lyrics would climb back over
 the window you are reading every few ticks.
 
+The **Single +1** layout — Settings → Overlay, or `Ctrl+Alt+M` — keeps the active line at full size
+and shows the next line dimmed underneath. During a wait longer than three seconds, such as an intro
+or an instrumental break, a thin line under the lyrics fills with the wait. It is a sign that the
+player is still moving, not a second track progress bar.
+
 ## Tray icon
 
 Left-click toggles the overlay. Right-click opens a deliberately short menu: the track line
-(informational — greyed out and not selectable), **Lyrics…** (which opens the selector window), the
-three switches worth reaching for mid-song (show overlay, mode, lock), and **Settings…**. Everything
-else moved into the settings window, because a menu that dismisses itself on every click is a poor
-place to change anything.
+(informational — greyed out and not selectable), **Lyrics…** (which opens the selector window),
+**Refresh lyrics**, **Preview overlay**, the three switches worth reaching for mid-song (show overlay,
+mode, lock), and **Settings…**. Everything else moved into the settings window, because a menu that
+dismisses itself on every click is a poor place to change anything.
+
+**Refresh lyrics** throws away the cached answer for the current track and asks LRCLIB again. It is
+the escape hatch for a record that is wrong, or for a lookup that failed while the network was down.
+**Preview overlay** drives the demo track for fifteen seconds, which is the quickest way to check a
+layout, a font size or the OLED preset without waiting for a song.
 
 ## The lyric selector and viewer
 
@@ -109,9 +122,9 @@ stack and the settings window's palette, so they add no new UI framework.
 sections down the left: **Overlay** (mode, lines shown, track info, progress bar, font sizes, the info
 pop-up), **Shortcuts** (rebind the global hotkeys), **OLED** (burn-in controls, see below),
 **Behaviour** (the hide rules, the player warning and the missing-lyrics notification), **Timing**
-(lyric offset), **Position** (anchor, offsets, reset), **Advanced** (open the settings or cache folder,
-version) and **Source** (which player to follow, and the order to prefer them in). **OLED** is covered
-in [OLED and burn-in](oled.md).
+(lyric offset), **Position** (anchor, offsets, reset), **Advanced** (open the folders, cache size and
+clear, start with Windows, version) and **Source** (which player to follow, and the order to prefer
+them in). **OLED** is covered in [OLED and burn-in](oled.md).
 
 ![The settings window, on the Overlay section](images/settings-window.png)
 

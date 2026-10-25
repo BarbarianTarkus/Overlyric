@@ -76,9 +76,13 @@ internal static class Program
 
         var multi = ShortcutFeedback.ForLayout(true);
         var single = ShortcutFeedback.ForLayout(false);
+        var peek = ShortcutFeedback.ForPeek();
         Check("the multi-line layout is named", multi.Title.Contains("Multi-line", StringComparison.Ordinal), multi.Title);
         Check("the single-line layout is named", single.Title.Contains("Single-line", StringComparison.Ordinal), single.Title);
-        Check("layout notices are informational", multi.Tone == NoticeTone.Info && single.Tone == NoticeTone.Info, multi.Tone);
+        Check("the peek layout is named", peek.Title.Contains("next", StringComparison.OrdinalIgnoreCase), peek.Title);
+        Check("layout notices are informational",
+            multi.Tone == NoticeTone.Info && single.Tone == NoticeTone.Info && peek.Tone == NoticeTone.Info,
+            $"{multi.Tone}/{single.Tone}/{peek.Tone}");
 
         var locked = ShortcutFeedback.ForLock(true);
         var unlocked = ShortcutFeedback.ForLock(false);

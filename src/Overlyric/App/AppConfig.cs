@@ -111,6 +111,13 @@ internal sealed class AppConfig
     /// </summary>
     public bool WarnWhenPlayerDoesNotPublish { get; set; } = true;
 
+    /// <summary>
+    /// Register the executable in the current user's Run key. Per-user and no elevation, in keeping
+    /// with the rest of the application's state; the MSI cannot remove a value the app wrote, so the
+    /// uninstall path is documented rather than guessed at.
+    /// </summary>
+    public bool StartWithWindows { get; set; }
+
     /// <summary>Manual lyric timing correction in milliseconds; positive shows lyrics later.</summary>
     public int LyricsOffsetMs { get; set; }
 
@@ -152,6 +159,13 @@ internal sealed class AppConfig
     [JsonIgnore]
     public static string CacheDirectory { get; } = Path.Combine(DataDirectory, "cache");
 
+    /// <summary>
+    /// True when <see cref="Load"/> found no config file. Not persisted: it only decides whether the
+    /// first-run notice is worth showing on this launch.
+    /// </summary>
+    [JsonIgnore]
+    public bool IsFirstRun { get; private set; }
+
     public static AppConfig Load()
     {
         try
@@ -171,7 +185,7 @@ internal sealed class AppConfig
             // A corrupt or unreadable config must never stop the app from starting.
         }
 
-        return new AppConfig();
+        return new AppConfig { IsFirstRun = true };
     }
 
     public void Save()

@@ -28,8 +28,12 @@ internal static class Program
         // shortcut or a second launch is expected to behave.
         var settings = Array.Exists(args, a => string.Equals(a, "--settings", StringComparison.OrdinalIgnoreCase));
 
+        // --preview starts the same canned track as the tray item, so a screenshot or a scripted
+        // check can exercise the overlay without waiting for a real player.
+        var preview = Array.Exists(args, a => string.Equals(a, "--preview", StringComparison.OrdinalIgnoreCase));
+
         var config = AppConfig.Load();
-        var host = new AppHost(config, demo, settings);
+        var host = new AppHost(config, demo, settings, preview);
 
         return host.Run();
     }

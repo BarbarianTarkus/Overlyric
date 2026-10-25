@@ -207,6 +207,106 @@ public sealed class LyricsCache
         }
     }
 
+    /// <summary>
+    /// Removes both the positive entry and any tombstone for a track. Refresh uses this so a wrong
+    /// record or a stale "no lyrics" answer can be asked again without touching the rest of the cache.
+    /// </summary>
+    public bool Forget(string key)
+    {
+        if (string.IsNullOrEmpty(key))
+        {
+            return false;
+        }
+
+        var removed = false;
+
+        try
+        {
+            foreach (var path in new[] { EntryPath(key), MissPath(key) })
+            {
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                    removed = true;
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // A failed delete degrades to "nothing forgotten"; the next lookup still tries.
+        }
+
+        return removed;
+    }
+
+    /// <summary>Counts cache files and their size for the settings window. Best effort.</summary>
+    public (int Entries, long Bytes) GetStats()
+    {
+        var entries = 0;
+        long bytes = 0;
+
+        try
+        {
+            if (!Directory.Exists(_directory))
+            {
+                return (0, 0);
+            }
+
+            foreach (var path in Directory.EnumerateFiles(_directory, "*.json"))
+            {
+                entries++;
+
+                try
+                {
+                    bytes += new FileInfo(path).Length;
+                }
+                catch (Exception)
+                {
+                    // The count is still useful even if one file cannot be sized.
+                }
+            }
+        }
+        catch (Exception)
+        {
+            return (0, 0);
+        }
+
+        return (entries, bytes);
+    }
+
+    /// <summary>Deletes every cache file and returns how many were removed.</summary>
+    public int Clear()
+    {
+        var removed = 0;
+
+        try
+        {
+            if (!Directory.Exists(_directory))
+            {
+                return 0;
+            }
+
+            foreach (var path in Directory.EnumerateFiles(_directory, "*.json"))
+            {
+                try
+                {
+                    File.Delete(path);
+                    removed++;
+                }
+                catch (Exception)
+                {
+                    // Keep going: clearing most of the cache is better than clearing none.
+                }
+            }
+        }
+        catch (Exception)
+        {
+            return removed;
+        }
+
+        return removed;
+    }
+
     private string EntryPath(string key)
     {
         return Path.Combine(_directory, Hash(key) + EntryExtension);

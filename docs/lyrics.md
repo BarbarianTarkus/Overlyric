@@ -101,6 +101,14 @@ parsed lines, the track details and the record identity in one document — inst
 string. While it is open it follows the track: a new lookup or a different chosen version replaces the
 document, and a new record scrolls back to the active line.
 
+## Refreshing an answer
+
+The tray's **Refresh lyrics** forgets the cached result for the current track — including the copy
+stored under a pinned record — and asks LRCLIB again. The version choice is kept; "refresh" means ask
+again, not "go back to automatic". **Settings → Advanced** shows the cache size and can clear every
+entry at once. This is the escape hatch for a wrong record, or for a lookup that was cached while the
+network was down.
+
 ## Notes on LRCLIB
 
 The client uses `/api/get` with artist, title, album and duration for an exact match, falling back to

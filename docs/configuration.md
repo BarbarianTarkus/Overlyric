@@ -11,7 +11,7 @@ Settings → Advanced has **Open** buttons for this folder and the lyric cache.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `Mode` | `SingleLine` | `SingleLine` or `MultiLine` |
+| `Mode` | `SingleLine` | `SingleLine`, `SingleLineWithNext` or `MultiLine` |
 | `Anchor` | `BottomCenter` | `BottomCenter`, `TopCenter` or `Center` |
 | `OffsetX` / `OffsetY` | `0` / `90` | Pixel offset from the anchor |
 | `Locked` | `true` | Locked is click-through; unlocked is draggable and takes the wheel |
@@ -33,6 +33,7 @@ Settings → Advanced has **Open** buttons for this folder and the lyric cache.
 | `HideWhenNoLyrics` | `true` | Hide when LRCLIB has no lyrics for the track |
 | `HideWhenInstrumental` | `true` | Hide when the track is instrumental |
 | `WarnWhenPlayerDoesNotPublish` | `true` | Say so when audio is playing but no player publishes to Windows media controls, or when a player publishes a track without a playback position |
+| `StartWithWindows` | `false` | Write the executable into the current user's Run key |
 | `LyricsOffsetMs` | `0` | Manual timing correction in milliseconds; positive shows lyrics later |
 | `FontFamily` | `Segoe UI Variable Display` | Typeface |
 | `ActiveFontSize` / `InactiveFontSize` | `30` / `21` | Font sizes in DIPs |
@@ -57,7 +58,16 @@ same kind and is aged out the same way, because a search that has since learned 
 may well find what the old one missed. Like `PlacementVersion`, this is bookkeeping rather than a
 setting.
 
-Deleting a cache file is safe: the next play looks the track up again.
+Deleting a cache file is safe: the next play looks the track up again. The tray's **Refresh lyrics**
+does the same for the current track without opening the folder, and **Settings → Advanced** shows how
+many entries are cached, how much space they use, and a **Clear** button for all of them.
+
+## Start with Windows
+
+`StartWithWindows` writes the executable into the current user's
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Run` key. It needs no elevation and no service.
+Turning the toggle off removes the value. The per-user uninstaller does not know about a value the app
+wrote, so remove it with the toggle before uninstalling, or delete the **Overlyric** value by hand.
 
 ## Pinned versions
 

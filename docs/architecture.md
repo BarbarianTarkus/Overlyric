@@ -112,7 +112,11 @@ So `PlaybackClock` does not assume anything. It observes each player at runtime 
 | --- | --- |
 | Publishes a progressing timeline (browsers, Spotify) | Re-anchors to it, but only snaps when drift exceeds 400 ms, which suppresses jitter |
 | Publishes a frozen timeline (TIDAL) | Self-clocks from a `Stopwatch`, anchored to the reported position aged by the wall clock since `LastUpdatedTime` |
-| Detects a track change | Resets the anchor, clears liveness detection, resets manual offset |
+| Detects a track change | Resets the anchor and liveness detection; the host then re-applies the persisted manual offset |
+
+The clock clears its own correction on a new track. The host owns the persisted value, so it pushes
+it back on the same revision change that starts the lyric lookup. Without that step the control bar would keep claiming `+0.25 s` while the new song played
+unshifted.
 
 Because the clock is a monotonic `Stopwatch` rather than a polled counter, it stays accurate to well
 under one lyric line across an entire song.

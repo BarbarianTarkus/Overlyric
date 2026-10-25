@@ -94,6 +94,12 @@ internal static class Commands
     /// <summary>Open the lyric selector window, from the tray or the overlay's control bar.</summary>
     public const int OpenLyricPicker = 172;
 
+    /// <summary>Ask lrclib again for the current track, discarding its cached answer.</summary>
+    public const int RefreshLyrics = 173;
+
+    /// <summary>Drive the overlay from the demo track for a few seconds.</summary>
+    public const int PreviewOverlay = 174;
+
     // The source menu is tray-only - no hotkey is bound to a player - but its ids live here with the
     // rest, because this class is the one id namespace: the tray and the hotkey table are dispatched
     // by the same switch, and a second place to look for "what is 200" is how collisions happen.

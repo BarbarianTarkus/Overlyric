@@ -19,12 +19,14 @@ There is no per-player integration to install. Deep dives live in [`docs/`](docs
   timings that runs for the same length. If the first search misses, it asks again with the album.
 - **Adapts to players that lie about the timeline.** Live timelines are followed; frozen ones (TIDAL)
   are self-clocked from a stopwatch, so starting mid-song still lands on the right line.
-- **Single line or multi line**, with word- or line-timed karaoke sweep, a manual version selector, and
-  a full lyric sheet with timestamps.
+- **Single line, single line plus the next, or multi line**, with word- or line-timed karaoke sweep, a
+  manual version selector, and a full lyric sheet with timestamps.
 - **Built for an OLED desktop**, with a one-click burn-in preset: no backdrop, pixel shift, outline
   text, and the unsung half of the current line left unlit.
 - **Says when something is wrong.** If audio is playing but no player publishes, or a player publishes
   no position, the tray says so instead of leaving you with a silent overlay.
+- **Refreshes or previews on demand.** A wrong or missing record can be asked for again from the tray,
+  and the demo track can be shown for fifteen seconds without a player.
 
 ## Screenshots
 
@@ -62,7 +64,7 @@ there is no main window. Play something and the overlay appears.
 | Shortcut | Action |
 | --- | --- |
 | `Ctrl+Alt+H` | Show / hide the overlay |
-| `Ctrl+Alt+M` | Switch between single-line and multi-line |
+| `Ctrl+Alt+M` | Cycle single line → single + next → multi line |
 | `Ctrl+Alt+L` | Lock / unlock. Unlocked, the overlay can be dragged and takes the mouse wheel |
 | `Ctrl+Alt+,` / `Ctrl+Alt+.` | Shift the lyrics 0.25 s earlier / later |
 | `Ctrl+Alt+0` | Reset the timing offset |

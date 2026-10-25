@@ -243,6 +243,42 @@ public sealed class LyricsService
                && _overrides.TryGet(LyricsCache.MakeKey(artist, track, album), out lrclibId);
     }
 
+    /// <summary>
+    /// Forgets the cached answer for one track, including the copy stored under a pinned record.
+    /// The version choice itself is kept: "refresh" means ask again, not "go back to automatic".
+    /// </summary>
+    public void ForgetCached(string artist, string track, string? album)
+    {
+        var key = LyricsCache.MakeKey(artist, track, album);
+        _cache.Forget(key);
+
+        if (_overrides is not null && _overrides.TryGet(key, out var pinnedId))
+        {
+            _cache.Forget(VersionOverrides.VersionKey(key, pinnedId));
+        }
+
+        lock (_candidateGate)
+        {
+            _candidateKey = null;
+            _candidates = [];
+        }
+    }
+
+    /// <summary>Drops every lyric answer from disk. The next lookup asks lrclib again.</summary>
+    public void ClearCache()
+    {
+        _cache.Clear();
+
+        lock (_candidateGate)
+        {
+            _candidateKey = null;
+            _candidates = [];
+        }
+    }
+
+    /// <summary>Cache size, for the settings window. Best effort; zero when nothing is stored.</summary>
+    public (int Entries, long Bytes) GetCacheStats() => _cache.GetStats();
+
     private async Task<LyricsResult?> LookupSearchAsync(
         string artist,
         string track,

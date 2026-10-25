@@ -97,6 +97,51 @@ internal static class LyricText
         return text.Length <= limit ? text : text[..(limit - 1)] + "\u2026";
     }
 
+    /// <summary>
+    /// 0..1 through a wait before the next line: an intro, or an interlude with a known line end.
+    /// Negative while the line is being sung. A sheet without an end time cannot tell a gap from a
+    /// long line, so it reports -1 rather than inventing one.
+    /// </summary>
+    public static float GapProgress(IReadOnlyList<LyricLine> lines, int index, TimeSpan position)
+    {
+        if (lines.Count == 0)
+        {
+            return -1f;
+        }
+
+        if (position < lines[0].Start)
+        {
+            var intro = lines[0].Start;
+            if (intro < TimeSpan.FromSeconds(3) || intro <= TimeSpan.Zero)
+            {
+                return -1f;
+            }
+
+            return (float)Math.Clamp(position.TotalMilliseconds / intro.TotalMilliseconds, 0.0, 1.0);
+        }
+
+        if (index < 0 || index + 1 >= lines.Count)
+        {
+            return -1f;
+        }
+
+        var end = lines[index].End ?? lines[index + 1].Start;
+        var next = lines[index + 1].Start;
+
+        if (position < end)
+        {
+            return -1f;
+        }
+
+        var gap = next - end;
+        if (gap < TimeSpan.FromSeconds(3))
+        {
+            return -1f;
+        }
+
+        return (float)Math.Clamp((position - end) / gap, 0.0, 1.0);
+    }
+
     /// <summary>The last line whose start is at or before <paramref name="position"/>, or -1.</summary>
     public static int ActiveLine(IReadOnlyList<LyricLine> lines, TimeSpan position)
     {

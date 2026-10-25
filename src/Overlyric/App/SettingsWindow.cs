@@ -26,7 +26,10 @@ internal enum SettingsChange
     Placement,
 
     /// <summary>The manual lyric offset.</summary>
-    Timing
+    Timing,
+
+    /// <summary>The per-user startup registration.</summary>
+    Startup
 }
 
 /// <summary>
@@ -77,6 +80,9 @@ internal sealed class SettingsWindow : WindowBase
         /// click decoder turns a nav id back into a <see cref="Section"/> by subtracting NavOverlay.
         /// </summary>
         NavSource = 8,
+
+        /// <summary>One active lyric line with the next one previewed underneath.</summary>
+        ModePeek = 9,
 
         ModeSingle = 10,
         ModeMulti = 11,
@@ -157,7 +163,13 @@ internal sealed class SettingsWindow : WindowBase
         NotifyMissingLyrics = 74,
 
         /// <summary>The OLED section's pure-black sweep toggle, appended so the older ids keep their values.</summary>
-        OledBlackout = 75
+        OledBlackout = 75,
+
+        /// <summary>Remove every cached lyric answer from the Advanced section.</summary>
+        ClearCache = 76,
+
+        /// <summary>Write or remove the current user's Run entry.</summary>
+        StartWithWindows = 77
     }
 
     private const float WidthDip = 780f;
@@ -217,6 +229,8 @@ internal sealed class SettingsWindow : WindowBase
     private readonly Func<string, bool> _isUnavailable;
     private readonly Action _openDataFolder;
     private readonly Action _openCacheFolder;
+    private readonly Func<(int Entries, long Bytes)> _cacheStats;
+    private readonly Action _clearCache;
     private readonly string _version;
 
     /// <summary>
@@ -252,6 +266,8 @@ internal sealed class SettingsWindow : WindowBase
         Func<string, bool> isUnavailable,
         Action openDataFolder,
         Action openCacheFolder,
+        Func<(int Entries, long Bytes)> cacheStats,
+        Action clearCache,
         string version,
         Func<IReadOnlyList<SourceCandidate>> liveSources)
     {
@@ -261,6 +277,8 @@ internal sealed class SettingsWindow : WindowBase
         _isUnavailable = isUnavailable;
         _openDataFolder = openDataFolder;
         _openCacheFolder = openCacheFolder;
+        _cacheStats = cacheStats;
+        _clearCache = clearCache;
         _version = version;
         _liveSources = liveSources;
     }
@@ -771,6 +789,11 @@ internal sealed class SettingsWindow : WindowBase
                 Apply(SettingsChange.Layout);
                 return;
 
+            case Control.ModePeek:
+                _config.Mode = OverlayMode.SingleLineWithNext;
+                Apply(SettingsChange.Layout);
+                return;
+
             case Control.ModeMulti:
                 _config.Mode = OverlayMode.MultiLine;
                 Apply(SettingsChange.Layout);
@@ -873,6 +896,16 @@ internal sealed class SettingsWindow : WindowBase
 
             case Control.OpenCache:
                 _openCacheFolder();
+                return;
+
+            case Control.ClearCache:
+                _clearCache();
+                Render();
+                return;
+
+            case Control.StartWithWindows:
+                _config.StartWithWindows = !_config.StartWithWindows;
+                Apply(SettingsChange.Startup);
                 return;
 
             case Control.OledPreset:
@@ -1249,6 +1282,7 @@ internal sealed class SettingsWindow : WindowBase
             context,
             [
                 ("Single line", Control.ModeSingle, _config.Mode == OverlayMode.SingleLine),
+                ("Single +1", Control.ModePeek, _config.Mode == OverlayMode.SingleLineWithNext),
                 ("Multi line", Control.ModeMulti, _config.Mode == OverlayMode.MultiLine)
             ]);
 
@@ -1442,7 +1476,24 @@ internal sealed class SettingsWindow : WindowBase
         Row(context, 1, "Lyrics cache");
         Button(context, ContentRight - 132f, RowTop(1) + 8f, 132f, 30f, "Open", Control.OpenCache);
 
-        Hint(context, 2, $"Version {_version}. Settings live in %LOCALAPPDATA%\\Overlyric.");
+        Row(context, 2, "Clear lyrics cache");
+        Button(context, ContentRight - 132f, RowTop(2) + 8f, 132f, 30f, "Clear", Control.ClearCache);
+
+        Row(context, 3, "Start with Windows");
+        Toggle(context, Control.StartWithWindows, _config.StartWithWindows);
+
+        var (entries, bytes) = _cacheStats();
+        Hint(context, 4, $"{entries} cache entries \u00b7 {FormatBytes(bytes)} \u00b7 Version {_version}");
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        if (bytes >= 1024 * 1024)
+        {
+            return $"{bytes / (1024.0 * 1024.0):0.0} MB";
+        }
+
+        return $"{Math.Max(0, bytes) / 1024.0:0} KB";
     }
 
     /// <summary>
@@ -1762,7 +1813,7 @@ internal sealed class SettingsWindow : WindowBase
     /// <summary>The row each control lives in, so a control can be positioned without a second table.</summary>
     private int RowOf(Control id) => id switch
     {
-        Control.ModeSingle or Control.ModeMulti => 0,
+        Control.ModeSingle or Control.ModePeek or Control.ModeMulti => 0,
         Control.LinesDown or Control.LinesUp => 1,
         Control.Header => 2,
         Control.ProgressBar => 3,
@@ -1789,6 +1840,8 @@ internal sealed class SettingsWindow : WindowBase
         Control.ResetPosition => 2,
         Control.OpenData => 0,
         Control.OpenCache => 1,
+        Control.ClearCache => 2,
+        Control.StartWithWindows => 3,
         Control.SourcePin => 0,
         _ => 0
     };

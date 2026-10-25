@@ -20,6 +20,7 @@ internal static class Program
         Badges();
         Candidates();
         ActiveLine();
+        Gaps();
         Sheets();
 
         Console.WriteLine(_failures == 0 ? "All lyric window checks passed." : $"{_failures} check(s) failed.");
@@ -139,6 +140,29 @@ internal static class Program
         Check("a line stays active until the next one", LyricText.ActiveLine(lines, TimeSpan.FromSeconds(19.9)) == 1);
         Check("the exact next start moves on", LyricText.ActiveLine(lines, TimeSpan.FromSeconds(20)) == 2);
         Check("after the last line it stays there", LyricText.ActiveLine(lines, TimeSpan.FromHours(1)) == 2);
+    }
+
+    private static void Gaps()
+    {
+        LyricLine[] intro = [new(TimeSpan.FromSeconds(10), "one")];
+        Check("an intro starts at zero", Near(LyricText.GapProgress(intro, 0, TimeSpan.Zero), 0f));
+        Check("an intro fills halfway", Near(LyricText.GapProgress(intro, 0, TimeSpan.FromSeconds(5)), 0.5f));
+        Check("an intro is over when the line starts", LyricText.GapProgress(intro, 0, TimeSpan.FromSeconds(10)) < 0f);
+
+        LyricLine[] interlude =
+        [
+            new(TimeSpan.Zero, "one", TimeSpan.FromSeconds(5)),
+            new(TimeSpan.FromSeconds(15), "two")
+        ];
+
+        Check("an interlude starts at zero", Near(LyricText.GapProgress(interlude, 0, TimeSpan.FromSeconds(5)), 0f));
+        Check("an interlude fills halfway", Near(LyricText.GapProgress(interlude, 0, TimeSpan.FromSeconds(10)), 0.5f));
+        Check("a short gap is not announced",
+            LyricText.GapProgress([new(TimeSpan.Zero, "one", TimeSpan.FromSeconds(5)), new(TimeSpan.FromSeconds(6), "two")], 0, TimeSpan.FromSeconds(5.5)) < 0f);
+        Check("a line without an end cannot prove a gap",
+            LyricText.GapProgress([new(TimeSpan.Zero, "one"), new(TimeSpan.FromSeconds(10), "two")], 0, TimeSpan.FromSeconds(5)) < 0f);
+
+        static bool Near(float value, float expected) => MathF.Abs(value - expected) < 0.001f;
     }
 
     private static void Sheets()

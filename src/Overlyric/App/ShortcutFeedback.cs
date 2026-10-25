@@ -52,6 +52,13 @@ internal static class ShortcutFeedback
         Detail = multiLine ? "Several lines at a time" : "One line at a time"
     };
 
+    /// <summary>The middle layout, kept separate so the wording tests need no theme types.</summary>
+    public static OverlayNotice ForPeek() => new()
+    {
+        Title = "Single line + next",
+        Detail = "The next line is previewed underneath"
+    };
+
     public static OverlayNotice ForLock(bool locked) => new()
     {
         Title = locked ? "Overlay locked" : "Overlay unlocked",

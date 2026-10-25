@@ -24,8 +24,12 @@ internal sealed class AppHost
     private const uint KaraokeIntervalMs = 33;
     private const int OffsetStepMs = 250;
 
-    /// <summary>Ticks between z-order re-assertions; 20 fast ticks is roughly every five seconds.</summary>
-    private const int TopmostReassertTicks = 20;
+    /// <summary>
+    /// Minimum time between z-order re-assertions. A tick count was wrong here: twenty ticks is five
+    /// seconds on the karaoke path but twenty on the one-second idle path, which is long enough for a
+    /// game that raises its own window to keep the overlay buried.
+    /// </summary>
+    private const int TopmostReassertMs = 2000;
 
     private const string InstrumentalStatus = "Instrumental";
     private const string NoLyricsStatus = "No lyrics found";
@@ -52,6 +56,19 @@ internal sealed class AppHost
     private readonly PlayerWarningWatch _playerWarning = new();
     private readonly bool _demo;
     private readonly Stopwatch _demoClock = Stopwatch.StartNew();
+
+    /// <summary>Length of a tray-initiated preview, in milliseconds.</summary>
+    private const int PreviewDurationMs = 15_000;
+
+    /// <summary>When the current preview ends; zero when no preview has been started.</summary>
+    private long _previewUntil;
+
+    /// <summary>True while the previous tick was showing the preview, so the end can be noticed once.</summary>
+    private bool _previewActive;
+
+    private bool IsPreviewActive => _previewUntil != 0 && Environment.TickCount64 < _previewUntil;
+
+    private bool IsDemoActive => _demo || IsPreviewActive;
 
     private HotKeyManager? _hotKeys;
     private TrayIcon? _tray;
@@ -137,11 +154,12 @@ internal sealed class AppHost
     private bool _overlayEnabled = true;
     private bool _locked = true;
     private string? _lastTooltip;
-    private int _topmostTicks;
+    private long _lastTopmostReassertAt;
     private SettingsWindow? _settings;
     private LyricPickerWindow? _picker;
     private LyricViewerWindow? _viewer;
     private readonly bool _openSettings;
+    private readonly bool _openPreview;
 
     /// <summary>Action names whose default chord another application already owns.</summary>
     private readonly HashSet<string> _unavailableShortcuts = [];
@@ -189,11 +207,12 @@ internal sealed class AppHost
         return TimeSpan.FromTicks(_demoClock.Elapsed.Ticks % total.Ticks);
     }
 
-    public AppHost(AppConfig config, bool demo = false, bool openSettings = false)
+    public AppHost(AppConfig config, bool demo = false, bool openSettings = false, bool openPreview = false)
     {
         _config = config;
         _demo = demo;
         _openSettings = openSettings;
+        _openPreview = openPreview;
     }
 
     public int Run()
@@ -208,6 +227,20 @@ internal sealed class AppHost
         _tray.LeftClicked += ToggleOverlay;
         _tray.MenuRequested += ShowTrayMenu;
         _tray.Show("Overlyric - waiting for playback");
+
+        if (_config.StartWithWindows)
+        {
+            // Keep the Run value pointed at this executable, because an update or a moved build
+            // folder would otherwise leave Windows starting the old path.
+            StartupRegistration.SetEnabled(true);
+        }
+
+        if (_config.IsFirstRun && !_demo)
+        {
+            _tray.Alert(
+                "Overlyric is running",
+                "Play something, or right-click the tray icon and choose Preview overlay. Settings are in the same menu.");
+        }
 
         _overlay = new OverlayWindow(_config.ToTheme());
         _overlay.Create(_config.Mode, _config.Anchor, _config.OffsetX, _config.OffsetY, MonitorUnderCursor());
@@ -242,7 +275,7 @@ internal sealed class AppHost
         else
         {
             _watcher = MediaSessionWatcher.CreateAsync(ReadSourceSettings).GetAwaiter().GetResult();
-            _watcher.Clock.ManualOffset = TimeSpan.FromMilliseconds(_config.LyricsOffsetMs);
+            ApplyLyricOffset();
             ApplyKaraokeTiming();
 
             var overrides = VersionOverrides.Load(Path.Combine(AppConfig.DataDirectory, "versions.json"));
@@ -257,6 +290,11 @@ internal sealed class AppHost
 
         _currentInterval = SlowIntervalMs;
         SetTimer(_messageWindow.Handle, TimerId, _currentInterval, 0);
+
+        if (_openPreview)
+        {
+            StartPreview();
+        }
 
         if (_openSettings)
         {
@@ -401,9 +439,21 @@ internal sealed class AppHost
             return;
         }
 
-        var snapshot = _demo ? DemoSnapshot : _watcher?.Snapshot ?? NowPlayingSnapshot.Empty;
-        var position = _demo ? DemoPosition() : _watcher?.Clock.Position ?? TimeSpan.Zero;
-        var positionIsUsable = _demo || _watcher is null || _watcher.Clock.PositionIsUsable;
+        var preview = IsPreviewActive;
+        if (_previewActive && !preview)
+        {
+            _previewActive = false;
+            EndPreview();
+        }
+        else if (preview)
+        {
+            _previewActive = true;
+        }
+
+        var demoActive = _demo || preview;
+        var snapshot = demoActive ? DemoSnapshot : _watcher?.Snapshot ?? NowPlayingSnapshot.Empty;
+        var position = demoActive ? DemoPosition() : _watcher?.Clock.Position ?? TimeSpan.Zero;
+        var positionIsUsable = demoActive || _watcher is null || _watcher.Clock.PositionIsUsable;
         _snapshot = snapshot;
 
         UpdatePlayerWarning(snapshot, positionIsUsable);
@@ -418,14 +468,20 @@ internal sealed class AppHost
             // to know what is playing and what the lyric lookup made of it.
             RequestInfoPopup(snapshot);
 
-            if (!_demo)
+            // ResetForNewTrack clears the clock's manual offset, so a correction that is still
+            // displayed has to be pushed back before this frame is built. Re-read the position
+            // afterwards: it now includes the correction.
+            ApplyLyricOffset();
+            position = demoActive ? DemoPosition() : _watcher?.Clock.Position ?? TimeSpan.Zero;
+
+            if (!_demo && !preview && snapshot.HasTrack)
             {
                 _lyricsRetryAttempt = 0;
                 _nextLyricsRetryAt = 0;
                 StartLyricsFetch(snapshot, clearVersions: true);
             }
         }
-        else if (!_demo && ShouldRetryLyrics())
+        else if (!_demo && !preview && ShouldRetryLyrics())
         {
             _lyricsRetryAttempt++;
             StartLyricsFetch(snapshot);
@@ -517,7 +573,12 @@ internal sealed class AppHost
             };
         }
 
-        var count = _config.Mode == OverlayMode.SingleLine ? 1 : Math.Clamp(_config.MultiLineCount, 1, lines.Length);
+        var count = _config.Mode switch
+        {
+            OverlayMode.SingleLine => 1,
+            OverlayMode.SingleLineWithNext => 2,
+            _ => Math.Clamp(_config.MultiLineCount, 1, lines.Length)
+        };
 
         if (!positionIsUsable && snapshot.IsPlaying)
         {
@@ -604,11 +665,19 @@ internal sealed class AppHost
             sungChars = KaraokeSweep.SungCharacters(lines[index], lineEnd, position);
         }
 
-        var visible = new string[count];
-        var windowStart = index - (count / 2);
-        windowStart = Math.Clamp(windowStart, 0, Math.Max(0, lines.Length - count));
+        // The peek mode is active line first, next line second. At the last line there is no next
+        // line, so it shrinks to one rather than showing the previous line above the active one.
+        var visibleCount = _config.Mode == OverlayMode.SingleLineWithNext
+            ? Math.Min(2, Math.Max(1, lines.Length - index))
+            : count;
 
-        for (var i = 0; i < count; i++)
+        var windowStart = _config.Mode == OverlayMode.SingleLineWithNext
+            ? index
+            : Math.Clamp(index - (visibleCount / 2), 0, Math.Max(0, lines.Length - visibleCount));
+
+        var visible = new string[visibleCount];
+
+        for (var i = 0; i < visibleCount; i++)
         {
             visible[i] = lines[windowStart + i].Text;
         }
@@ -623,6 +692,7 @@ internal sealed class AppHost
             ShowProgressBar = _config.ShowProgressBar,
             LineProgress = lineProgress,
             TrackProgress = trackProgress,
+            GapProgress = Quantise(LyricText.GapProgress(lines, index, position)),
             SungChars = sungChars
         };
     }
@@ -734,7 +804,7 @@ internal sealed class AppHost
     /// </summary>
     private void UpdateLyricsAlert(NowPlayingSnapshot snapshot)
     {
-        if (_demo || _tray is null || !_config.NotifyWhenLyricsMissing || !snapshot.HasTrack)
+        if (IsDemoActive || _tray is null || !_config.NotifyWhenLyricsMissing || !snapshot.HasTrack)
         {
             return;
         }
@@ -925,14 +995,15 @@ internal sealed class AppHost
         }
 
         // Full-screen applications sometimes displace other topmost windows, so re-asserting the
-        // z-order is worthwhile insurance - but a few times a minute, not several times a second.
+        // z-order is worthwhile insurance - but at most every couple of seconds, not on every tick.
         //
         // Not while one of Overlyric's own lyric windows is open: they are topmost as well, and every
         // re-assert would lift the overlay back over the window the user is reading. The overlay can
         // wait; the moment the panel closes, the next tick puts it back on top.
-        if (!IsOwnWindowOpen && ++_topmostTicks >= TopmostReassertTicks)
+        var now = Environment.TickCount64;
+        if (!IsOwnWindowOpen && now - _lastTopmostReassertAt >= TopmostReassertMs)
         {
-            _topmostTicks = 0;
+            _lastTopmostReassertAt = now;
             _overlay.ReassertTopmost();
         }
     }
@@ -1246,6 +1317,12 @@ internal sealed class AppHost
             return false;
         }
 
+        // A gap indicator is drawn even when the progress bar is off, so it gets its own check.
+        if (a.GapProgress != b.GapProgress)
+        {
+            return false;
+        }
+
         // Progress only warrants a redraw when it is actually being drawn; otherwise a moving
         // position would force a frame every tick for something invisible.
         if (a.ShowProgressBar
@@ -1283,7 +1360,9 @@ internal sealed class AppHost
         var notice = command switch
         {
             Commands.ToggleOverlay => ShortcutFeedback.ForOverlay(_overlayEnabled, _overlay?.IsVisible ?? false),
-            Commands.ToggleMode => ShortcutFeedback.ForLayout(_config.Mode == OverlayMode.MultiLine),
+            Commands.ToggleMode => _config.Mode == OverlayMode.SingleLineWithNext
+                ? ShortcutFeedback.ForPeek()
+                : ShortcutFeedback.ForLayout(_config.Mode == OverlayMode.MultiLine),
             Commands.ToggleLock => ShortcutFeedback.ForLock(_locked),
             Commands.OffsetBack or Commands.OffsetForward or Commands.OffsetReset =>
                 ShortcutFeedback.ForOffset(
@@ -1478,7 +1557,12 @@ internal sealed class AppHost
                 break;
 
             case Commands.ToggleMode:
-                _config.Mode = _config.Mode == OverlayMode.SingleLine ? OverlayMode.MultiLine : OverlayMode.SingleLine;
+                _config.Mode = _config.Mode switch
+                {
+                    OverlayMode.SingleLine => OverlayMode.SingleLineWithNext,
+                    OverlayMode.SingleLineWithNext => OverlayMode.MultiLine,
+                    _ => OverlayMode.SingleLine
+                };
                 _overlay.SetMode(_config.Mode);
                 ForceRedraw();
                 _config.Save();
@@ -1595,6 +1679,14 @@ internal sealed class AppHost
                 OpenLyricPicker();
                 break;
 
+            case Commands.RefreshLyrics:
+                RefreshCurrentLyrics();
+                break;
+
+            case Commands.PreviewOverlay:
+                StartPreview();
+                break;
+
             case Commands.OpenSettings:
                 OpenSettings();
                 break;
@@ -1704,14 +1796,109 @@ internal sealed class AppHost
             CancellationToken.None);
     }
 
+    /// <summary>
+    /// Drive the overlay from the canned demo track for a few seconds. This is the tray equivalent of
+    /// starting with --demo, without restarting the process or disturbing the persisted layout.
+    /// </summary>
+    private void StartPreview()
+    {
+        if (_overlay is null)
+        {
+            return;
+        }
+
+        if (_demo)
+        {
+            // --demo already runs the same track indefinitely; restarting the clock is the only
+            // useful thing a preview command can do there.
+            _demoClock.Restart();
+            ForceRedraw();
+            return;
+        }
+
+        _fetchCts?.Cancel();
+        _fetchCts?.Dispose();
+        _fetchCts = null;
+
+        _overlayEnabled = true;
+        _previewUntil = Environment.TickCount64 + PreviewDurationMs;
+        _previewActive = true;
+        _lastRevision = long.MinValue;
+        _demoClock.Restart();
+
+        lock (_gate)
+        {
+            _lines = DemoLines;
+            _lyricsSynced = true;
+            _lyricsStatus = null;
+            _isInstrumental = false;
+            _fetchCompleted = true;
+            _lyricsWordSynced = false;
+            _lyricsRevision = DemoSnapshot.Revision;
+            _lyricsRecordId = null;
+        }
+
+        Interlocked.Increment(ref _lyricsStamp);
+        ForceRedraw();
+    }
+
+    /// <summary>
+    /// Leave the preview and force the next tick to resolve the real track again. Clearing the fetch
+    /// state first is deliberate: the old lyric lines belong to the demo, not to whatever is playing.
+    /// </summary>
+    private void EndPreview()
+    {
+        _previewUntil = 0;
+        _lastRevision = -1;
+
+        lock (_gate)
+        {
+            _lines = [];
+            _lyricsSynced = false;
+            _lyricsStatus = null;
+            _isInstrumental = false;
+            _fetchCompleted = false;
+            _lyricsWordSynced = false;
+            _lyricsRevision = -1;
+            _lyricsRecordId = null;
+        }
+
+        Interlocked.Increment(ref _lyricsStamp);
+    }
+
+    /// <summary>
+    /// Forget the current track's cached answer and resolve it again. A pinned record is re-fetched
+    /// under its own key, so refreshing never silently turns a manual choice back into automatic.
+    /// </summary>
+    private void RefreshCurrentLyrics()
+    {
+        var snapshot = _snapshot;
+        if (!snapshot.HasTrack || _lyrics is null || IsDemoActive)
+        {
+            return;
+        }
+
+        _lyrics.ForgetCached(snapshot.Artist, snapshot.Title, snapshot.Album);
+        _lyricsRetryAttempt = 0;
+        _nextLyricsRetryAt = 0;
+        StartLyricsFetch(snapshot);
+    }
+
+    /// <summary>Drop every cached lyric answer. The next lookup for each track asks lrclib again.</summary>
+    private void ClearLyricsCache()
+    {
+        _lyrics?.ClearCache();
+        ForceRedraw();
+    }
+
+    /// <summary>Cache size for the Advanced section; zero in demo mode, where no cache is created.</summary>
+    private (int Entries, long Bytes) CacheStats() => _lyrics?.GetCacheStats() ?? (0, 0);
+
     private void NudgeLyrics(int deltaMs)
     {
         _config.LyricsOffsetMs = Math.Clamp(_config.LyricsOffsetMs + deltaMs, -10000, 10000);
 
-        if (_watcher is not null)
-        {
-            _watcher.Clock.ManualOffset = TimeSpan.FromMilliseconds(_config.LyricsOffsetMs);
-        }
+        ApplyLyricOffset();
 
         ForceRedraw();
         _config.Save();
@@ -1721,10 +1908,7 @@ internal sealed class AppHost
     {
         _config.LyricsOffsetMs = 0;
 
-        if (_watcher is not null)
-        {
-            _watcher.Clock.ManualOffset = TimeSpan.Zero;
-        }
+        ApplyLyricOffset();
 
         ForceRedraw();
         _config.Save();
@@ -1790,6 +1974,8 @@ internal sealed class AppHost
                 name => _unavailableShortcuts.Contains(name),
                 () => OpenFolder(AppConfig.DataDirectory),
                 () => OpenFolder(AppConfig.CacheDirectory),
+                CacheStats,
+                ClearLyricsCache,
                 typeof(AppHost).Assembly.GetName().Version?.ToString(3) ?? "0.1.0",
                 () => _watcher?.LiveSources ?? []);
         }
@@ -1843,7 +2029,7 @@ internal sealed class AppHost
     private void EnsureVersionsForPicker()
     {
         var snapshot = _snapshot;
-        if (_demo || !snapshot.HasTrack || _lyrics is null || IsVersionsLoading)
+        if (IsDemoActive || !snapshot.HasTrack || _lyrics is null || IsVersionsLoading)
         {
             return;
         }
@@ -1905,7 +2091,7 @@ internal sealed class AppHost
         return new LyricPickerModel
         {
             HasTrack = snapshot.HasTrack,
-            IsDemo = _demo,
+            IsDemo = IsDemoActive,
             Title = MetadataNormaliser.CleanTitle(snapshot.Title),
             Artist = snapshot.Artist,
             Album = snapshot.Album,
@@ -1949,7 +2135,7 @@ internal sealed class AppHost
             status = _lyricsStatus;
         }
 
-        var position = _demo ? DemoPosition() : _watcher?.Clock.Position ?? TimeSpan.Zero;
+        var position = IsDemoActive ? DemoPosition() : _watcher?.Clock.Position ?? TimeSpan.Zero;
 
         // A corrected body can arrive for the same record id and the same number of lines, so the
         // document key has to include the words, not only the shape of the sheet. The viewer rebuilds
@@ -2062,6 +2248,19 @@ internal sealed class AppHost
         }
     }
 
+    /// <summary>
+    /// Push the persisted lyric correction into the clock. The clock clears its own manual offset on
+    /// a track change, so this has to run again on every revision - otherwise a correction that is
+    /// still shown on the control bar would silently stop applying after the first song.
+    /// </summary>
+    private void ApplyLyricOffset()
+    {
+        if (_watcher is not null)
+        {
+            _watcher.Clock.ManualOffset = TimeSpan.FromMilliseconds(_config.LyricsOffsetMs);
+        }
+    }
+
     /// <summary>Apply a change made in the settings window to the live overlay.</summary>
     private void ApplySettings(SettingsChange change)
     {
@@ -2086,12 +2285,12 @@ internal sealed class AppHost
                 break;
 
             case SettingsChange.Timing:
-                if (_watcher is not null)
-                {
-                    _watcher.Clock.ManualOffset = TimeSpan.FromMilliseconds(_config.LyricsOffsetMs);
-                }
-
+                ApplyLyricOffset();
                 ForceRedraw();
+                break;
+
+            case SettingsChange.Startup:
+                StartupRegistration.SetEnabled(_config.StartWithWindows);
                 break;
         }
 
@@ -2119,10 +2318,12 @@ internal sealed class AppHost
             // Informational, and previously selectable while doing nothing.
             TrayMenuItem.Disabled(trackLine),
             new(Commands.OpenLyricPicker, "Lyrics\u2026"),
+            new(Commands.RefreshLyrics, "Refresh lyrics"),
+            new(Commands.PreviewOverlay, "Preview overlay"),
             TrayMenuItem.Submenu("Source", SourceMenuItems()),
             TrayMenuItem.Separator,
             new(Commands.ToggleOverlay, "Show overlay", _overlayEnabled),
-            new(Commands.ToggleMode, _config.Mode == OverlayMode.SingleLine ? "Mode: single line" : "Mode: multi line"),
+            new(Commands.ToggleMode, $"Mode: {ModeName(_config.Mode)}"),
             new(Commands.ToggleLock, "Locked (click-through)", _locked),
             TrayMenuItem.Separator,
             new(Commands.OpenSettings, "Settings\u2026"),
@@ -2199,6 +2400,13 @@ internal sealed class AppHost
 
         return items;
     }
+
+    private static string ModeName(OverlayMode mode) => mode switch
+    {
+        OverlayMode.SingleLine => "single line",
+        OverlayMode.SingleLineWithNext => "single + next",
+        _ => "multi line"
+    };
 
     private static string Truncate(string value, int maxLength) =>
         value.Length <= maxLength ? value : value[..(maxLength - 1)] + "\u2026";

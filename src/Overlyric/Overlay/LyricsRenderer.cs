@@ -204,10 +204,13 @@ internal sealed class LyricsRenderer : IDisposable
 
         var showProgress = visual.ShowProgressBar && ResolveProgress(visual) >= 0f;
         var progressExtra = showProgress ? _theme.ProgressBarHeight + _theme.ProgressBarInset : 0f;
+        // Reserved even when no gap is showing, so the pill does not jump by the height of the
+        // indicator when an instrumental break starts.
+        const float gapExtra = 8f;
 
         var lineWidth = Math.Min(lineLayout.Metrics.Width, available);
         var pillWidth = Math.Min(lineWidth + (2 * _theme.PaddingX), width);
-        var pillHeight = lineLayout.Metrics.Height + (2 * _theme.PaddingY) + progressExtra;
+        var pillHeight = lineLayout.Metrics.Height + (2 * _theme.PaddingY) + progressExtra + gapExtra;
 
         var headerHeight = 0f;
         var headerWidth = 0f;
@@ -261,6 +264,12 @@ internal sealed class LyricsRenderer : IDisposable
         // Drawn from `margin`, not from the pill edge: the layout centres text inside its own
         // box, so the origin must be the same box the width was measured against.
         DrawLine(context, lineLayout, new Vector2(margin, top + _theme.PaddingY), visual.SungChars);
+
+        if (visual.GapProgress >= 0f)
+        {
+            var gapY = top + _theme.PaddingY + lineLayout.Metrics.Height + 2f;
+            DrawGapIndicator(context, left + (pillWidth / 2f), gapY, visual.GapProgress);
+        }
 
         ContentBounds = new Rect(RectangleF.FromLTRB(contentLeft, top - headerHeight, contentRight, top + pillHeight));
     }
@@ -318,9 +327,10 @@ internal sealed class LyricsRenderer : IDisposable
 
         var showProgress = visual.ShowProgressBar && ResolveProgress(visual) >= 0f;
         var progressExtra = showProgress ? _theme.ProgressBarHeight + _theme.ProgressBarInset : 0f;
+        const float gapExtra = 8f;
 
         var boxWidth = Math.Min(contentWidth + (2 * _theme.PaddingX), width);
-        var boxHeight = contentHeight + headerBlockHeight + (2 * _theme.PaddingY) + progressExtra;
+        var boxHeight = contentHeight + headerBlockHeight + (2 * _theme.PaddingY) + progressExtra + gapExtra;
         var left = (width - boxWidth) / 2f;
         var top = (height - boxHeight) / 2f;
 
@@ -377,6 +387,12 @@ internal sealed class LyricsRenderer : IDisposable
         if (showProgress)
         {
             DrawProgressBar(context, left, top, boxWidth, boxHeight, ResolveProgress(visual));
+        }
+
+        if (visual.GapProgress >= 0f)
+        {
+            var gapY = top + _theme.PaddingY + headerBlockHeight + contentHeight + 2f;
+            DrawGapIndicator(context, left + (boxWidth / 2f), gapY, visual.GapProgress);
         }
 
         ContentBounds = new Rect(RectangleF.FromLTRB(left, top, left + boxWidth, top + boxHeight));
@@ -802,6 +818,36 @@ internal sealed class LyricsRenderer : IDisposable
 
         context.FillRoundedRectangle(
             Rounded(left + inset, barTop, filled, barHeight, radius),
+            GetBrush(context, _theme.ProgressColor));
+    }
+
+    /// <summary>
+    /// A tiny progress line for the wait before the next line. It is deliberately quieter than the
+    /// track progress bar: it answers "is this frozen?" without becoming a second progress bar.
+    /// </summary>
+    private void DrawGapIndicator(
+        ID2D1DeviceContext context,
+        float centerX,
+        float top,
+        float progress)
+    {
+        const float width = 36f;
+        const float height = 2f;
+
+        var left = centerX - (width / 2f);
+
+        context.FillRoundedRectangle(
+            Rounded(left, top, width, height, height / 2f),
+            GetBrush(context, _theme.ProgressTrackColor));
+
+        var filled = Math.Clamp(progress, 0f, 1f) * width;
+        if (filled <= 0.5f)
+        {
+            return;
+        }
+
+        context.FillRoundedRectangle(
+            Rounded(left, top, filled, height, height / 2f),
             GetBrush(context, _theme.ProgressColor));
     }
 
