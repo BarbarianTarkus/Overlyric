@@ -1,4 +1,5 @@
 using Overlyric.App;
+using Overlyric.Interop;
 using static Overlyric.Interop.NativeMethods;
 
 namespace Overlyric;
@@ -13,10 +14,20 @@ internal static class Program
         // Also declared in app.manifest; repeated here so an unpackaged run behaves identically.
         SetProcessDpiAwarenessContext(new nint(DpiAwarenessPerMonitorV2));
 
+        if (!CommandLine.TryParse(args, out var startupCommand, out var argumentError))
+        {
+            // A script that asked for something unknown deserves a failure, not a silent success.
+            new DiagnosticLog(Path.Combine(AppConfig.DataDirectory, "diagnostics.log"))
+                .Add("args", argumentError ?? "Unknown arguments.");
+            return 2;
+        }
+
         using var instance = new Mutex(initiallyOwned: true, MutexName, out var isFirstInstance);
         if (!isFirstInstance)
         {
-            // A second copy would fight over the overlay and the tray icon.
+            // The running instance owns the overlay and the tray: hand it the command instead of
+            // starting a second copy. If nothing is listening, exit as the old guard did.
+            _ = CommandPipe.TrySend(CommandLine.Forward(args));
             return 0;
         }
 
@@ -33,7 +44,7 @@ internal static class Program
         var preview = Array.Exists(args, a => string.Equals(a, "--preview", StringComparison.OrdinalIgnoreCase));
 
         var config = AppConfig.Load();
-        var host = new AppHost(config, demo, settings, preview);
+        var host = new AppHost(config, demo, settings, preview, startupCommand);
 
         return host.Run();
     }

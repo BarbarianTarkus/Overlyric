@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
 using Overlyric.Interop;
@@ -236,6 +237,9 @@ internal sealed class AppHost
     private LyricViewerWindow? _viewer;
     private readonly bool _openSettings;
     private readonly bool _openPreview;
+    private readonly HostCommand _startupCommand;
+    private readonly ConcurrentQueue<HostCommand> _pendingCommands = new();
+    private readonly CancellationTokenSource _commandCts = new();
 
     /// <summary>Action names whose default chord another application already owns.</summary>
     private readonly HashSet<string> _unavailableShortcuts = [];
@@ -283,12 +287,18 @@ internal sealed class AppHost
         return TimeSpan.FromTicks(_demoClock.Elapsed.Ticks % total.Ticks);
     }
 
-    public AppHost(AppConfig config, bool demo = false, bool openSettings = false, bool openPreview = false)
+    public AppHost(
+        AppConfig config,
+        bool demo = false,
+        bool openSettings = false,
+        bool openPreview = false,
+        HostCommand startupCommand = HostCommand.None)
     {
         _config = config;
         _demo = demo;
         _openSettings = openSettings;
         _openPreview = openPreview;
+        _startupCommand = startupCommand;
     }
 
     public int Run()
@@ -407,6 +417,24 @@ internal sealed class AppHost
         if (_openSettings)
         {
             OpenSettings();
+        }
+
+        // A second launch forwards its command line over this pipe instead of starting a second
+        // overlay. The callback runs on the pipe thread and only queues; the UI thread dispatches.
+        CommandPipe.Start(
+            line =>
+            {
+                if (CommandLine.TryParse(line.Split(' '), out var forwarded, out _)
+                    && forwarded != HostCommand.None)
+                {
+                    _pendingCommands.Enqueue(forwarded);
+                }
+            },
+            _commandCts.Token);
+
+        if (_startupCommand != HostCommand.None)
+        {
+            DispatchHostCommand(_startupCommand);
         }
 
         return RunMessageLoop();
@@ -531,6 +559,7 @@ internal sealed class AppHost
                 break;
 
             case WM_DESTROY:
+                _commandCts.Cancel();
                 PostQuitMessage(0);
                 break;
 
@@ -549,6 +578,13 @@ internal sealed class AppHost
         if (_overlay is null)
         {
             return;
+        }
+
+        // Commands from a second instance are queued by the pipe thread and executed here, on the
+        // UI thread that owns every window.
+        while (_pendingCommands.TryDequeue(out var pending))
+        {
+            DispatchHostCommand(pending);
         }
 
         // Foreground and fullscreen facts change slowly; two seconds is the roadmap cadence, and it
@@ -1718,6 +1754,108 @@ internal sealed class AppHost
         }
 
         return MonitorUnderCursor();
+    }
+
+    /// <summary>Runs a command from the command line, a second instance or the startup arguments.</summary>
+    private void DispatchHostCommand(HostCommand command)
+    {
+        if (_overlay is null || command == HostCommand.None)
+        {
+            return;
+        }
+
+        switch (command)
+        {
+            case HostCommand.Show:
+                if (!_overlayEnabled)
+                {
+                    Execute(Commands.ToggleOverlay);
+                }
+
+                break;
+
+            case HostCommand.Hide:
+                if (_overlayEnabled)
+                {
+                    Execute(Commands.ToggleOverlay);
+                }
+
+                break;
+
+            case HostCommand.Toggle:
+                Execute(Commands.ToggleOverlay);
+                break;
+
+            case HostCommand.LayoutSingle:
+                SetLayout(OverlayMode.SingleLine);
+                break;
+
+            case HostCommand.LayoutPeek:
+                SetLayout(OverlayMode.SingleLineWithNext);
+                break;
+
+            case HostCommand.LayoutMulti:
+                SetLayout(OverlayMode.MultiLine);
+                break;
+
+            case HostCommand.LayoutNext:
+                Execute(Commands.ToggleMode);
+                break;
+
+            case HostCommand.Lock:
+                if (!_locked)
+                {
+                    SetLocked(true);
+                }
+
+                break;
+
+            case HostCommand.Unlock:
+                if (_locked)
+                {
+                    SetLocked(false);
+                }
+
+                break;
+
+            case HostCommand.ToggleLock:
+                Execute(Commands.ToggleLock);
+                break;
+
+            case HostCommand.OffsetEarlier:
+                Execute(Commands.OffsetBack);
+                break;
+
+            case HostCommand.OffsetLater:
+                Execute(Commands.OffsetForward);
+                break;
+
+            case HostCommand.OffsetReset:
+                Execute(Commands.OffsetReset);
+                break;
+
+            case HostCommand.Preview:
+                StartPreview();
+                break;
+
+            case HostCommand.Settings:
+                OpenSettings();
+                break;
+
+            case HostCommand.Diagnostics:
+                OpenDiagnostics();
+                break;
+
+            case HostCommand.RefreshLyrics:
+                RefreshCurrentLyrics();
+                break;
+
+            case HostCommand.Exit:
+                Execute(Commands.Exit);
+                break;
+        }
+
+        _diagnosticLog.Add("command", command.ToString());
     }
 
     private void ToggleOverlay() => Execute(Commands.ToggleOverlay);

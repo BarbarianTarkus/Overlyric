@@ -56,7 +56,7 @@ dotnet tool install --global dotnet-coverage          # once per machine
 pwsh tools\collect-coverage.ps1                        # writes coverage\probes.xml
 ```
 
-The script runs the fifteen probes that need no desktop session, media player or AOT publish
+The script runs the sixteen probes that need no desktop session, media player or AOT publish
 (ApiBudget, FullscreenProbe, NowPlaying, SmtcAot, SmtcProbe, ToastProbe and VorticeAot are left
 out), merges their reports and prints the result. It fails when a probe fails, but still merges what
 it collected. `SonarQube.Analysis.xml` points the analysis at `coverage/probes.xml`

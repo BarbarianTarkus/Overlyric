@@ -239,6 +239,20 @@ and the tray menu has the same toggle.
 This is deliberately diagnostic rather than clever: there is no attempt to guess a position for a
 player that refuses to give one, because a wrong lyric is worse than an honest sentence.
 
+## Scripting and the second instance
+
+The app has one overlay and one tray by design, so a second launch cannot be allowed to create a
+second copy. It also should not exit silently: "I clicked the shortcut and nothing happened" is the
+failure mode that motivated the command surface. The single-instance mutex still decides who owns
+the process; the loser forwards its arguments as one line over a named pipe
+(`Overlyric.Commands.v1`) and exits 0. The owner's pipe thread only parses and enqueues - the
+commands run on the UI thread in the tick loop, so a forwarded command and a menu click go through
+the same implementation.
+
+The grammar is deliberately small and strict: show/hide/toggle, layout, offset nudge/reset, lock,
+preview, settings, diagnostics, refresh and exit. An unknown switch is an error (exit code 2, logged),
+because a script that quietly did nothing is worse than one that says why.
+
 ## Saying what the lookup found
 
 The overlay is deliberately quiet, but a track change is the one moment a listener wants to know what

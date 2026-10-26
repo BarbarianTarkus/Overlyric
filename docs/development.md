@@ -112,6 +112,7 @@ because they are the quickest way to re-check a platform assumption.
 | `VorticeAot` | Does the Vortice COM interop survive NativeAOT, and what does DirectWrite report? |
 | `NowPlaying` | What is playing right now, what does lrclib hold for it, and what does the pipeline resolve the track to — the reproduction harness for a lyric-matching failure |
 | `LyricsTests` | 34 checks over LRC parsing, caching (including matcher-version staleness, forget and clear) and a live LRCLIB round-trip |
+| `CommandLineTests` | 27 checks over the scripting grammar and the named-pipe round trip: every switch, unknown values refused, last-command-wins, and a send with nothing listening failing instead of hanging |
 | `DiagnosticsTests` | 19 checks over the rolling log (ring bound, file rotation, format) and the diagnostics snapshot's JSON, including a title with quotes and a newline |
 | `PresenceTests` | 24 checks over the Presence decisions: the per-app hide match (names, case, paths, protected processes), the exclusive-fullscreen conjunction, and the ten-second sustain with announce-once |
 | `LyricEditTests` | 37 checks over the timing editor: selection, set start/end, the refusal of an impossible edit, per-line and whole-sheet nudges, clamping at zero, stable sorting, and the bounded undo/redo history |

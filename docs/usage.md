@@ -175,6 +175,30 @@ anchored to the right; the sheet re-wraps its lines at the new width.
 
 *The sheet in demo mode. A real track also carries the LRCLIB record it came from; demo tracks do not.*
 
+## Command line and scripting
+
+A second launch does not start a second overlay: it forwards its arguments to the instance that is
+already running, over the local named pipe `Overlyric.Commands.v1`. That makes the app scriptable
+from Stream Deck, AutoHotkey, a shortcut or a batch file:
+
+```powershell
+Overlyric.exe --toggle            # show/hide the overlay
+Overlyric.exe --show              # or --hide for an explicit state
+Overlyric.exe --layout=peek       # single, peek (single + next), multi, or next to cycle
+Overlyric.exe --offset=-250       # nudge this track 0.25 s earlier (or +250, or reset)
+Overlyric.exe --lock              # or --unlock
+Overlyric.exe --preview           # show the canned demo track for fifteen seconds
+Overlyric.exe --settings          # open the settings window
+Overlyric.exe --diagnostics       # open the diagnostics window
+Overlyric.exe --refresh           # ask LRCLIB again for the current track
+Overlyric.exe --exit              # quit, tray and all
+```
+
+The forwarded command is executed on the running instance's UI thread, so it behaves exactly like
+the menu item or hotkey it names. An unknown switch exits with code 2 and is recorded in the
+diagnostics log rather than being accepted silently. `--demo`, `--settings` and `--preview` on the
+first launch still mean what they did.
+
 ## Diagnostics
 
 **Diagnostics…** in the tray opens a read-only window that answers "why is it showing this?": the

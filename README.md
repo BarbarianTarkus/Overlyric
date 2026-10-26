@@ -88,8 +88,10 @@ there is no main window. Play something and the overlay appears.
 | `Ctrl+Alt+0` | Reset the timing offset |
 
 Every shortcut can be rebound in **Settings → Shortcuts**. `Overlyric.exe --settings` opens the same
-window directly. The [usage guide](docs/usage.md) covers the control bar, the tray menu, the lyric
-selector and the viewer.
+window directly, and a second launch forwards scripts to the running instance: `--toggle`,
+`--layout=peek`, `--offset=-250`, `--preview`, `--diagnostics` and more. The
+[usage guide](docs/usage.md) covers the control bar, the tray menu, the lyric selector and the
+viewer.
 
 ## How it works
 

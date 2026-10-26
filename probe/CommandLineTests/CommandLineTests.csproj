@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>CommandLineTests</AssemblyName>
+    <RootNamespace>Overlyric.CommandLineTests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The command grammar and the pipe transport are plain .NET; the dispatch they feed is the
+         app's, and it needs the message loop. -->
+    <Compile Include="..\..\src\Overlyric\App\CommandLine.cs" />
+    <Compile Include="..\..\src\Overlyric\Interop\CommandPipe.cs" />
+  </ItemGroup>
+
+</Project>
