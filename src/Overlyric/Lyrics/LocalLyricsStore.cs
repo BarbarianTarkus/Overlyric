@@ -254,7 +254,7 @@ public sealed class LocalLyricsStore
         }
     }
 
-    private LocalLyricsPreview BuildPreview(string text, string fileName, double? trackDurationSeconds)
+    private static LocalLyricsPreview BuildPreview(string text, string fileName, double? trackDurationSeconds)
     {
         if (string.IsNullOrWhiteSpace(text))
         {
@@ -292,7 +292,7 @@ public sealed class LocalLyricsStore
     /// A plain sheet has no timestamps, so every line is anchored at zero - the same representation
     /// the LRCLIB client uses for untimed words. The renderer shows them as static text.
     /// </summary>
-    private static IReadOnlyList<LyricLine> SplitPlainLines(string text)
+    private static List<LyricLine> SplitPlainLines(string text)
     {
         var lines = new List<LyricLine>();
 
