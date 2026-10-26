@@ -41,7 +41,8 @@ These are the defaults. Every one of them can be rebound in **Settings → Short
 shortcut, press the combination you want, and it is registered immediately. A combination that is
 already used by another action, or already taken by another application, is refused with the reason
 shown instead of being silently swallowed; a shortcut with no Ctrl, Alt or Win is refused too.
-`Open settings` ships unbound, so it costs nothing until you want it.
+`Open full lyrics` and `Choose lyrics` ship unbound too, so a Stream Deck or macro can open
+either window without a tray trip, and `Open settings` completes the set.
 
 A timing nudge is saved for the track you are hearing, so the correction is still there when the song
 comes around again. Hold **Shift** while nudging — or turn off **Remember this track** in Timing — to

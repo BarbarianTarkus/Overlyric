@@ -324,7 +324,7 @@ internal sealed class SettingsWindow : WindowBase
     /// One past the last row index each section draws. The viewport needs the height before the section
     /// is drawn, so this is a table rather than something measured twice.
     /// </summary>
-    private static readonly int[] SectionRows = [11, 8, 8, 5, 8, 8, 8, 4];
+    private static readonly int[] SectionRows = [11, 8, 8, 5, 8, 8, 9, 4];
 
     private readonly AppConfig _config;
     private readonly Action<SettingsChange> _changed;

@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Overlyric.Interop;
 using Overlyric.Lyrics;
 using Vortice.Direct2D1;
 using Vortice.DirectWrite;
@@ -386,6 +387,53 @@ internal sealed class LyricViewerWindow : PanelWindow
         _measured = false;
         EnsureSelectedVisible();
         _editMessage = _edit.Message;
+        Invalidate();
+    }
+
+    /// <summary>
+    /// Ctrl+C copies the selected (or active) line; Ctrl+Shift+C copies the whole sheet as LRC. The
+    /// clipboard is the one place a lyric is useful outside this window, and both forms are what
+    /// listeners actually paste into a message or a bug report.
+    /// </summary>
+    private void CopyLyrics()
+    {
+        var sheet = _sheet;
+
+        if (sheet is null || sheet.Lines.Count == 0)
+        {
+            return;
+        }
+
+        var lines = _edit?.Lines ?? sheet.Lines;
+        var wholeSheet = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+        string text;
+
+        if (wholeSheet)
+        {
+            text = LyricTextCodec.EncodeLrc(
+                sheet.Artist,
+                sheet.Title,
+                sheet.Album,
+                sheet.DurationSeconds,
+                lines);
+        }
+        else
+        {
+            var index = _edit?.SelectedIndex ?? _activeIndex;
+
+            if (index < 0 || index >= lines.Count)
+            {
+                return;
+            }
+
+            var line = lines[index].Text.Trim();
+            text = line.Length == 0 ? " " : line;
+        }
+
+        _editMessage = Clipboard.WriteText(Handle, text)
+            ? wholeSheet ? "Copied the whole sheet as LRC." : "Copied the selected line."
+            : "The clipboard is busy; try again.";
+
         Invalidate();
     }
 
@@ -1735,6 +1783,12 @@ internal sealed class LyricViewerWindow : PanelWindow
         {
             _edit?.Redo();
             AfterHistoryMove();
+            return true;
+        }
+
+        if (virtualKey == 0x43 && (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0)
+        {
+            CopyLyrics();
             return true;
         }
 

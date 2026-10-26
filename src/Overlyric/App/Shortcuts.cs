@@ -17,7 +17,9 @@ internal static class ShortcutActions
         new("OffsetBack", Commands.OffsetBack, "Lyrics earlier", "Ctrl+Alt+Comma"),
         new("OffsetForward", Commands.OffsetForward, "Lyrics later", "Ctrl+Alt+Period"),
         new("OffsetReset", Commands.OffsetReset, "Reset timing", "Ctrl+Alt+0"),
-        new("OpenSettings", Commands.OpenSettings, "Open settings", "")
+        new("OpenSettings", Commands.OpenSettings, "Open settings", ""),
+        new("OpenLyricSheet", Commands.OpenLyricSheet, "Open full lyrics", ""),
+        new("ChooseLyrics", Commands.OpenLyricPicker, "Choose lyrics", "")
     ];
 
     public static ShortcutAction? ForCommand(int command)

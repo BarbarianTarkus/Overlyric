@@ -225,6 +225,10 @@ the selector returns the track to LRCLIB while keeping the file. An impossible e
 after the line's own end, an end before the start - is refused with a sentence and leaves the sheet
 exactly as it was, so a slip never costs the previous timing.
 
+`Ctrl+C` copies the selected line (or the line being sung when nothing is selected), and
+`Ctrl+Shift+C` copies the whole current sheet as LRC - handy for a message, a bug report or an
+external editor.
+
 The selected line stays marked while playback highlights the line being sung, so "the line I am
 editing" and "the line I am hearing" cannot be confused. Choosing a different record replaces the
 editable sheet; unsaved edits on the same track are kept until they are saved or the track changes.
