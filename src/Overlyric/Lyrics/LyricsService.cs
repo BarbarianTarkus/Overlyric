@@ -294,7 +294,7 @@ public sealed class LyricsService
         _selections.TryGet(LyricsCache.MakeKey(artist, track, album), out selection);
 
     /// <summary>Prefills the import dialog's preview without storing anything.</summary>
-    public LocalLyricsPreview PreviewImport(string sourcePath, double? durationSeconds) =>
+    public static LocalLyricsPreview PreviewImport(string sourcePath, double? durationSeconds) =>
         LocalLyricsStore.Preview(sourcePath, durationSeconds);
 
     /// <summary>

@@ -2192,7 +2192,7 @@ internal sealed class AppHost
             return;
         }
 
-        var preview = _lyrics.PreviewImport(path, snapshot.DurationSeconds);
+        var preview = LyricsService.PreviewImport(path, snapshot.DurationSeconds);
 
         if (!preview.Ok)
         {
