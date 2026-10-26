@@ -112,6 +112,10 @@ internal sealed class AppHost
     /// <summary>A sentence about the last import or clipboard action, shown in the selector.</summary>
     private string? _importMessage;
 
+    /// <summary>The local file opened in an external editor, and the write time last seen.</summary>
+    private string? _externalEditPath;
+    private DateTime _externalEditStamp;
+
     /// <summary>How many version searches are in flight; the selector shows a loading state while it is not zero.</summary>
     private int _versionsInFlight;
 
@@ -571,6 +575,7 @@ internal sealed class AppHost
         // verdict, and the notification must not be decided on facts that belong to the song before.
         UpdateLyricsAlert(snapshot);
         UpdateLocalFileAlert();
+        CheckExternalEditReload();
 
         var visual = BuildVisual(snapshot, position, positionIsUsable);
         visual = WithInfoPopup(visual, snapshot, positionIsUsable);
@@ -1211,6 +1216,8 @@ internal sealed class AppHost
                 _importSourcePath = null;
                 _importPreviewRevision = -1;
                 _importMessage = null;
+                _externalEditPath = null;
+                _externalEditStamp = default;
             }
         }
 
@@ -2306,6 +2313,105 @@ internal sealed class AppHost
         }
     }
 
+    /// <summary>
+    /// Opens the track's local lyric file in Notepad (the OS editor, not an in-app text box) and
+    /// watches its write time. The first time a non-local sheet is edited this saves it locally, so
+    /// the file exists and is the track's selection before it is opened.
+    /// </summary>
+    private void OpenInExternalEditor(IReadOnlyList<LyricLine> lines)
+    {
+        var snapshot = _snapshot;
+
+        if (!snapshot.HasTrack || _lyrics is null || lines.Count == 0)
+        {
+            return;
+        }
+
+        if (!_lyrics.TryEnsureLocalSheet(
+                snapshot.Artist,
+                snapshot.Title,
+                snapshot.Album,
+                snapshot.DurationSeconds,
+                lines,
+                out var path,
+                out var error))
+        {
+            _tray?.Alert("Overlyric — cannot edit the file", error ?? "The lyric file could not be written.");
+            return;
+        }
+
+        try
+        {
+            _externalEditPath = path;
+            _externalEditStamp = File.GetLastWriteTimeUtc(path);
+
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "notepad.exe",
+                Arguments = string.Concat("\"", path, "\""),
+                UseShellExecute = true
+            });
+
+            _tray?.Alert(
+                "Overlyric — editing the lyric file",
+                "Save in Notepad and Overlyric reloads the timing when the file changes.");
+        }
+        catch (Exception)
+        {
+            _externalEditPath = null;
+            _tray?.Alert("Overlyric — cannot open the editor", "Notepad could not be started.");
+        }
+    }
+
+    /// <summary>
+    /// Last-write check for the sheet opened in the external editor. A file that no longer parses as
+    /// timed lyrics is refused: the previous sheet stays, and one sentence says why.
+    /// </summary>
+    private void CheckExternalEditReload()
+    {
+        var path = _externalEditPath;
+
+        if (path is null || _lyrics is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (!File.Exists(path))
+            {
+                _externalEditPath = null;
+                _tray?.Alert("Overlyric — the lyric file is gone", "The previous sheet is still on screen.");
+                return;
+            }
+
+            var stamp = File.GetLastWriteTimeUtc(path);
+
+            if (stamp == _externalEditStamp)
+            {
+                return;
+            }
+
+            _externalEditStamp = stamp;
+            var preview = LyricsService.PreviewImport(path, _snapshot.DurationSeconds);
+
+            if (!preview.Ok || !preview.IsSynced)
+            {
+                _tray?.Alert(
+                    "Overlyric — the edited file was not loaded",
+                    "It no longer contains timed lyric lines, so the previous sheet is kept.");
+                return;
+            }
+
+            StartLyricsFetch(_snapshot);
+            _tray?.Alert("Overlyric — lyrics reloaded", "The sheet reloaded from the edited file.");
+        }
+        catch (Exception)
+        {
+            // A file being written by another process can fail to stat; try again on the next tick.
+        }
+    }
+
     /// <summary>The position "now", which is what the timing editor stamps a line with.</summary>
     private TimeSpan CurrentPosition() => _watcher?.Clock.Position ?? TimeSpan.Zero;
 
@@ -2627,6 +2733,7 @@ internal sealed class AppHost
             SearchLyrics,
             id => ChooseVersion(id),
             ExportLyrics,
+            OpenInExternalEditor,
             CurrentPosition,
             SaveEditedLyrics);
         _viewer.ShowSheet(BuildSheet());

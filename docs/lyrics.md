@@ -209,6 +209,10 @@ fix the timing while the song keeps playing:
   follows immediately and the timing survives a replay. **Export…** writes the same LRC without
   saving it as the track's sheet.
 
+**Edit file…** hands the track's local `.lrc` to Notepad. Saving there reloads the sheet as soon as the
+write lands - the host checks the file's write time on its tick - and a file that no longer parses as
+timed lyrics is refused: the previous sheet stays on screen and one tray sentence says why.
+
 The cached LRCLIB answer is never modified: saving produces a local selection, and **Automatic** in
 the selector returns the track to LRCLIB while keeping the file. An impossible edit - a start at or
 after the line's own end, an end before the start - is refused with a sentence and leaves the sheet

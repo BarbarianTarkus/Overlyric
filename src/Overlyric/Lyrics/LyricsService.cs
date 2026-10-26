@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -379,6 +380,45 @@ public sealed class LyricsService
         }
 
         SelectLocal(key, "edited in Overlyric");
+        return true;
+    }
+
+    /// <summary>
+    /// Makes sure the sheet in force exists as a local file and returns its path, for the external
+    /// editor. A sheet that is not local yet is saved first, which is the same rule the toolbar's
+    /// Save uses: editing is an explicit local act, not a mutation of the network answer.
+    /// </summary>
+    public bool TryEnsureLocalSheet(
+        string artist,
+        string track,
+        string? album,
+        double? durationSeconds,
+        IReadOnlyList<LyricLine> lines,
+        out string path,
+        out string? error)
+    {
+        path = string.Empty;
+        error = null;
+        var key = LyricsCache.MakeKey(artist, track, album);
+
+        if (_selections.TryGet(key, out var selection) && selection is not null
+            && selection.Kind == LyricSelectionKind.Local)
+        {
+            var existing = _localLyrics.StoredPath(key);
+
+            if (File.Exists(existing))
+            {
+                path = existing;
+                return true;
+            }
+        }
+
+        if (!TrySaveEdited(artist, track, album, durationSeconds, lines, out error))
+        {
+            return false;
+        }
+
+        path = _localLyrics.StoredPath(key);
         return true;
     }
 

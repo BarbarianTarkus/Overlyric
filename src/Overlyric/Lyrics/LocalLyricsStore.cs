@@ -122,6 +122,9 @@ public sealed class LocalLyricsStore
     public static LocalLyricsPreview PreviewText(string text, string fileName, double? trackDurationSeconds) =>
         BuildPreview(text, fileName, trackDurationSeconds);
 
+    /// <summary>The path this key's sheet would be stored at, whether or not it exists yet.</summary>
+    public string StoredPath(string key) => BasePath(key) + ".lrc";
+
     /// <summary>Saves the decoded sheet and its metadata. Returns false when nothing could be written.</summary>
     public bool Save(string key, string text, LocalLyricsMetadata metadata)
     {

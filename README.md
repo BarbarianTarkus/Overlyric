@@ -28,7 +28,8 @@ There is no per-player integration to install. Deep dives live in [`docs/`](docs
   with a sentence, not silence.
 - **Fixes timing line by line.** The lyric sheet is an editor: stamp a line's start or end from the
   playing position, nudge by 10-250 ms (or hold Shift to shift the whole sheet), undo/redo, save it
-  as the track's local sheet and export LRC. The LRCLIB record itself is never modified.
+  as the track's local sheet, export LRC, or hand the `.lrc` to Notepad and let it reload on save.
+  The LRCLIB record itself is never modified.
 - **Single line, single line plus the next, or multi line**, with word- or line-timed karaoke sweep, a
   manual version selector, and a full lyric sheet with timestamps.
 - **Built for an OLED desktop**, with a one-click burn-in preset: no backdrop, pixel shift, outline
@@ -131,7 +132,7 @@ Measured on Windows 11, 3840×2160 at 150 % with TIDAL playing over a running ga
 | --- | --- |
 | Working set | ~65 MB, flat over 3+ minutes |
 | CPU | ~0.2 s per 150 s of playback (≈0.15 % of one core) |
-| Executable | 9.8 MB, single file, no .NET runtime installed |
+| Executable | 9.9 MB, single file, no .NET runtime installed |
 | Handles / threads | ~1280 / ~25 |
 
 ```powershell

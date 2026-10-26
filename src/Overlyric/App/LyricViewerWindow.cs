@@ -45,6 +45,7 @@ internal sealed class LyricViewerWindow : PanelWindow
     private const int SetStartControl = 10;
     private const int SetEndControl = 11;
     private const int SaveControl = 12;
+    private const int EditFileControl = 13;
     private const int SearchResultBase = 100;
 
     /// <summary>Nudge buttons are this base plus an index into <see cref="NudgeStepsMs"/>.</summary>
@@ -100,6 +101,7 @@ internal sealed class LyricViewerWindow : PanelWindow
     private readonly Action<string> _search;
     private readonly Action<long> _chooseRecord;
     private readonly Action<IReadOnlyList<LyricLine>> _export;
+    private readonly Action<IReadOnlyList<LyricLine>> _openExternal;
     private readonly Func<TimeSpan> _position;
     private readonly Func<IReadOnlyList<LyricLine>, string?> _saveEdited;
 
@@ -127,18 +129,21 @@ internal sealed class LyricViewerWindow : PanelWindow
         Action<string> search,
         Action<long> chooseRecord,
         Action<IReadOnlyList<LyricLine>> export,
+        Action<IReadOnlyList<LyricLine>> openExternal,
         Func<TimeSpan> position,
         Func<IReadOnlyList<LyricLine>, string?> saveEdited)
     {
         ArgumentNullException.ThrowIfNull(search);
         ArgumentNullException.ThrowIfNull(chooseRecord);
         ArgumentNullException.ThrowIfNull(export);
+        ArgumentNullException.ThrowIfNull(openExternal);
         ArgumentNullException.ThrowIfNull(position);
         ArgumentNullException.ThrowIfNull(saveEdited);
 
         _search = search;
         _chooseRecord = chooseRecord;
         _export = export;
+        _openExternal = openExternal;
         _position = position;
         _saveEdited = saveEdited;
     }
@@ -817,6 +822,8 @@ internal sealed class LyricViewerWindow : PanelWindow
         {
             const float buttonWidth = 116f;
             const float exportWidth = 90f;
+            const float editWidth = 88f;
+            var editLeft = Pad + buttonWidth + 8f + exportWidth + 8f;
 
             Button(
                 context,
@@ -832,6 +839,13 @@ internal sealed class LyricViewerWindow : PanelWindow
                 R(Pad + buttonWidth + 8f, ListBottom + 7f, Pad + buttonWidth + 8f + exportWidth, ListBottom + 31f),
                 sheet.IsSynced && !sheet.IsDemo);
 
+            Button(
+                context,
+                EditFileControl,
+                "Edit file\u2026",
+                R(editLeft, ListBottom + 7f, editLeft + editWidth, ListBottom + 31f),
+                !sheet.IsDemo);
+
             var hint = _edit is not null
                 ? _editMessage ?? "Up/Down selects a line; Shift+click a nudge shifts every line; Ctrl+Z/Y undo/redo."
                 : sheet.IsDemo
@@ -843,9 +857,9 @@ internal sealed class LyricViewerWindow : PanelWindow
             Label(
                 context,
                 hint,
-                Pad + buttonWidth + exportWidth + 18f,
+                editLeft + editWidth + 10f,
                 ListBottom + 9f,
-                WidthDip - (2 * Pad) - buttonWidth - exportWidth - 248f,
+                WidthDip - (2 * Pad) - buttonWidth - exportWidth - editWidth - 258f,
                 20f,
                 11f,
                 FontWeight.Normal,
@@ -1482,6 +1496,10 @@ internal sealed class LyricViewerWindow : PanelWindow
 
             case ExportControl:
                 _export(_edit?.Lines ?? (IReadOnlyList<LyricLine>)(_sheet?.Lines ?? []));
+                return;
+
+            case EditFileControl:
+                _openExternal(_edit?.Lines ?? (IReadOnlyList<LyricLine>)(_sheet?.Lines ?? []));
                 return;
 
             case UndoControl:
