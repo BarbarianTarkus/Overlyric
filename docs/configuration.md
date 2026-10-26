@@ -34,15 +34,54 @@ Settings → Advanced has **Open** buttons for this folder and the lyric cache.
 | `HideWhenInstrumental` | `true` | Hide when the track is instrumental |
 | `WarnWhenPlayerDoesNotPublish` | `true` | Say so when audio is playing but no player publishes to Windows media controls, or when a player publishes a track without a playback position |
 | `StartWithWindows` | `false` | Write the executable into the current user's Run key |
-| `LyricsOffsetMs` | `0` | Manual timing correction in milliseconds; positive shows lyrics later |
+| `LyricsOffsetMs` | `0` | Global timing correction in milliseconds; positive shows lyrics later. The fallback when the track or the output has no saved correction |
+| `TrackOffsets` | `{}` | Per-track corrections in milliseconds, keyed by a normalised artist/title key. An entry overrides the output profile and the global default |
+| `OutputOffsets` | `{}` | Per-output-device corrections, keyed by the CoreAudio endpoint id; each value carries `Name`, `OffsetMs` and `Bluetooth`. Used when the track has no override |
+| `RememberTrackOffset` | `true` | A timing nudge is saved for the current track. Off makes nudges session-only; holding Shift has the same effect per nudge |
 | `FontFamily` | `Segoe UI Variable Display` | Typeface |
 | `ActiveFontSize` / `InactiveFontSize` | `30` / `21` | Font sizes in DIPs |
 | `Shortcuts` | `{}` | Action name → chord text, e.g. `"ToggleOverlay": "Ctrl+Alt+H"`. A missing entry uses the built-in default and an empty string means deliberately unbound, so a hand-edited file cannot silently lose a shortcut |
 | `SourcePriority` | `[]` | Players to prefer, in order, when several publish at once. Each entry is an app user model id plus a label |
 | `SourcePinned` | `""` | App user model id of the pinned player, or empty for automatic. A pin outranks the priority list |
 
-Numbers are clamped on load (for example `MultiLineCount` to 1–11 and `LyricsOffsetMs` to
-±10,000 ms), so a hand-edited value that is out of range is corrected rather than rejected.
+Numbers are clamped on load (for example `MultiLineCount` to 1–11 and every timing offset to
+±10,000 ms), so a hand-edited value that is out of range is corrected rather than rejected. The two
+timing maps are also repaired: blank keys, null profiles and duplicate whitespace are dropped, names
+are refreshed from the device, and the maps are capped (512 tracks, 32 outputs).
+
+## Timing profiles
+
+A timing correction belongs to the narrowest thing that explains it, and the layers override rather
+than add:
+
+```text
+track override  ->  output profile  ->  global default (LyricsOffsetMs)
+```
+
+A nudge is saved for the track by default, so a correction survives replaying the song. A saved
+output profile is used when the track has no override; it follows the default output device, which is
+re-read every five seconds and on every track change. A stored zero is an override too: it means
+"this track needs no correction" rather than "fall through".
+
+```json
+{
+  "LyricsOffsetMs": 0,
+  "RememberTrackOffset": true,
+  "TrackOffsets": { "tidal\u001fa song for all seasons": 250 },
+  "OutputOffsets": {
+    "\\?\SWD\\MMDEVAPI\\{0.0.0.0000.00000000}.{endpoint-guid}": {
+      "Name": "WH-1000XM5",
+      "OffsetMs": 150,
+      "Bluetooth": true
+    }
+  }
+}
+```
+
+Window output profiles are not shown as separate top-level keys because the endpoint id is long and
+machine-specific; the settings window writes them and `Settings → Timing` reads the name back.
+
+## Cache
 
 ## Cache
 

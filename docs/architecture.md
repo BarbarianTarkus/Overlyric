@@ -142,6 +142,32 @@ player that publishes no timeline tends to leave the field at zero, which Window
 progress bar full. Rejecting it falls back to the raw position, and the clock then reports that its
 position is not usable, which is what the next section is about.
 
+## Timing profiles
+
+A timing error comes from the record, the player and the audio path, and those do not vary together:
+the same track can be 250 ms late on speakers and 100 ms late on headphones. One global correction
+is the right first feature and the wrong final one, so the correction is resolved in three
+**overriding** layers — track, then output device, then the global default.
+
+`TimingProfiles` owns the rule and is deliberately free of Win32 and of the config type, so
+`probe\TimingTests` checks the order, the clamping and the labels without a desktop. A stored zero
+counts as an override: "this track needs no correction" and "no entry for this track" are different
+answers, and silently falling through would resurrect a device correction the listener had removed.
+
+The output device comes from CoreAudio, the same layer that already answers the audible-session
+question. `AudioEndpoint` reads `IMMDeviceEnumerator::GetDefaultAudioEndpoint(eRender, eConsole)`,
+then the endpoint id, the friendly name and the enumerator name (which marks Bluetooth). It polls on
+the five-second path and on every track change, not per frame: a device switch is rare, and the
+CPU budget is the reason the tick is adaptive in the first place. The id is the key; the friendly
+name is only a label, because two outputs can share one and users rename them. A Bluetooth endpoint
+is never given a guessed offset — Windows reports engine latency, not codec latency.
+
+A nudge writes the track layer. Holding Shift, turning **Remember this track** off, or nudging with
+no usable track metadata instead writes a session-only correction: it is added to the resolved value
+for as long as the track or output lasts and is never persisted, so a one-off adjustment cannot
+quietly rewrite what the next play will use. The control bar, the shortcut toast and the Timing
+section all print the layer in force next to the number.
+
 ## When nothing reaches Overlyric
 
 The failure this app has to be honest about is silence. If a player never publishes to Windows media

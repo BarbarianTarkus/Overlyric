@@ -24,6 +24,12 @@ internal sealed class AppHost
     private const int OffsetStepMs = 250;
 
     /// <summary>
+    /// How often the default output device is re-read. A device switch is rare, and the roadmap's
+    /// budget applies: poll on a slow cadence and on every track change, not on every frame.
+    /// </summary>
+    private const int AudioOutputPollMs = 5000;
+
+    /// <summary>
     /// Minimum time between z-order re-assertions. A tick count was wrong here: twenty ticks is five
     /// seconds on the karaoke path but twenty on the one-second idle path, which is long enough for a
     /// game that raises its own window to keep the overlay buried.
@@ -165,6 +171,21 @@ internal sealed class AppHost
     private bool _locked = true;
     private string? _lastTooltip;
     private long _lastTopmostReassertAt;
+
+    /// <summary>The default output device as last read; null until CoreAudio answers once.</summary>
+    private AudioOutput? _audioOutput;
+
+    /// <summary>When the output device is read again; see <see cref="AudioOutputPollMs"/>.</summary>
+    private long _nextAudioOutputCheckAt;
+
+    /// <summary>Key of the current track's saved timing override, or null without usable metadata.</summary>
+    private string? _trackKey;
+
+    /// <summary>A correction made for this session only; the next saved nudge folds it in.</summary>
+    private int _sessionOffsetMs;
+
+    /// <summary>The correction actually pushed into the clock, with the layer that supplied it.</summary>
+    private TimingResolution _timing;
     private SettingsWindow? _settings;
     private LyricPickerWindow? _picker;
     private LyricViewerWindow? _viewer;
@@ -290,6 +311,10 @@ internal sealed class AppHost
         else
         {
             _watcher = MediaSessionWatcher.CreateAsync(ReadSourceSettings).GetAwaiter().GetResult();
+
+            // Timing resolution needs the output device before the first frame, so the saved profile
+            // for the headphones in use is already in force when the first line appears.
+            _audioOutput = AudioEndpoint.ReadDefault();
             ApplyLyricOffset();
             ApplyKaraokeTiming();
 
@@ -454,6 +479,14 @@ internal sealed class AppHost
             return;
         }
 
+        // A device switch applies that endpoint's profile. The read is cheap and only happens when
+        // the slow interval is up, or when the track changed (see below).
+        if (_watcher is not null && RefreshAudioOutput())
+        {
+            ApplyLyricOffset();
+            _settings?.RefreshIfOpen();
+        }
+
         var preview = IsPreviewActive;
         if (_previewActive && !preview)
         {
@@ -478,6 +511,13 @@ internal sealed class AppHost
             _lastRevision = snapshot.Revision;
             _headerShownAt = Stopwatch.GetTimestamp();
             Interlocked.Increment(ref _versionsStamp);
+
+            // The track key decides which saved correction applies, and a new track is also where a
+            // session-only nudge stops applying. The endpoint is re-read now, not on the slow poll,
+            // because "new song, new output" is exactly when the profile should follow.
+            _trackKey = demoActive ? null : TimingProfiles.TrackKey(snapshot.Artist, snapshot.Title);
+            _sessionOffsetMs = 0;
+            RefreshAudioOutput(force: true);
 
             // A new song - or the first one seen after start-up - is exactly when a listener wants
             // to know what is playing and what the lyric lookup made of it.
@@ -516,8 +556,8 @@ internal sealed class AppHost
         {
             OffsetX = shiftX,
             OffsetY = shiftY,
-            OffsetLabel = LyricText.FormatOffset(_config.LyricsOffsetMs),
-            OffsetIsDefault = _config.LyricsOffsetMs == 0
+            OffsetLabel = TimingProfiles.Describe(TimingForVisual, _audioOutput),
+            OffsetIsDefault = TimingForVisual.OffsetMs == 0
         };
 
         if (!VisualEquals(_visual, visual))
@@ -1379,9 +1419,9 @@ internal sealed class AppHost
 
     private void OnHotKey(int command)
     {
-        // Read the offset before the command runs, so the toast can tell "moved earlier" from
-        // "already at the limit"; the title still reports the total now in force.
-        var offsetBefore = _config.LyricsOffsetMs;
+        // Read the effective offset before the command runs, so the toast can tell "moved earlier"
+        // from "already at the limit"; the title still reports the total now in force.
+        var offsetBefore = _timing.OffsetMs;
         Execute(command);
         ShowShortcutFeedback(command, offsetBefore);
     }
@@ -1401,9 +1441,10 @@ internal sealed class AppHost
             Commands.ToggleLock => ShortcutFeedback.ForLock(_locked),
             Commands.OffsetBack or Commands.OffsetForward or Commands.OffsetReset =>
                 ShortcutFeedback.ForOffset(
-                    _config.LyricsOffsetMs,
-                    _config.LyricsOffsetMs - offsetBefore,
-                    command == Commands.OffsetReset),
+                    _timing.OffsetMs,
+                    _timing.OffsetMs - offsetBefore,
+                    command == Commands.OffsetReset,
+                    TimingProfiles.SourceLabel(_timing.Source, _audioOutput)),
             Commands.OpenSettings => ShortcutFeedback.ForSettings(),
             _ => null
         };
@@ -1670,14 +1711,7 @@ internal sealed class AppHost
                 break;
 
             case Commands.OffsetReset:
-                _config.LyricsOffsetMs = 0;
-                if (_watcher is not null)
-                {
-                    _watcher.Clock.ManualOffset = TimeSpan.Zero;
-                }
-
-                ForceRedraw();
-                _config.Save();
+                ResetLyricsOffset();
                 break;
 
             case Commands.AnchorBottom:
@@ -2086,23 +2120,58 @@ internal sealed class AppHost
     /// <summary>Cache size for the Advanced section; zero in demo mode, where no cache is created.</summary>
     private (int Entries, long Bytes) CacheStats() => _lyrics?.GetCacheStats() ?? (0, 0);
 
+    /// <summary>
+    /// Nudge the timing. With "Remember this track" on (the default) the value is saved for the
+    /// current track; with it off, without usable metadata, or with Shift held, the nudge lasts only
+    /// for this session, so a one-off correction never silently rewrites the next play.
+    /// </summary>
     private void NudgeLyrics(int deltaMs)
     {
-        _config.LyricsOffsetMs = Math.Clamp(_config.LyricsOffsetMs + deltaMs, -10000, 10000);
+        if (_watcher is null || !_config.RememberTrackOffset || _trackKey is null || ShiftHeld())
+        {
+            _sessionOffsetMs = TimingProfiles.NextSessionOffset(_sessionOffsetMs, deltaMs);
+        }
+        else
+        {
+            var resolved = TimingProfiles.Resolve(
+                _config.LyricsOffsetMs,
+                _config.TrackOffsets,
+                _trackKey,
+                _config.OutputOffsets,
+                _audioOutput);
+
+            _config.TrackOffsets[_trackKey] = TimingProfiles.NextTrackOffset(resolved, _sessionOffsetMs, deltaMs);
+            _sessionOffsetMs = 0;
+            _config.Save();
+        }
 
         ApplyLyricOffset();
-
         ForceRedraw();
-        _config.Save();
+        _settings?.RefreshIfOpen();
     }
 
+    /// <summary>
+    /// Reset to zero for the situation on screen: drop this track's override, drop this output's
+    /// profile, and clear the global default a session nudge may have been riding on.
+    /// </summary>
     private void ResetLyricsOffset()
     {
         _config.LyricsOffsetMs = 0;
+        _sessionOffsetMs = 0;
+
+        if (_trackKey is not null)
+        {
+            _config.TrackOffsets.Remove(_trackKey);
+        }
+
+        if (_audioOutput is { IsKnown: true })
+        {
+            _config.OutputOffsets.Remove(_audioOutput.Id);
+        }
 
         ApplyLyricOffset();
-
         ForceRedraw();
+        _settings?.RefreshIfOpen();
         _config.Save();
     }
 
@@ -2169,7 +2238,16 @@ internal sealed class AppHost
                 CacheStats,
                 ClearLyricsCache,
                 typeof(AppHost).Assembly.GetName().Version?.ToString(3) ?? "0.1.0",
-                () => _watcher?.LiveSources ?? []);
+                () => _watcher?.LiveSources ?? [],
+                new TimingCommands
+                {
+                    View = BuildTimingView,
+                    Nudge = NudgeLyrics,
+                    Reset = ResetLyricsOffset,
+                    UseGlobal = UseGlobalTiming,
+                    ClearTrack = ClearTrackTiming,
+                    NudgeOutput = NudgeOutputTiming
+                });
         }
 
         _settings.Show();
@@ -2463,11 +2541,145 @@ internal sealed class AppHost
     /// </summary>
     private void ApplyLyricOffset()
     {
+        var resolved = TimingProfiles.Resolve(
+            _config.LyricsOffsetMs,
+            _config.TrackOffsets,
+            _trackKey,
+            _config.OutputOffsets,
+            _audioOutput);
+
+        _timing = TimingProfiles.AddSession(resolved, _sessionOffsetMs);
+
         if (_watcher is not null)
         {
-            _watcher.Clock.ManualOffset = TimeSpan.FromMilliseconds(_config.LyricsOffsetMs);
+            _watcher.Clock.ManualOffset = TimeSpan.FromMilliseconds(_timing.OffsetMs);
         }
     }
+
+    /// <summary>The correction the overlay should display even before a player is attached.</summary>
+    private TimingResolution TimingForVisual => _watcher is null
+        ? new TimingResolution(TimingProfiles.Clamp(_config.LyricsOffsetMs), TimingSource.Global)
+        : _timing;
+
+    /// <summary>
+    /// Re-read the default output on the slow cadence, or immediately when forced. Returns true when
+    /// the endpoint or its label changed, which means the resolved profile has to be applied.
+    /// </summary>
+    private bool RefreshAudioOutput(bool force = false)
+    {
+        var now = Environment.TickCount64;
+
+        if (!force && now < _nextAudioOutputCheckAt)
+        {
+            return false;
+        }
+
+        _nextAudioOutputCheckAt = now + AudioOutputPollMs;
+
+        var output = AudioEndpoint.ReadDefault();
+        if (output is null)
+        {
+            return false;
+        }
+
+        if (_audioOutput is not null
+            && string.Equals(output.Id, _audioOutput.Id, StringComparison.Ordinal)
+            && string.Equals(output.Name, _audioOutput.Name, StringComparison.Ordinal)
+            && output.IsBluetooth == _audioOutput.IsBluetooth)
+        {
+            return false;
+        }
+
+        _audioOutput = output;
+
+        // A device switch invalidates a session-only nudge: the number was for the old output.
+        _sessionOffsetMs = 0;
+        return true;
+    }
+
+    /// <summary>The Timing section's live values, read fresh on every draw.</summary>
+    private TimingView BuildTimingView()
+    {
+        var resolved = TimingProfiles.Resolve(
+            _config.LyricsOffsetMs,
+            _config.TrackOffsets,
+            _trackKey,
+            _config.OutputOffsets,
+            _audioOutput);
+        var effective = TimingProfiles.AddSession(resolved, _sessionOffsetMs);
+
+        var outputOffsetMs = 0;
+        if (_audioOutput is { IsKnown: true }
+            && _config.OutputOffsets.TryGetValue(_audioOutput.Id, out var profile)
+            && profile is not null)
+        {
+            outputOffsetMs = profile.OffsetMs;
+        }
+
+        return new TimingView(
+            OutputName: _audioOutput?.Name ?? "No output device",
+            OutputIsBluetooth: _audioOutput?.IsBluetooth ?? false,
+            OffsetValue: TimingProfiles.FormatOffset(effective.OffsetMs),
+            SourceLabel: TimingProfiles.SourceLabel(effective.Source, _audioOutput),
+            OutputOffsetMs: outputOffsetMs,
+            HasTrackOffset: _trackKey is not null && _config.TrackOffsets.ContainsKey(_trackKey));
+    }
+
+    /// <summary>Remove this track's override, falling back to the output profile or the default.</summary>
+    private void UseGlobalTiming()
+    {
+        if (_trackKey is null || !_config.TrackOffsets.Remove(_trackKey))
+        {
+            return;
+        }
+
+        _sessionOffsetMs = 0;
+        ApplyLyricOffset();
+        ForceRedraw();
+        _settings?.RefreshIfOpen();
+        _config.Save();
+    }
+
+    /// <summary>Store an explicit zero for this track, so the output profile does not apply to it.</summary>
+    private void ClearTrackTiming()
+    {
+        if (_trackKey is null)
+        {
+            return;
+        }
+
+        _config.TrackOffsets[_trackKey] = 0;
+        _sessionOffsetMs = 0;
+        ApplyLyricOffset();
+        ForceRedraw();
+        _settings?.RefreshIfOpen();
+        _config.Save();
+    }
+
+    /// <summary>Adjust the saved profile for the current output device.</summary>
+    private void NudgeOutputTiming(int deltaMs)
+    {
+        if (_audioOutput is not { IsKnown: true })
+        {
+            return;
+        }
+
+        var profile = _config.OutputOffsets.TryGetValue(_audioOutput.Id, out var existing) && existing is not null
+            ? existing
+            : new OutputOffsetProfile { Name = _audioOutput.Name, Bluetooth = _audioOutput.IsBluetooth };
+
+        profile.Name = _audioOutput.Name;
+        profile.Bluetooth = _audioOutput.IsBluetooth;
+        profile.OffsetMs = TimingProfiles.Clamp(profile.OffsetMs + deltaMs);
+        _config.OutputOffsets[_audioOutput.Id] = profile;
+        _sessionOffsetMs = 0;
+        ApplyLyricOffset();
+        ForceRedraw();
+        _settings?.RefreshIfOpen();
+        _config.Save();
+    }
+
+    private static bool ShiftHeld() => (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
 
     /// <summary>Apply a change made in the settings window to the live overlay.</summary>
     private void ApplySettings(SettingsChange change)

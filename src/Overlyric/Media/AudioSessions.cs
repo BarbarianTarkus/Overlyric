@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Overlyric.Interop;
 using static Overlyric.Interop.NativeMethods;
 
 namespace Overlyric.Media;
@@ -29,7 +30,6 @@ internal static class AudioSessions
 
     // COM vtable slots. Every interface begins with IUnknown: QueryInterface 0, AddRef 1, Release 2.
     private const int QueryInterfaceSlot = 0;
-    private const int ReleaseSlot = 2;
     private const int GetPeakValueSlot = 3;           // IAudioMeterInformation
     private const int ActivateSlot = 3;               // IMMDevice
     private const int GetSessionCountSlot = 3;        // IAudioSessionEnumerator
@@ -66,13 +66,13 @@ internal static class AudioSessions
         }
         finally
         {
-            Release(enumerator);
+            ComVtable.Release(enumerator);
         }
     }
 
     private static bool AnySessionAudible(nint enumerator)
     {
-        var getDefaultEndpoint = Slot<GetDefaultEndpointDelegate>(enumerator, GetDefaultEndpointSlot);
+        var getDefaultEndpoint = ComVtable.Slot<GetDefaultEndpointDelegate>(enumerator, GetDefaultEndpointSlot);
 
         // eRender, eMultimedia: the device Windows itself treats as "what you hear".
         if (getDefaultEndpoint(enumerator, 0, 1, out var device) < 0)
@@ -86,13 +86,13 @@ internal static class AudioSessions
         }
         finally
         {
-            Release(device);
+            ComVtable.Release(device);
         }
     }
 
     private static bool AnySessionAudibleOn(nint device)
     {
-        var activate = Slot<ActivateDelegate>(device, ActivateSlot);
+        var activate = ComVtable.Slot<ActivateDelegate>(device, ActivateSlot);
 
         if (activate(device, IidIAudioSessionManager2, CLSCTX_ALL, IntPtr.Zero, out var manager) < 0)
         {
@@ -105,13 +105,13 @@ internal static class AudioSessions
         }
         finally
         {
-            Release(manager);
+            ComVtable.Release(manager);
         }
     }
 
     private static bool AnySessionAudibleUnder(nint manager)
     {
-        var getSessionEnumerator = Slot<GetSessionEnumeratorDelegate>(manager, GetSessionEnumeratorSlot);
+        var getSessionEnumerator = ComVtable.Slot<GetSessionEnumeratorDelegate>(manager, GetSessionEnumeratorSlot);
 
         if (getSessionEnumerator(manager, out var sessions) < 0)
         {
@@ -120,8 +120,8 @@ internal static class AudioSessions
 
         try
         {
-            var getCount = Slot<GetSessionCountDelegate>(sessions, GetSessionCountSlot);
-            var getSession = Slot<GetSessionDelegate>(sessions, GetSessionSlot);
+            var getCount = ComVtable.Slot<GetSessionCountDelegate>(sessions, GetSessionCountSlot);
+            var getSession = ComVtable.Slot<GetSessionDelegate>(sessions, GetSessionSlot);
 
             if (getCount(sessions, out var count) < 0)
             {
@@ -144,7 +144,7 @@ internal static class AudioSessions
                 }
                 finally
                 {
-                    Release(control);
+                    ComVtable.Release(control);
                 }
             }
 
@@ -152,13 +152,13 @@ internal static class AudioSessions
         }
         finally
         {
-            Release(sessions);
+            ComVtable.Release(sessions);
         }
     }
 
     private static bool IsAudible(nint control)
     {
-        var queryInterface = Slot<QueryInterfaceDelegate>(control, QueryInterfaceSlot);
+        var queryInterface = ComVtable.Slot<QueryInterfaceDelegate>(control, QueryInterfaceSlot);
 
         // Windows' own beeps and chimes are not a player, and would otherwise always count.
         if (IsSystemSounds(control, queryInterface))
@@ -175,13 +175,13 @@ internal static class AudioSessions
 
         try
         {
-            var getPeakValue = Slot<GetPeakValueDelegate>(meter, GetPeakValueSlot);
+            var getPeakValue = ComVtable.Slot<GetPeakValueDelegate>(meter, GetPeakValueSlot);
 
             return getPeakValue(meter, out var peak) >= 0 && peak > AudiblePeak;
         }
         finally
         {
-            Release(meter);
+            ComVtable.Release(meter);
         }
     }
 
@@ -194,36 +194,19 @@ internal static class AudioSessions
 
         try
         {
-            var isSystemSoundsSession = Slot<IsSystemSoundsDelegate>(control2, IsSystemSoundsSessionSlot);
+            var isSystemSoundsSession = ComVtable.Slot<IsSystemSoundsDelegate>(control2, IsSystemSoundsSessionSlot);
 
             // S_OK means "yes, this is the system sounds session".
             return isSystemSoundsSession(control2) == 0;
         }
         finally
         {
-            Release(control2);
+            ComVtable.Release(control2);
         }
     }
-
-    private static void Release(nint unknown)
-    {
-        if (unknown != IntPtr.Zero)
-        {
-            Slot<ReleaseDelegate>(unknown, ReleaseSlot)(unknown);
-        }
-    }
-
-    /// <summary>Reads one slot out of an interface's vtable as a callable delegate.</summary>
-    private static T Slot<T>(nint instance, int slot)
-        where T : Delegate =>
-        Marshal.GetDelegateForFunctionPointer<T>(
-            Marshal.ReadIntPtr(Marshal.ReadIntPtr(instance), slot * IntPtr.Size));
 
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     private delegate int QueryInterfaceDelegate(nint self, in Guid iid, out nint result);
-
-    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-    private delegate uint ReleaseDelegate(nint self);
 
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     private delegate int GetDefaultEndpointDelegate(nint self, int dataFlow, int role, out nint device);

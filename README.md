@@ -19,6 +19,9 @@ There is no per-player integration to install. Deep dives live in [`docs/`](docs
   timings that runs for the same length. If the first search misses, it asks again with the album.
 - **Adapts to players that lie about the timeline.** Live timelines are followed; frozen ones (TIDAL)
   are self-clocked from a stopwatch, so starting mid-song still lands on the right line.
+- **Fixes the timing once.** A nudge is saved for the track and comes back on replay; a correction
+  saved for the current output device (headphones, speakers, Bluetooth) is used when the track has
+  none, and the global offset is the fallback. The bar and the toast name the layer in force.
 - **Single line, single line plus the next, or multi line**, with word- or line-timed karaoke sweep, a
   manual version selector, and a full lyric sheet with timestamps.
 - **Built for an OLED desktop**, with a one-click burn-in preset: no backdrop, pixel shift, outline

@@ -43,6 +43,7 @@ if (-not $OutputDir) { $OutputDir = Join-Path $RepoRoot 'coverage' }
 
 $defaultProbes = @(
     'ClockTests',
+    'TimingTests',
     'InfoTests',
     'KaraokeTests',
     'LyricWindowsTests',

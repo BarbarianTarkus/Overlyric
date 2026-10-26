@@ -121,6 +121,24 @@ internal sealed class AppConfig
     /// <summary>Manual lyric timing correction in milliseconds; positive shows lyrics later.</summary>
     public int LyricsOffsetMs { get; set; }
 
+    /// <summary>
+    /// Per-track corrections, keyed by <see cref="TimingProfiles.TrackKey"/>. A stored entry is an
+    /// override, not an addition: it wins over the output profile and over the global default.
+    /// </summary>
+    public Dictionary<string, int> TrackOffsets { get; set; } = [];
+
+    /// <summary>
+    /// Per-output-device corrections, keyed by the CoreAudio endpoint id. The name and the Bluetooth
+    /// flag are carried with the value so the UI can explain it without re-reading the device.
+    /// </summary>
+    public Dictionary<string, OutputOffsetProfile> OutputOffsets { get; set; } = [];
+
+    /// <summary>
+    /// Whether a timing nudge is saved for the current track. Off means the nudge lasts for the
+    /// session only; on is the default because "fix the offset once, not every song" is the job.
+    /// </summary>
+    public bool RememberTrackOffset { get; set; } = true;
+
     public string FontFamily { get; set; } = "Segoe UI Variable Display";
 
     public float ActiveFontSize { get; set; } = 30f;
@@ -216,7 +234,23 @@ internal sealed class AppConfig
         InactiveFontSize = Math.Clamp(InactiveFontSize, 10f, 72f);
         OffsetY = Math.Clamp(OffsetY, -4000, 4000);
         OffsetX = Math.Clamp(OffsetX, -4000, 4000);
-        LyricsOffsetMs = Math.Clamp(LyricsOffsetMs, -10000, 10000);
+        LyricsOffsetMs = TimingProfiles.Clamp(LyricsOffsetMs);
+
+        // The config is editable by hand, so the two maps have to survive whatever they contain: a
+        // blank key, a null profile, a huge value or ten thousand entries all degrade to something
+        // the resolver can use. A missing map is normal for a file written before profiles existed.
+        if (TrackOffsets is null)
+        {
+            TrackOffsets = [];
+        }
+
+        if (OutputOffsets is null)
+        {
+            OutputOffsets = [];
+        }
+
+        TimingProfiles.NormaliseTrackOffsets(TrackOffsets);
+        TimingProfiles.NormaliseOutputOffsets(OutputOffsets);
 
         if (string.IsNullOrWhiteSpace(FontFamily))
         {

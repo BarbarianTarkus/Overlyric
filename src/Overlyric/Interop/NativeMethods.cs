@@ -504,4 +504,46 @@ internal static partial class NativeMethods
     [LibraryImport("ole32.dll")]
     internal static partial int CoCreateInstance(
         in Guid rclsid, IntPtr pUnkOuter, uint dwClsContext, in Guid riid, out IntPtr ppv);
+
+    /// <summary>STGM_READ: a property store opened read-only.</summary>
+    internal const uint STGM_READ = 0;
+
+    /// <summary>VT_LPWSTR: the PROPVARIANT holds a null-terminated Unicode string.</summary>
+    internal const ushort VT_LPWSTR = 31;
+
+    /// <summary>A PROPERTYKEY: the property-set GUID plus the property id inside it.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct PropertyKey
+    {
+        public Guid FormatId;
+
+        public int PropertyId;
+
+        public PropertyKey(Guid formatId, int propertyId)
+        {
+            FormatId = formatId;
+            PropertyId = propertyId;
+        }
+    }
+
+    /// <summary>
+    /// The native PROPVARIANT shape (24 bytes on x64): a type word, three reserved words, and the
+    /// pointer-sized value. Only VT_LPWSTR is read; the other variants are cleared and ignored.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct PropVariant
+    {
+        public ushort Vt;
+        public ushort Reserved1;
+        public ushort Reserved2;
+        public ushort Reserved3;
+        public IntPtr Pointer;
+        public IntPtr Padding;
+    }
+
+    [LibraryImport("ole32.dll")]
+    internal static partial int PropVariantClear(ref PropVariant value);
+
+    [LibraryImport("ole32.dll")]
+    internal static partial void CoTaskMemFree(IntPtr memory);
 }

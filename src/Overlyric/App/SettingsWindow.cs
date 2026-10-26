@@ -34,6 +34,44 @@ internal enum SettingsChange
 }
 
 /// <summary>
+/// The timing state the Timing section prints, read fresh on every draw: the current output, the
+/// correction in force, and which layer supplied it.
+/// </summary>
+/// <param name="OutputName">Friendly name of the current default output.</param>
+/// <param name="OutputIsBluetooth">Whether Windows calls the endpoint Bluetooth.</param>
+/// <param name="OffsetValue">The effective offset, formatted as the bar prints it.</param>
+/// <param name="SourceLabel">Where that value came from: "this track", "default", ...</param>
+/// <param name="OutputOffsetMs">The saved correction for the current output, if any.</param>
+/// <param name="HasTrackOffset">Whether the current track has a stored override.</param>
+internal readonly record struct TimingView(
+    string OutputName,
+    bool OutputIsBluetooth,
+    string OffsetValue,
+    string SourceLabel,
+    int OutputOffsetMs,
+    bool HasTrackOffset);
+
+/// <summary>
+/// The timing actions the settings window can take. The host owns them because only it knows the
+/// current track key, the current endpoint and whether the value is session-only; the window decides
+/// only which row was pressed.
+/// </summary>
+internal sealed class TimingCommands
+{
+    public required Func<TimingView> View { get; init; }
+
+    public required Action<int> Nudge { get; init; }
+
+    public required Action Reset { get; init; }
+
+    public required Action UseGlobal { get; init; }
+
+    public required Action ClearTrack { get; init; }
+
+    public required Action<int> NudgeOutput { get; init; }
+}
+
+/// <summary>
 /// The configuration window.
 /// <para>
 /// A tray menu is a poor place to configure anything: every click dismisses it, so a slider cannot
@@ -170,6 +208,16 @@ internal sealed class SettingsWindow : WindowBase
         StartWithWindows = 77,
 
         /// <summary>
+        /// Timing profiles: the remember switch, the two track buttons and the output stepper.
+        /// Appended past the source id blocks so those keep decoding to the same slots.
+        /// </summary>
+        TimingRemember = 108,
+        TimingUseGlobal = 109,
+        TimingClearTrack = 110,
+        TimingOutputDown = 111,
+        TimingOutputUp = 112,
+
+        /// <summary>
         /// The four offset nudges and the scrollbar. Their values fill the gap between the shortcut
         /// chips and the OLED block, the only stretch of the id space left; the enum's order documents
         /// the window, and only the navigation ids are ever decoded by arithmetic.
@@ -250,7 +298,7 @@ internal sealed class SettingsWindow : WindowBase
     /// One past the last row index each section draws. The viewport needs the height before the section
     /// is drawn, so this is a table rather than something measured twice.
     /// </summary>
-    private static readonly int[] SectionRows = [10, 6, 3, 4, 6, 8, 8, 3];
+    private static readonly int[] SectionRows = [10, 6, 8, 4, 6, 8, 8, 3];
 
     private readonly AppConfig _config;
     private readonly Action<SettingsChange> _changed;
@@ -268,6 +316,9 @@ internal sealed class SettingsWindow : WindowBase
     /// would offer to add players that closed long ago.
     /// </summary>
     private readonly Func<IReadOnlyList<SourceCandidate>> _liveSources;
+
+    /// <summary>The live timing state and the actions that change it, both owned by the host.</summary>
+    private readonly TimingCommands _timing;
 
     private readonly Dictionary<uint, ID2D1SolidColorBrush> _brushes = [];
     private readonly Dictionary<(float Size, FontWeight Weight, TextAlignment Align), IDWriteTextFormat> _formats = [];
@@ -333,7 +384,8 @@ internal sealed class SettingsWindow : WindowBase
         Func<(int Entries, long Bytes)> cacheStats,
         Action clearCache,
         string version,
-        Func<IReadOnlyList<SourceCandidate>> liveSources)
+        Func<IReadOnlyList<SourceCandidate>> liveSources,
+        TimingCommands timing)
     {
         _config = config;
         _changed = changed;
@@ -345,6 +397,7 @@ internal sealed class SettingsWindow : WindowBase
         _clearCache = clearCache;
         _version = version;
         _liveSources = liveSources;
+        _timing = timing;
     }
 
     private static nint _classBrush;
@@ -376,6 +429,18 @@ internal sealed class SettingsWindow : WindowBase
     }
 
     public bool IsOpen => _open;
+
+    /// <summary>
+    /// Repaint an open window when the host changed state it displays without a click here - the
+    /// default output device changing is the case that matters for Timing.
+    /// </summary>
+    public void RefreshIfOpen()
+    {
+        if (_open)
+        {
+            Render();
+        }
+    }
 
     public void Show()
     {
@@ -1138,18 +1203,43 @@ internal sealed class SettingsWindow : WindowBase
                 return;
 
             case Control.OffsetDown:
-                _config.LyricsOffsetMs = Math.Clamp(_config.LyricsOffsetMs - 250, -10000, 10000);
-                Apply(SettingsChange.Timing);
+                _timing.Nudge(-250);
+                Render();
                 return;
 
             case Control.OffsetUp:
-                _config.LyricsOffsetMs = Math.Clamp(_config.LyricsOffsetMs + 250, -10000, 10000);
-                Apply(SettingsChange.Timing);
+                _timing.Nudge(250);
+                Render();
                 return;
 
             case Control.OffsetReset:
-                _config.LyricsOffsetMs = 0;
+                _timing.Reset();
+                Render();
+                return;
+
+            case Control.TimingRemember:
+                _config.RememberTrackOffset = !_config.RememberTrackOffset;
                 Apply(SettingsChange.Timing);
+                return;
+
+            case Control.TimingUseGlobal:
+                _timing.UseGlobal();
+                Render();
+                return;
+
+            case Control.TimingClearTrack:
+                _timing.ClearTrack();
+                Render();
+                return;
+
+            case Control.TimingOutputDown:
+                _timing.NudgeOutput(-250);
+                Render();
+                return;
+
+            case Control.TimingOutputUp:
+                _timing.NudgeOutput(250);
+                Render();
                 return;
 
             case Control.AnchorBottom:
@@ -1824,23 +1914,43 @@ internal sealed class SettingsWindow : WindowBase
 
     private void DrawTimingSection(ID2D1DeviceContext context)
     {
+        var timing = _timing.View();
+
+        // The output is the context for the two saved layers below it: a correction belongs to a
+        // track or to a device, and the row has to say which device that is.
+        RowWithNote(context, 0, "Current output", timing.OutputName + (timing.OutputIsBluetooth ? " \u00b7 Bluetooth" : ""));
+
         // The value leads and is set at twenty pixels, because it is the one number this section is
         // about; the nudges either side are the same quarter second as the bar and the hotkeys.
-        RowWithNote(context, 0, "Lyric offset", "applies to every track");
-        TimingReadout(context, 0, LyricText.FormatOffset(_config.LyricsOffsetMs));
+        RowWithNote(context, 1, "Lyric offset", $"from {timing.SourceLabel}");
+        TimingReadout(context, 1, timing.OffsetValue);
 
-        Row(context, 1, "Reset to zero");
-        Button(
+        Row(context, 2, "Remember this track", child: false);
+        Toggle(context, Control.TimingRemember, _config.RememberTrackOffset);
+
+        // Use default removes the override (falls back to the output or the global value); Clear
+        // stores an explicit zero. Both are needed: "forget my correction" and "this track needs no
+        // correction even though the output has one" are different intentions.
+        Row(context, 3, "Use the global default", child: true, enabled: timing.HasTrackOffset);
+        Button(context, ContentRight - 160f, RowTop(3) + 8f, 160f, 30f, "Use default", Control.TimingUseGlobal, timing.HasTrackOffset);
+
+        Row(context, 4, "Offset for this output", child: true);
+        Stepper(
             context,
-            ContentRight - 132f,
-            RowTop(1) + 8f,
-            132f,
-            30f,
-            "Reset timing",
-            Control.OffsetReset,
-            _config.LyricsOffsetMs != 0);
+            ShortcutFeedback.FormatOffset(timing.OutputOffsetMs),
+            Control.TimingOutputDown,
+            Control.TimingOutputUp,
+            enabled: !timing.HasTrackOffset);
 
-        Hint(context, 2, "Positive shows the lyrics later; use this when they run ahead of the music.");
+        Row(context, 5, "Clear this track's offset", child: true, enabled: timing.HasTrackOffset);
+        Button(context, ContentRight - 190f, RowTop(5) + 8f, 190f, 30f, "Clear track offset", Control.TimingClearTrack, timing.HasTrackOffset);
+
+        Row(context, 6, "Reset all timing for this track and output");
+        Button(context, ContentRight - 132f, RowTop(6) + 8f, 132f, 30f, "Reset timing", Control.OffsetReset);
+
+        Hint(context, 7, timing.OutputIsBluetooth && timing.OutputOffsetMs == 0 && !timing.HasTrackOffset
+            ? "Bluetooth latency is not reported by Windows: nudge until the words line up, then the value is kept for this output."
+            : "Track overrides output, and the output override beats the global default. Hold Shift while nudging to adjust this session only.");
     }
 
     private void DrawPositionSection(ID2D1DeviceContext context)
@@ -2396,8 +2506,12 @@ internal sealed class SettingsWindow : WindowBase
         Control.StartWithWindows => 5,
 
         // Timing
-        Control.OffsetDown or Control.OffsetUp => 0,
-        Control.OffsetReset => 1,
+        Control.OffsetDown or Control.OffsetUp => 1,
+        Control.TimingRemember => 2,
+        Control.TimingUseGlobal => 3,
+        Control.TimingOutputDown or Control.TimingOutputUp => 4,
+        Control.TimingClearTrack => 5,
+        Control.OffsetReset => 6,
 
         // Position
         Control.AnchorBottom or Control.AnchorTop or Control.AnchorCentre => 0,

@@ -43,11 +43,17 @@ already used by another action, or already taken by another application, is refu
 shown instead of being silently swallowed; a shortcut with no Ctrl, Alt or Win is refused too.
 `Open settings` ships unbound, so it costs nothing until you want it.
 
+A timing nudge is saved for the track you are hearing, so the correction is still there when the song
+comes around again. Hold **Shift** while nudging — or turn off **Remember this track** in Timing — to
+adjust only for the current session.
+
 Every global hotkey confirms itself with a small toast. It names the state the shortcut just entered,
-and a timing nudge names the resulting total offset rather than repeating the step: `Ctrl+Alt+,`
-reads `Offset -0.25s`, and a second press reads `Offset -0.50s`. The toast is drawn in its own
-click-through window, opposite the overlay's anchor — so "Overlay hidden" can still say so after
-`Ctrl+Alt+H` has made the lyric window disappear — and it dismisses itself after 1.8 seconds.
+and a timing nudge names the resulting total offset **and the layer it came from** rather than
+repeating the step: `Ctrl+Alt+,` reads `Offset -0.25s · this track`, and a second press reads
+`Offset -0.50s · this track`. Without a saved track correction the same line ends in
+`· this output` or `· default`. The toast is drawn in its own click-through window, opposite the
+overlay's anchor — so "Overlay hidden" can still say so after `Ctrl+Alt+H` has made the lyric window
+disappear — and it dismisses itself after 1.8 seconds.
 
 ![The Shortcuts section](images/settings-shortcuts.png)
 
@@ -60,8 +66,8 @@ the overlay is locked — locked is click-through, which means no surface to hov
 | Control | What it does |
 | --- | --- |
 | **Single / Single +1 / Multi 2** | The layout in force. Click it to cycle, exactly as `Ctrl+Alt+M` does — it is a readout before it is an action |
-| **− / +** | Nudge the lyric timing by 0.25 s; the value shows the resulting total |
-| **↺** | Return the timing offset to zero; dimmed when there is nothing to reset |
+| **− / +** | Nudge the lyric timing by 0.25 s. The value shows the resulting total and its source, e.g. `+0.25 s · this track`; the nudge is saved for the track unless Shift is held |
+| **↺** | Reset the timing for the track and output on screen: clears the track override, this output's profile and the global default. Dimmed when they are all already zero |
 | **Lyrics** | Open the complete lyric sheet |
 | **Versions** | Open the lyric selector |
 | **Settings** | Opens the settings window |
@@ -86,6 +92,31 @@ The **Single +1** layout — Settings → Lyrics, or `Ctrl+Alt+M` — keeps the 
 and shows the next line dimmed underneath. During a wait longer than three seconds, such as an intro
 or an instrumental break, a thin line under the lyrics fills with the wait. It is a sign that the
 player is still moving, not a second track progress bar.
+
+## Timing: once per track, once per output
+
+Timing error comes from three places with different scopes, so the correction is stored at the
+narrowest one that explains it. The layers are **overrides, not additions**:
+
+1. **This track** — where a nudge is saved by default, and restored the next time the track plays.
+2. **This output** — used when the track has no saved correction. **Settings → Timing → Offset for
+   this output** sets it for the device Windows currently calls the default.
+3. **The global default** (`LyricsOffsetMs`) — the fallback when neither exists.
+
+A track is identified by a normalised artist and title, so a different album tag or capitalisation
+still finds the correction. The control bar, the toast and the Timing section all name the layer in
+force: `+0.25 s · this track`, `+0.15 s · Bluetooth headphones`, `+0.25 s · default`. Switching
+output applies that device's profile within five seconds, and immediately on a track change.
+
+Three gestures keep a one-off adjustment from becoming permanent: hold **Shift** while nudging, turn
+**Remember this track** off, or nudge from a context with no usable track metadata. Those corrections
+read `· this session`, last until the track or output changes, and are never written to
+`config.json`. **Use default** drops a track override so the output or global value applies again;
+**Clear track offset** stores an explicit zero for this track over its output profile; **Reset
+timing** returns the current track and output to zero.
+
+Windows reports engine latency, not Bluetooth codec latency, so Overlyric never guesses a Bluetooth
+offset: the Timing section says the output is Bluetooth and leaves the number to the listener's ears.
 
 ## Tray icon
 
@@ -134,7 +165,8 @@ anchored to the right; the sheet re-wraps its lines at the new width.
 sections down the left, in two groups. **ON SCREEN** holds **Lyrics** (mode, lines shown, text sizes,
 the karaoke sweep, and the track info and info pop-up that belong together), **Appearance** (the
 backdrop, what stays lit, and the burn-in preset and tools — see [OLED and burn-in](oled.md)),
-**Timing** (the offset), **Position** (anchor, offsets, reset) and **Behaviour** (the hide rules, the
+**Timing** (the current output and the track/output/global corrections), **Position** (anchor,
+offsets, reset) and **Behaviour** (the hide rules, the
 warnings, and start with Windows). **SETUP** holds **Players** (which music client to follow, and the
 order to prefer them in), **Shortcuts** (rebind the global hotkeys) and **Advanced** (the folders, the
 cache and its size, clearing it, and the version).

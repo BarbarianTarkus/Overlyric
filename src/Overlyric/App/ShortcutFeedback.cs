@@ -70,7 +70,7 @@ internal static class ShortcutFeedback
     /// uses the second line to say which way it moved. A press at the clamp produces no delta, which
     /// is stated as such instead of pretending the offset moved.
     /// </summary>
-    public static OverlayNotice ForOffset(int offsetMs, int deltaMs, bool reset)
+    public static OverlayNotice ForOffset(int offsetMs, int deltaMs, bool reset, string source)
     {
         var detail = reset
             ? "Timing reset to zero"
@@ -82,7 +82,9 @@ internal static class ShortcutFeedback
 
         return new OverlayNotice
         {
-            Title = $"Offset {FormatOffset(offsetMs)}",
+            // The source is part of the answer, not decoration: "+0.25s · this track" and
+            // "+0.25s · default" are different promises about what the next song will do.
+            Title = $"Offset {FormatOffset(offsetMs)} · {source}",
             Detail = detail
         };
     }
