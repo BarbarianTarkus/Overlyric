@@ -17,7 +17,9 @@
     <!-- The config-to-theme mapping is pure apart from the colour type, so it can be checked
          without a window, a device or a settings click. -->
     <Compile Include="..\..\src\Overlyric\App\AppConfig.cs" />
+    <Compile Include="..\..\src\Overlyric\Media\AudioOutput.cs" />
     <Compile Include="..\..\src\Overlyric\Media\SourceSelector.cs" />
+    <Compile Include="..\..\src\Overlyric\Media\TimingProfiles.cs" />
     <Compile Include="..\..\src\Overlyric\Overlay\OverlayAnchor.cs" />
     <Compile Include="..\..\src\Overlyric\Overlay\OverlayNotice.cs" />
     <Compile Include="..\..\src\Overlyric\Overlay\OverlayTheme.cs" />
