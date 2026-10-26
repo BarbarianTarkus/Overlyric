@@ -22,6 +22,10 @@ There is no per-player integration to install. Deep dives live in [`docs/`](docs
 - **Fixes the timing once.** A nudge is saved for the track and comes back on replay; a correction
   saved for the current output device (headphones, speakers, Bluetooth) is used when the track has
   none, and the global offset is the fallback. The bar and the toast name the layer in force.
+- **Fixes the words too.** When LRCLIB has the wrong version or nothing at all, import a local
+  `.lrc`/`.txt` (UTF-8, UTF-16 or ANSI), preview it against the track, and it is used instead of the
+  network and marked **Local**; any timed sheet exports back to LRC. A deleted local file falls back
+  with a sentence, not silence.
 - **Single line, single line plus the next, or multi line**, with word- or line-timed karaoke sweep, a
   manual version selector, and a full lyric sheet with timestamps.
 - **Built for an OLED desktop**, with a one-click burn-in preset: no backdrop, pixel shift, outline

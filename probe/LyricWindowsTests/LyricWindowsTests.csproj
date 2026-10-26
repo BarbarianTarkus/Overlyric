@@ -15,8 +15,12 @@
     <Compile Include="..\..\src\Overlyric\App\LyricBadges.cs" />
     <Compile Include="..\..\src\Overlyric\App\LyricSheet.cs" />
     <Compile Include="..\..\src\Overlyric\App\LyricText.cs" />
+    <Compile Include="..\..\src\Overlyric\Lyrics\LocalLyricsStore.cs" />
+    <Compile Include="..\..\src\Overlyric\Lyrics\LrcParser.cs" />
     <Compile Include="..\..\src\Overlyric\Lyrics\LyricLine.cs" />
+    <Compile Include="..\..\src\Overlyric\Lyrics\LyricTextCodec.cs" />
     <Compile Include="..\..\src\Overlyric\Lyrics\LyricsCandidate.cs" />
+    <Compile Include="..\..\src\Overlyric\Lyrics\LyricsResult.cs" />
   </ItemGroup>
 
 </Project>

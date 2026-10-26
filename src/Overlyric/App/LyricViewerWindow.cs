@@ -39,6 +39,7 @@ internal sealed class LyricViewerWindow : PanelWindow
     private const int SearchCloseControl = 4;
     private const int SearchFieldControl = 5;
     private const int SearchScrollbarControl = 6;
+    private const int ExportControl = 7;
     private const int SearchResultBase = 100;
 
     private const float Pad = 28f;
@@ -85,6 +86,7 @@ internal sealed class LyricViewerWindow : PanelWindow
 
     private readonly Action<string> _search;
     private readonly Action<long> _chooseRecord;
+    private readonly Action _export;
 
     private LyricSheet? _sheet;
     private bool _measured;
@@ -103,13 +105,15 @@ internal sealed class LyricViewerWindow : PanelWindow
     private int _visibleSearchRows;
     private int _maxSearchRow;
 
-    public LyricViewerWindow(Action<string> search, Action<long> chooseRecord)
+    public LyricViewerWindow(Action<string> search, Action<long> chooseRecord, Action export)
     {
         ArgumentNullException.ThrowIfNull(search);
         ArgumentNullException.ThrowIfNull(chooseRecord);
+        ArgumentNullException.ThrowIfNull(export);
 
         _search = search;
         _chooseRecord = chooseRecord;
+        _export = export;
     }
 
     protected override float DefaultWidthDip => 900f;
@@ -287,12 +291,22 @@ internal sealed class LyricViewerWindow : PanelWindow
         var right = WidthDip - Pad;
         right = Badge(context, badge.Label, right, 26f, foreground, background) - 8f;
 
+        if (sheet.Source == LyricSource.Local)
+        {
+            right = Badge(context, LyricBadges.Local.Label, right, 26f, ColorAccent, 0x2A7CC4FF) - 8f;
+        }
+
         if (sheet.LineCount > 0)
         {
             Badge(context, LyricText.FormatLineCount(sheet.LineCount), right, 26f, ColorTextDim, 0x1AFFFFFF);
         }
 
-        var record = sheet.RecordId is { } id ? $"lrclib #{id}" : "No record";
+        var record = sheet.Source switch
+        {
+            LyricSource.Local => "local file",
+            LyricSource.Pinned => sheet.RecordId is { } pinnedId ? $"pinned lrclib #{pinnedId}" : "pinned record",
+            _ => sheet.RecordId is { } id ? $"lrclib #{id}" : "No record"
+        };
 
         Label(
             context,
@@ -556,6 +570,7 @@ internal sealed class LyricViewerWindow : PanelWindow
         if (sheet is { HasTrack: true, LineCount: > 0 })
         {
             const float buttonWidth = 116f;
+            const float exportWidth = 90f;
 
             Button(
                 context,
@@ -564,16 +579,25 @@ internal sealed class LyricViewerWindow : PanelWindow
                 R(Pad, ListBottom + 7f, Pad + buttonWidth, ListBottom + 31f),
                 !sheet.IsDemo);
 
+            Button(
+                context,
+                ExportControl,
+                "Export\u2026",
+                R(Pad + buttonWidth + 8f, ListBottom + 7f, Pad + buttonWidth + 8f + exportWidth, ListBottom + 31f),
+                sheet.IsSynced && !sheet.IsDemo);
+
             var hint = sheet.IsDemo
                 ? "Demo mode: the canned track is not sent to lrclib."
-                : "Ctrl+F searches lrclib with your own words.";
+                : sheet.IsSynced
+                    ? "Ctrl+F searches lrclib with your own words."
+                    : "This sheet has no timings, so there is nothing to export yet.";
 
             Label(
                 context,
                 hint,
-                Pad + buttonWidth + 10f,
+                Pad + buttonWidth + exportWidth + 18f,
                 ListBottom + 9f,
-                WidthDip - (2 * Pad) - buttonWidth - 240f,
+                WidthDip - (2 * Pad) - buttonWidth - exportWidth - 248f,
                 20f,
                 11f,
                 FontWeight.Normal,
@@ -1200,6 +1224,10 @@ internal sealed class LyricViewerWindow : PanelWindow
 
             case SearchCloseControl:
                 CloseSearch();
+                return;
+
+            case ExportControl:
+                _export();
                 return;
         }
     }

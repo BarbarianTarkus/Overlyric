@@ -22,6 +22,17 @@ internal static class Program
         var cacheDirectory = Path.Combine(Path.GetTempPath(), "overlyric-resilience-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(cacheDirectory);
 
+        // Every service gets its own selection file unless a test wants to reload one, so a pinned
+        // record from one scenario cannot leak into the next.
+        LyricsService NewService(LrclibClient serviceClient, LyricsCache serviceCache, string? selectionsName = null) =>
+            new(
+                serviceClient,
+                serviceCache,
+                LyricSelectionStore.Load(Path.Combine(
+                    cacheDirectory,
+                    (selectionsName ?? "sel-" + Guid.NewGuid().ToString("N")) + ".json")),
+                new LocalLyricsStore(Path.Combine(cacheDirectory, "lyrics")));
+
         var cache = new LyricsCache(cacheDirectory);
         const string Artist = "Caravan";
         const string Track = "Can't Be Long Now";
@@ -30,7 +41,7 @@ internal static class Program
         // Unpaced: this suite makes more requests in a few seconds than a listening session makes in
         // an hour, and it is here to pin classification and caching down, not to measure the pacing.
         using var client = new LrclibClient("Overlyric.Tests/1.0", server.BaseUrl, paced: false);
-        var service = new LyricsService(client, cache);
+        var service = NewService(client, cache);
 
         // ---- 1. Server is throttled / broken: the answer is unknown, not "absent". ----
         var unavailable = await client.LookupExactAsync(Artist, Track, null, 300, CancellationToken.None);
@@ -68,7 +79,7 @@ internal static class Program
 
         // ---- 3. A true 404 is definitive and must be remembered. ----
         var otherCache = new LyricsCache(Path.Combine(cacheDirectory, "definitive"));
-        var otherService = new LyricsService(client, otherCache);
+        var otherService = NewService(client, otherCache);
         server.StatusCode = 404;
         server.Body = "{}";
 
@@ -83,7 +94,7 @@ internal static class Program
 
         // ---- 4. A 200 whose record carries no lyrics at all is also definitive. ----
         var bareCache = new LyricsCache(Path.Combine(cacheDirectory, "bare"));
-        var bareService = new LyricsService(client, bareCache);
+        var bareService = NewService(client, bareCache);
         server.StatusCode = 200;
         server.Body = """{"id":7,"trackName":"Bare","artistName":"Nobody","duration":90,"instrumental":false,"plainLyrics":null,"syncedLyrics":null}""";
 
@@ -265,7 +276,7 @@ internal static class Program
 
         // ---- 7b. A manual search asks the listener's question, and never caches the answer. ----
         using var manualClient = new LrclibClient("Overlyric.Tests/1.0", server.BaseUrl, paced: false);
-        var manualService = new LyricsService(manualClient, new LyricsCache(Path.Combine(cacheDirectory, "manual")));
+        var manualService = NewService(manualClient, new LyricsCache(Path.Combine(cacheDirectory, "manual")));
 
         server.StatusCode = 200;
         server.SearchBody = """
@@ -292,7 +303,7 @@ internal static class Program
             manualEmpty.Available && manualEmpty.Candidates.Count == 0);
 
         using var outageSearchClient = new LrclibClient("Overlyric.Tests/1.0", server.BaseUrl, paced: false);
-        var outageSearchService = new LyricsService(outageSearchClient, new LyricsCache(Path.Combine(cacheDirectory, "manual-outage")));
+        var outageSearchService = NewService(outageSearchClient, new LyricsCache(Path.Combine(cacheDirectory, "manual-outage")));
         server.StatusCode = 503;
         server.ResetRequests();
 
@@ -312,7 +323,7 @@ internal static class Program
             """;
         server.ResetRequests();
 
-        var duplicateService = new LyricsService(client, new LyricsCache(Path.Combine(cacheDirectory, "duplicate-artist")));
+        var duplicateService = NewService(client, new LyricsCache(Path.Combine(cacheDirectory, "duplicate-artist")));
         var duplicate = await duplicateService.GetLyricsAsync(
             "King Crimson", "King Crimson - Two Hands", "Brave", 203, CancellationToken.None);
 
@@ -335,7 +346,7 @@ internal static class Program
             ]
             """;
 
-        var rankingService = new LyricsService(client, new LyricsCache(Path.Combine(cacheDirectory, "ranking")));
+        var rankingService = NewService(client, new LyricsCache(Path.Combine(cacheDirectory, "ranking")));
 
         var ranked = await rankingService.GetLyricsAsync(
             "Renaissance",
@@ -357,7 +368,7 @@ internal static class Program
             ]
             """;
 
-        var durationService = new LyricsService(client, new LyricsCache(Path.Combine(cacheDirectory, "duration")));
+        var durationService = NewService(client, new LyricsCache(Path.Combine(cacheDirectory, "duration")));
 
         var durationRanked = await durationService.GetLyricsAsync(
             "Renaissance", "A Song For All Seasons", "A Song For All Seasons", 660, CancellationToken.None);
@@ -371,9 +382,7 @@ internal static class Program
         server.Routes["/api/get/100"] = server.Body;
         server.SearchBody = "[]";
 
-        var versionsPath = Path.Combine(cacheDirectory, "versions.json");
-        var overrides = VersionOverrides.Load(versionsPath);
-        var pinService = new LyricsService(client, new LyricsCache(Path.Combine(cacheDirectory, "pin")), overrides);
+        var pinService = NewService(client, new LyricsCache(Path.Combine(cacheDirectory, "pin")), "pin-selections");
 
         var automatic = await pinService.GetLyricsAsync("Artist", "Track", "Album", 660, CancellationToken.None);
         Check("pinned: automatic matching is used when nothing is pinned", automatic is { LrclibId: 100 });
@@ -384,8 +393,10 @@ internal static class Program
             pinService.TryGetPinnedVersion("Artist", "Track", "Album", out var pinnedOut) && pinnedOut == 100);
         Check(
             "pinned: the choice survives a reload",
-            VersionOverrides.Load(versionsPath)
-                .TryGet(LyricsCache.MakeKey("Artist", "Track", "Album"), out var persisted) && persisted == 100);
+            LyricSelectionStore.Load(Path.Combine(cacheDirectory, "pin-selections.json"))
+                .TryGet(LyricsCache.MakeKey("Artist", "Track", "Album"), out var persisted)
+            && persisted.Kind == LyricSelectionKind.Lrclib
+            && persisted.RecordId == 100);
 
         pinService.ClearVersion("Artist", "Track", "Album");
         Check(
@@ -419,7 +430,7 @@ internal static class Program
             ]
             """;
 
-        var movementService = new LyricsService(client, new LyricsCache(Path.Combine(cacheDirectory, "movement")));
+        var movementService = NewService(client, new LyricsCache(Path.Combine(cacheDirectory, "movement")));
 
         var movementResult = await movementService.GetLyricsAsync(
             "Renaissance",
@@ -453,7 +464,7 @@ internal static class Program
             ]
             """;
 
-        var sameDurationService = new LyricsService(
+        var sameDurationService = NewService(
             client,
             new LyricsCache(Path.Combine(cacheDirectory, "synced-same-duration")));
 
@@ -473,7 +484,7 @@ internal static class Program
             ]
             """;
 
-        var sameAlbumService = new LyricsService(
+        var sameAlbumService = NewService(
             client,
             new LyricsCache(Path.Combine(cacheDirectory, "synced-same-album")));
 
@@ -494,7 +505,7 @@ internal static class Program
             """;
         server.ResetRequests();
 
-        var primaryOnlyService = new LyricsService(
+        var primaryOnlyService = NewService(
             client,
             new LyricsCache(Path.Combine(cacheDirectory, "synced-primary-only")));
 
@@ -521,7 +532,7 @@ internal static class Program
             """;
         server.ResetRequests();
 
-        var supplementService = new LyricsService(
+        var supplementService = NewService(
             client,
             new LyricsCache(Path.Combine(cacheDirectory, "album-supplement")));
 
@@ -563,7 +574,7 @@ internal static class Program
         server.StatusRoutes["%282007%20Stereo%20Mix%29"] = 404;
         server.ResetRequests();
 
-        var editionService = new LyricsService(
+        var editionService = NewService(
             client,
             new LyricsCache(Path.Combine(cacheDirectory, "album-edition")));
 
@@ -593,7 +604,7 @@ internal static class Program
         server.StatusRoutes.Clear();
         server.ResetRequests();
 
-        var exactEditionService = new LyricsService(
+        var exactEditionService = NewService(
             client,
             new LyricsCache(Path.Combine(cacheDirectory, "album-edition-exact")));
 
@@ -624,7 +635,7 @@ internal static class Program
             """;
         server.ResetRequests();
 
-        var suffixSupplementService = new LyricsService(
+        var suffixSupplementService = NewService(
             client,
             new LyricsCache(Path.Combine(cacheDirectory, "album-suffix-supplement")));
 
@@ -656,7 +667,7 @@ internal static class Program
         // album - otherwise the picker can still miss a record for an edition-named album.
         server.ResetRequests();
 
-        var suffixVersionsService = new LyricsService(
+        var suffixVersionsService = NewService(
             client,
             new LyricsCache(Path.Combine(cacheDirectory, "album-suffix-versions")));
 
@@ -697,7 +708,7 @@ internal static class Program
             ]
             """;
 
-        var wrongLengthService = new LyricsService(
+        var wrongLengthService = NewService(
             client,
             new LyricsCache(Path.Combine(cacheDirectory, "wrong-length")));
 
@@ -723,7 +734,7 @@ internal static class Program
             """;
         server.ResetRequests();
 
-        var unknownDurationService = new LyricsService(
+        var unknownDurationService = NewService(
             client,
             new LyricsCache(Path.Combine(cacheDirectory, "unknown-duration")));
 
@@ -755,7 +766,7 @@ internal static class Program
             LegacyEntryJson(legacyKey, 900));
 
         server.ResetRequests();
-        var legacyService = new LyricsService(client, legacyCache);
+        var legacyService = NewService(client, legacyCache);
 
         var legacyResolved = await legacyService.GetLyricsAsync(
             "Artist", "Legacy Entry", "Old Album", 300, CancellationToken.None);
@@ -803,7 +814,7 @@ internal static class Program
             LegacyEntryJson(stampedKey, 905)
                 .Replace("\"result\"", $"\"matchVersion\":{LyricsCache.CurrentMatchVersion},\"result\"", StringComparison.Ordinal));
         server.ResetRequests();
-        var stamped = await new LyricsService(client, legacyCache).GetLyricsAsync(
+        var stamped = await NewService(client, legacyCache).GetLyricsAsync(
             "Artist", "Stamped Entry", "Old Album", 300, CancellationToken.None);
 
         Check(
@@ -851,7 +862,7 @@ internal static class Program
         server.SearchBody = "[]";
 
         var validationCache = new LyricsCache(Path.Combine(cacheDirectory, "validation"));
-        var validationService = new LyricsService(client, validationCache);
+        var validationService = NewService(client, validationCache);
         var validationKey = LyricsCache.MakeKey("Artist", "Rejected", "Album");
 
         var validation = await validationService.GetLyricsAsync(
@@ -873,7 +884,7 @@ internal static class Program
         // earlier sections left behind.
         using var outageClient = new LrclibClient("Overlyric.Tests/1.0", server.BaseUrl, paced: false);
         var outageCache = new LyricsCache(Path.Combine(cacheDirectory, "outage"));
-        var outageService = new LyricsService(outageClient, outageCache);
+        var outageService = NewService(outageClient, outageCache);
         server.ResetRequests();
 
         var outage = await outageService.GetLyricsAsync(

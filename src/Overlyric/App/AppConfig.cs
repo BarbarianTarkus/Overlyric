@@ -177,6 +177,10 @@ internal sealed class AppConfig
     [JsonIgnore]
     public static string CacheDirectory { get; } = Path.Combine(DataDirectory, "cache");
 
+    /// <summary>Where imported local lyric sheets and their metadata live.</summary>
+    [JsonIgnore]
+    public static string LyricsDirectory { get; } = Path.Combine(DataDirectory, "lyrics");
+
     /// <summary>
     /// True when <see cref="Load"/> found no config file. Not persisted: it only decides whether the
     /// first-run notice is worth showing on this launch.

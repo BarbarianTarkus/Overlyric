@@ -39,7 +39,7 @@ For CI, add `/d:sonar.qualitygate.wait=true` to `begin` so a failing gate fails 
 
 ## What is in scope
 
-Only what the solution compiles: `src/Overlyric`, 53 source files, ~14.1k non-comment lines. The
+Only what the solution compiles: `src/Overlyric`, 58 source files, ~15k non-comment lines. The
 exclusions in `SonarQube.Analysis.xml` cover everything else — `probe/` (the experiments, not in
 `Overlyric.slnx`), `docs/`, `installer/`, `tools/`, `dist/`, `.dsh-tmp/`, `bin/` and `obj/`.
 Without them the project would list those files as "not analyzed" and their lines would count
@@ -56,7 +56,7 @@ dotnet tool install --global dotnet-coverage          # once per machine
 pwsh tools\collect-coverage.ps1                        # writes coverage\probes.xml
 ```
 
-The script runs the eleven probes that need no desktop session, media player or AOT publish
+The script runs the twelve probes that need no desktop session, media player or AOT publish
 (ApiBudget, FullscreenProbe, NowPlaying, SmtcAot, SmtcProbe, ToastProbe and VorticeAot are left
 out), merges their reports and prints the result. It fails when a probe fails, but still merges what
 it collected. `SonarQube.Analysis.xml` points the analysis at `coverage/probes.xml`

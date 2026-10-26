@@ -10,7 +10,10 @@ internal enum LyricBadgeKind
     Plain,
     Instrumental,
     NoLyrics,
-    LookingUp
+    LookingUp,
+
+    /// <summary>A sheet that came from a file the listener imported, not from the network.</summary>
+    Local
 }
 
 /// <summary>Colour role only; the actual ARGB value belongs to the window that draws it.</summary>
@@ -43,6 +46,9 @@ internal static class LyricBadges
     public static LyricBadge NoLyrics { get; } = new(LyricBadgeKind.NoLyrics, "No lyrics", LyricBadgeTone.Warning);
 
     public static LyricBadge LookingUp { get; } = new(LyricBadgeKind.LookingUp, "Looking up", LyricBadgeTone.Muted);
+
+    /// <summary>The source badge for an imported sheet; the quality badge still says how it is timed.</summary>
+    public static LyricBadge Local { get; } = new(LyricBadgeKind.Local, "Local", LyricBadgeTone.Accent);
 
     /// <summary>The best thing a candidate can promise, in one badge.</summary>
     public static LyricBadge ForCandidate(LyricsCandidate candidate)

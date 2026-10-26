@@ -81,6 +81,7 @@ internal sealed class AppHost
     private ShortcutToastWindow? _toast;
     private MediaSessionWatcher? _watcher;
     private LyricsService? _lyrics;
+    private LocalLyricsStore? _localLyrics;
 
     private LyricLine[] _lines = [];
     private bool _lyricsSynced;
@@ -102,6 +103,14 @@ internal sealed class AppHost
 
     /// <summary>Revision already told about a missing local file, so the warning is said once.</summary>
     private long _alertedMissingLocalRevision = -1;
+
+    /// <summary>An import preview waiting for confirmation, and its source path and track revision.</summary>
+    private LocalLyricsPreview? _importPreview;
+    private string? _importSourcePath;
+    private long _importPreviewRevision = -1;
+
+    /// <summary>A sentence about the last import or clipboard action, shown in the selector.</summary>
+    private string? _importMessage;
 
     /// <summary>How many version searches are in flight; the selector shows a loading state while it is not zero.</summary>
     private int _versionsInFlight;
@@ -333,11 +342,13 @@ internal sealed class AppHost
                 Path.Combine(AppConfig.DataDirectory, "selections.json"),
                 Path.Combine(AppConfig.DataDirectory, "versions.json"));
 
+            _localLyrics = new LocalLyricsStore(AppConfig.LyricsDirectory);
+
             _lyrics = new LyricsService(
                 new LrclibClient(LrclibClient.DefaultUserAgent),
                 new LyricsCache(AppConfig.CacheDirectory),
                 selections,
-                new LocalLyricsStore(Path.Combine(AppConfig.DataDirectory, "lyrics")));
+                _localLyrics);
         }
 
         RegisterHotKeys();
@@ -1196,6 +1207,10 @@ internal sealed class AppHost
                 _candidates = [];
                 _candidatesRevision = -1;
                 _versionsAttemptedRevision = -1;
+                _importPreview = null;
+                _importSourcePath = null;
+                _importPreviewRevision = -1;
+                _importMessage = null;
             }
         }
 
@@ -2158,6 +2173,248 @@ internal sealed class AppHost
     /// <summary>Cache size for the Advanced section; zero in demo mode, where no cache is created.</summary>
     private (int Entries, long Bytes) CacheStats() => _lyrics?.GetCacheStats() ?? (0, 0);
 
+    /// <summary>Local lyric file count and size for the Advanced section.</summary>
+    private (int Entries, long Bytes) LocalLibraryStats() => _localLyrics?.GetStats() ?? (0, 0);
+
+    /// <summary>Open the import dialog and stage the file's preview; nothing is stored until accepted.</summary>
+    private void ImportLyricFile()
+    {
+        var snapshot = _snapshot;
+
+        if (!snapshot.HasTrack || IsDemoActive || _lyrics is null)
+        {
+            return;
+        }
+
+        var path = FileDialogs.OpenLyricFile(_picker?.Handle ?? nint.Zero);
+        if (string.IsNullOrEmpty(path))
+        {
+            return;
+        }
+
+        var preview = _lyrics.PreviewImport(path, snapshot.DurationSeconds);
+
+        if (!preview.Ok)
+        {
+            SetImportMessage(preview.Error ?? "That file could not be read.", snapshot.Revision);
+            return;
+        }
+
+        _importPreview = preview;
+        _importSourcePath = path;
+        _importPreviewRevision = snapshot.Revision;
+        _importMessage = null;
+        RefreshPicker();
+    }
+
+    /// <summary>Store the staged import, make it this track's explicit choice and resolve it.</summary>
+    private void AcceptLyricImport()
+    {
+        var snapshot = _snapshot;
+        var preview = _importPreview;
+
+        if (preview is null || _importPreviewRevision != snapshot.Revision || _lyrics is null)
+        {
+            CancelLyricImport();
+            return;
+        }
+
+        var sourcePath = _importSourcePath ?? preview.FileName;
+
+        if (!_lyrics.TryCommitImport(
+                snapshot.Artist,
+                snapshot.Title,
+                snapshot.Album,
+                preview,
+                sourcePath,
+                out var error))
+        {
+            SetImportMessage(error ?? "The import could not be saved.", snapshot.Revision);
+            return;
+        }
+
+        _importPreview = null;
+        _importSourcePath = null;
+        _importMessage = "Imported and selected for this track.";
+        StartLyricsFetch(snapshot);
+        RefreshPicker();
+    }
+
+    private void CancelLyricImport()
+    {
+        _importPreview = null;
+        _importSourcePath = null;
+        _importPreviewRevision = -1;
+        _importMessage = null;
+        RefreshPicker();
+    }
+
+    /// <summary>
+    /// Pin a record whose id (or record URL) the listener put on the clipboard. This is the no-text
+    /// path for the wrong-query case: the listener finds the record in a browser and pastes the id.
+    /// </summary>
+    private void PinLyricFromClipboard()
+    {
+        var snapshot = _snapshot;
+        if (!snapshot.HasTrack || IsDemoActive)
+        {
+            return;
+        }
+
+        var text = Clipboard.ReadText(_picker?.Handle ?? _messageWindow.Handle);
+        var id = ExtractRecordId(text);
+
+        if (id <= 0)
+        {
+            SetImportMessage("No lrclib record id found in the clipboard text.", snapshot.Revision);
+            return;
+        }
+
+        ChooseVersion(id);
+        SetImportMessage($"Pinned lrclib #{id}.", snapshot.Revision);
+    }
+
+    /// <summary>Open the listener's own words on lrclib's search page, for the query that failed here.</summary>
+    private void OpenLyricsOnLrclib()
+    {
+        var snapshot = _snapshot;
+        if (!snapshot.HasTrack)
+        {
+            return;
+        }
+
+        var query = string.Join(
+            ' ',
+            new[] { snapshot.Artist, snapshot.Title }.Where(static part => !string.IsNullOrWhiteSpace(part)));
+
+        if (query.Length == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "https://lrclib.net/search?q=" + Uri.EscapeDataString(query),
+                UseShellExecute = true
+            });
+        }
+        catch (Exception)
+        {
+            // No browser is not worth a dialog; the listener can copy the query by hand.
+        }
+    }
+
+    /// <summary>Write the timed sheet in force as an LRC through the save dialog.</summary>
+    private void ExportLyrics()
+    {
+        var snapshot = _snapshot;
+        if (!snapshot.HasTrack || _lyrics is null)
+        {
+            return;
+        }
+
+        var path = FileDialogs.SaveLyricFile(
+            _viewer?.Handle ?? nint.Zero,
+            SuggestedExportName(snapshot.Artist, snapshot.Title));
+
+        if (string.IsNullOrEmpty(path))
+        {
+            return;
+        }
+
+        if (_lyrics.TryExport(
+                snapshot.Artist,
+                snapshot.Title,
+                snapshot.Album,
+                snapshot.DurationSeconds,
+                path,
+                out var error))
+        {
+            _tray?.Alert("Overlyric — lyrics exported", path);
+        }
+        else
+        {
+            _tray?.Alert("Overlyric — export failed", error ?? "The file could not be written.");
+        }
+    }
+
+    private void SetImportMessage(string message, long revision)
+    {
+        _importMessage = message;
+        _importPreviewRevision = revision;
+        RefreshPicker();
+    }
+
+    private void RefreshPicker() => _picker?.Invalidate();
+
+    /// <summary>"Artist - Title.lrc", with characters Windows does not allow in a name replaced.</summary>
+    private static string SuggestedExportName(string artist, string title)
+    {
+        var raw = string.Join(
+            " - ",
+            new[] { artist, title }.Where(static part => !string.IsNullOrWhiteSpace(part))).Trim();
+
+        if (raw.Length == 0)
+        {
+            raw = "lyrics";
+        }
+
+        foreach (var invalid in Path.GetInvalidFileNameChars())
+        {
+            raw = raw.Replace(invalid, '_');
+        }
+
+        return (raw.Length > 80 ? raw[..80] : raw) + ".lrc";
+    }
+
+    /// <summary>
+    /// Pulls an lrclib record id out of clipboard text: a bare number, or the digits in a record URL.
+    /// A run shorter than five digits is ignored, so arbitrary copied text is not pinned by accident.
+    /// </summary>
+    private static long ExtractRecordId(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return 0;
+        }
+
+        var trimmed = text.Trim();
+
+        if (long.TryParse(trimmed, NumberStyles.None, CultureInfo.InvariantCulture, out var direct) && direct > 0)
+        {
+            return direct;
+        }
+
+        long value = 0;
+        var digits = 0;
+
+        foreach (var character in trimmed)
+        {
+            if (char.IsAsciiDigit(character))
+            {
+                if (digits < 18)
+                {
+                    value = (value * 10) + (character - '0');
+                }
+
+                digits++;
+                continue;
+            }
+
+            if (digits >= 5)
+            {
+                return value;
+            }
+
+            digits = 0;
+            value = 0;
+        }
+
+        return digits >= 5 ? value : 0;
+    }
+
     /// <summary>
     /// Nudge the timing. With "Remember this track" on (the default) the value is saved for the
     /// current track; with it off, without usable metadata, or with Shift held, the nudge lasts only
@@ -2275,6 +2532,8 @@ internal sealed class AppHost
                 () => OpenFolder(AppConfig.CacheDirectory),
                 CacheStats,
                 ClearLyricsCache,
+                LocalLibraryStats,
+                () => OpenFolder(AppConfig.LyricsDirectory),
                 typeof(AppHost).Assembly.GetName().Version?.ToString(3) ?? "0.1.0",
                 () => _watcher?.LiveSources ?? [],
                 new TimingCommands
@@ -2308,7 +2567,12 @@ internal sealed class AppHost
             BuildPickerModel,
             ChooseVersion,
             RefreshVersions,
-            OpenLyricViewer);
+            OpenLyricViewer,
+            ImportLyricFile,
+            OpenLyricsOnLrclib,
+            PinLyricFromClipboard,
+            AcceptLyricImport,
+            CancelLyricImport);
 
         var monitor = _overlay is { IsVisible: true }
             ? MonitorFromWindow(_overlay.Handle, MONITOR_DEFAULTTONEAREST)
@@ -2325,7 +2589,7 @@ internal sealed class AppHost
     /// <summary>Open the complete lyric sheet for the track that is playing.</summary>
     private void OpenLyricViewer()
     {
-        _viewer ??= new LyricViewerWindow(SearchLyrics, id => ChooseVersion(id));
+        _viewer ??= new LyricViewerWindow(SearchLyrics, id => ChooseVersion(id), ExportLyrics);
         _viewer.ShowSheet(BuildSheet());
     }
 
@@ -2417,6 +2681,8 @@ internal sealed class AppHost
             LineCount = lineCount,
             CurrentRecordId = recordId,
             Source = _lyricsSource,
+            ImportPreview = _importPreviewRevision == snapshot.Revision ? _importPreview : null,
+            ImportMessage = _importPreviewRevision == snapshot.Revision ? _importMessage : null,
             Status = status
         };
     }

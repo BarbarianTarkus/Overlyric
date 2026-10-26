@@ -102,6 +102,13 @@ internal static class Program
             LyricBadges.ForSheet(true, false, true, true, false).Kind == LyricBadgeKind.Synced);
         Check("word-timed words are word-synced",
             LyricBadges.ForSheet(true, false, true, true, true).Kind == LyricBadgeKind.WordSynced);
+
+        Check(
+            "a local source has its own badge, independent of its timing quality",
+            LyricBadges.Local.Kind == LyricBadgeKind.Local
+            && LyricBadges.Local.Label == "Local"
+            && LyricBadges.Local.Tone == LyricBadgeTone.Accent,
+            LyricBadges.Local);
     }
 
     private static void Candidates()

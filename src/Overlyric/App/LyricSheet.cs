@@ -143,5 +143,11 @@ internal sealed record LyricPickerModel
     /// <summary>Where the current sheet came from.</summary>
     public LyricSource Source { get; init; } = LyricSource.Lrclib;
 
+    /// <summary>An import waiting for confirmation, shown in place of the record list.</summary>
+    public LocalLyricsPreview? ImportPreview { get; init; }
+
+    /// <summary>A sentence about the last import or clipboard action, when there is one.</summary>
+    public string? ImportMessage { get; init; }
+
     public string? Status { get; init; }
 }

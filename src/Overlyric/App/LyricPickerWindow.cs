@@ -26,6 +26,11 @@ internal sealed class LyricPickerWindow : PanelWindow
     private const int ViewLyricsControl = 2;
     private const int AutomaticControl = 3;
     private const int ScrollbarControl = 4;
+    private const int ImportControl = 5;
+    private const int OpenWebControl = 6;
+    private const int ClipboardControl = 7;
+    private const int ImportAcceptControl = 8;
+    private const int ImportCancelControl = 9;
     private const int RowBase = 100;
 
     private const float Pad = 28f;
@@ -52,6 +57,11 @@ internal sealed class LyricPickerWindow : PanelWindow
     private readonly Action<long?> _select;
     private readonly Action _refresh;
     private readonly Action _viewLyrics;
+    private readonly Action _import;
+    private readonly Action _openWeb;
+    private readonly Action _pinClipboard;
+    private readonly Action _acceptImport;
+    private readonly Action _cancelImport;
 
     private int _scrollRow;
     private int _maxScrollRow;
@@ -64,12 +74,22 @@ internal sealed class LyricPickerWindow : PanelWindow
         Func<LyricPickerModel> model,
         Action<long?> select,
         Action refresh,
-        Action viewLyrics)
+        Action viewLyrics,
+        Action import,
+        Action openWeb,
+        Action pinClipboard,
+        Action acceptImport,
+        Action cancelImport)
     {
         _model = model;
         _select = select;
         _refresh = refresh;
         _viewLyrics = viewLyrics;
+        _import = import;
+        _openWeb = openWeb;
+        _pinClipboard = pinClipboard;
+        _acceptImport = acceptImport;
+        _cancelImport = cancelImport;
     }
 
     protected override float DefaultWidthDip => 900f;
@@ -98,8 +118,17 @@ internal sealed class LyricPickerWindow : PanelWindow
         SyncList(model);
         DrawTrack(context, model);
         DrawToolbar(context, model);
-        DrawListHeader(context);
-        DrawVersions(context, model);
+
+        if (model.ImportPreview is not null)
+        {
+            DrawImportPreview(context, model);
+        }
+        else
+        {
+            DrawListHeader(context);
+            DrawVersions(context, model);
+        }
+
         DrawFooter(context, model);
     }
 
@@ -175,7 +204,17 @@ internal sealed class LyricPickerWindow : PanelWindow
         var right = WidthDip - Pad;
         right = Badge(context, badge.Label, right, 26f, foreground, background) - 8f;
 
-        var record = model.CurrentRecordId is { } id ? $"lrclib #{id}" : "No record";
+        if (model.Source == LyricSource.Local)
+        {
+            right = Badge(context, LyricBadges.Local.Label, right, 26f, ColorAccent, 0x2A7CC4FF) - 8f;
+        }
+
+        var record = model.Source switch
+        {
+            LyricSource.Local => "local file",
+            LyricSource.Pinned => model.CurrentRecordId is { } pinnedId ? $"pinned lrclib #{pinnedId}" : "pinned record",
+            _ => model.CurrentRecordId is { } id ? $"lrclib #{id}" : "No record"
+        };
         Label(
             context,
             record,
@@ -643,36 +682,122 @@ internal sealed class LyricPickerWindow : PanelWindow
     {
         Fill(context, R(Pad, ListBottom, WidthDip - Pad, ListBottom + 1f), ColorLine);
 
-        var left = model.HasTrack
-            ? "Choosing a row applies it immediately; the overlay behind this window follows."
-            : "Esc closes.";
+        const float buttonHeight = 24f;
+        var top = ListBottom + 5f;
+        var left = Pad;
+        var usable = model.HasTrack && !model.IsDemo;
+
+        Button(context, ImportControl, "Import file\u2026", left, top, 100f, buttonHeight, usable);
+        left += 108f;
+
+        Button(context, OpenWebControl, "Open on LRCLIB", left, top, 116f, buttonHeight, usable);
+        left += 124f;
+
+        Button(context, ClipboardControl, "Pin from clipboard", left, top, 128f, buttonHeight, usable);
+        left += 136f;
+
+        var message = model.ImportMessage
+            ?? (model.ImportPreview is not null
+                ? "Review the import, then Import or Cancel."
+                : model.HasTrack
+                    ? "Choosing a row applies it immediately; the overlay behind this window follows."
+                    : "Esc closes.");
 
         Label(
             context,
+            message,
             left,
-            Pad,
             ListBottom + 8f,
-            WidthDip - (2 * Pad) - 260f,
+            MathF.Max(80f, WidthDip - Pad - left - 180f),
             20f,
             11f,
             FontWeight.Normal,
-            ColorTextFaint);
+            model.ImportMessage is null ? ColorTextFaint : ColorTextDim);
 
-        var right = model.Versions.Count > 0
-            ? $"{_scrollRow + 1}-{Math.Min(_scrollRow + _visibleRows, model.Versions.Count + 1)} of {model.Versions.Count + 1}"
-            : "Esc closes";
+        var right = model.ImportPreview is not null
+            ? "Import preview"
+            : model.Versions.Count > 0
+                ? $"{_scrollRow + 1}-{Math.Min(_scrollRow + _visibleRows, model.Versions.Count + 1)} of {model.Versions.Count + 1}"
+                : "Esc closes";
 
         Label(
             context,
             right,
-            WidthDip - Pad - 240f,
+            WidthDip - Pad - 180f,
             ListBottom + 8f,
-            240f,
+            180f,
             20f,
             11f,
             FontWeight.Normal,
             ColorTextFaint,
             TextAlignment.Trailing);
+    }
+
+    private void DrawImportPreview(ID2D1DeviceContext context, LyricPickerModel model)
+    {
+        var preview = model.ImportPreview!;
+        var top = ListTop;
+        var bottom = ListBottom - 8f;
+        var left = Pad + 18f;
+        var width = WidthDip - (2 * Pad) - 36f;
+
+        FillRound(context, Pad, top, WidthDip - (2 * Pad), bottom - top, 10f, ColorControl);
+
+        Label(context, "Import " + preview.FileName, left, top + 14f, width, 28f, 17f, FontWeight.SemiBold, ColorText);
+
+        var timing = preview.IsSynced
+            ? $"{preview.LineCount} timed {(preview.LineCount == 1 ? "line" : "lines")}"
+            : $"{preview.LineCount} plain {(preview.LineCount == 1 ? "line" : "lines")}";
+
+        if (preview.IsSynced && preview.FirstStart is { } first && preview.LastStart is { } last)
+        {
+            timing += string.Concat(" \u00b7 ", LyricText.FormatTimestamp(first), " \u2192 ", LyricText.FormatTimestamp(last));
+        }
+
+        Label(context, timing, left, top + 50f, width, 22f, 12.5f, FontWeight.Normal, ColorTextDim);
+
+        if (preview.DurationDeltaSeconds is { } delta)
+        {
+            var sentence = delta switch
+            {
+                < -0.5 => $"The sheet ends {Math.Abs(delta):0.0} s before the track does.",
+                > 0.5 => $"The sheet runs {delta:0.0} s past the end of the track.",
+                _ => "Its length matches the track."
+            };
+
+            Label(context, sentence, left, top + 76f, width, 22f, 12f, FontWeight.Normal, ColorTextFaint);
+        }
+
+        if (!preview.IsSynced)
+        {
+            Label(
+                context,
+                "No timestamps: the words are shown as plain text and cannot follow the music.",
+                left,
+                top + 104f,
+                width,
+                22f,
+                12f,
+                FontWeight.Normal,
+                ColorWarning);
+        }
+        else
+        {
+            Label(
+                context,
+                "Stored for this track and used instead of the lrclib record until you choose Automatic.",
+                left,
+                top + 104f,
+                width,
+                22f,
+                12f,
+                FontWeight.Normal,
+                ColorTextFaint);
+        }
+
+        var buttonTop = bottom - 46f;
+        Button(context, ImportAcceptControl, "Import", WidthDip - Pad - 224f, buttonTop, 100f, 30f, true);
+        Button(context, ImportCancelControl, "Cancel", WidthDip - Pad - 116f, buttonTop, 100f, 30f, true);
     }
 
     private void Button(
@@ -753,6 +878,31 @@ internal sealed class LyricPickerWindow : PanelWindow
 
             case ViewLyricsControl:
                 _viewLyrics();
+                return;
+
+            case ImportControl:
+                _import();
+                Invalidate();
+                return;
+
+            case OpenWebControl:
+                _openWeb();
+                Invalidate();
+                return;
+
+            case ClipboardControl:
+                _pinClipboard();
+                Invalidate();
+                return;
+
+            case ImportAcceptControl:
+                _acceptImport();
+                Invalidate();
+                return;
+
+            case ImportCancelControl:
+                _cancelImport();
+                Invalidate();
                 return;
         }
     }

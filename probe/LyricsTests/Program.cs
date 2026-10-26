@@ -269,7 +269,11 @@ Console.WriteLine("== 7. LyricsService (offline) ==");
 
 var serviceCache = new LyricsCache(Path.Combine(runRoot, "service-cache"));
 using var liveClient = new LrclibClient("Overlyric/0.1.0 (+https://github.com/overlyric)");
-var service = new LyricsService(liveClient, serviceCache);
+var service = new LyricsService(
+    liveClient,
+    serviceCache,
+    LyricSelectionStore.Load(Path.Combine(runRoot, "selections.json")),
+    new LocalLyricsStore(Path.Combine(runRoot, "lyrics")));
 var serviceKey = LyricsCache.MakeKey("Radiohead", "Creep", "Pablo Honey");
 
 serviceCache.Set(serviceKey, sample);

@@ -546,4 +546,41 @@ internal static partial class NativeMethods
 
     [LibraryImport("ole32.dll")]
     internal static partial void CoTaskMemFree(IntPtr memory);
+
+    /// <summary>The native OPENFILENAMEW, in the shape comdlg32 writes back into.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct OpenFileName
+    {
+        public uint StructSize;
+        public nint Owner;
+        public nint Instance;
+        public nint Filter;
+        public nint CustomFilter;
+        public uint MaxCustomFilter;
+        public uint FilterIndex;
+        public nint File;
+        public uint MaxFile;
+        public nint FileTitle;
+        public uint MaxFileTitle;
+        public nint InitialDirectory;
+        public nint Title;
+        public uint Flags;
+        public ushort FileOffset;
+        public ushort FileExtension;
+        public nint DefaultExtension;
+        public nint CustomData;
+        public nint Hook;
+        public nint TemplateName;
+        public nint ReservedPointer;
+        public uint ReservedValue;
+        public uint FlagsEx;
+    }
+
+    [LibraryImport("comdlg32.dll", EntryPoint = "GetOpenFileNameW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetOpenFileNameW(ref OpenFileName dialog);
+
+    [LibraryImport("comdlg32.dll", EntryPoint = "GetSaveFileNameW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetSaveFileNameW(ref OpenFileName dialog);
 }

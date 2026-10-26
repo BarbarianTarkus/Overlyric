@@ -217,6 +217,9 @@ internal sealed class SettingsWindow : WindowBase
         TimingOutputDown = 111,
         TimingOutputUp = 112,
 
+        /// <summary>Open the folder holding imported local lyric files.</summary>
+        OpenLocal = 113,
+
         /// <summary>
         /// The four offset nudges and the scrollbar. Their values fill the gap between the shortcut
         /// chips and the OLED block, the only stretch of the id space left; the enum's order documents
@@ -298,7 +301,7 @@ internal sealed class SettingsWindow : WindowBase
     /// One past the last row index each section draws. The viewport needs the height before the section
     /// is drawn, so this is a table rather than something measured twice.
     /// </summary>
-    private static readonly int[] SectionRows = [10, 6, 8, 4, 6, 8, 8, 3];
+    private static readonly int[] SectionRows = [10, 6, 8, 4, 6, 8, 8, 4];
 
     private readonly AppConfig _config;
     private readonly Action<SettingsChange> _changed;
@@ -307,6 +310,8 @@ internal sealed class SettingsWindow : WindowBase
     private readonly Action _openDataFolder;
     private readonly Action _openCacheFolder;
     private readonly Func<(int Entries, long Bytes)> _cacheStats;
+    private readonly Func<(int Entries, long Bytes)> _localStats;
+    private readonly Action _openLocalFolder;
     private readonly Action _clearCache;
     private readonly string _version;
 
@@ -383,6 +388,8 @@ internal sealed class SettingsWindow : WindowBase
         Action openCacheFolder,
         Func<(int Entries, long Bytes)> cacheStats,
         Action clearCache,
+        Func<(int Entries, long Bytes)> localStats,
+        Action openLocalFolder,
         string version,
         Func<IReadOnlyList<SourceCandidate>> liveSources,
         TimingCommands timing)
@@ -395,6 +402,8 @@ internal sealed class SettingsWindow : WindowBase
         _openCacheFolder = openCacheFolder;
         _cacheStats = cacheStats;
         _clearCache = clearCache;
+        _localStats = localStats;
+        _openLocalFolder = openLocalFolder;
         _version = version;
         _liveSources = liveSources;
         _timing = timing;
@@ -1282,6 +1291,10 @@ internal sealed class SettingsWindow : WindowBase
                 _openCacheFolder();
                 return;
 
+            case Control.OpenLocal:
+                _openLocalFolder();
+                return;
+
             case Control.ClearCache:
                 _clearCache();
                 Render();
@@ -1982,8 +1995,13 @@ internal sealed class SettingsWindow : WindowBase
         RowWithNote(context, 1, "Lyrics cache", $"{entries} entries \u00b7 {FormatBytes(bytes)}");
         Button(context, ContentRight - 132f, RowTop(1) + 8f, 132f, 30f, "Open", Control.OpenCache);
 
-        Row(context, 2, "Clear lyrics cache");
-        Button(context, ContentRight - 132f, RowTop(2) + 8f, 132f, 30f, "Clear", Control.ClearCache);
+        // Imported files are the listener's own; they are not the cache and Clear must not touch them.
+        var (localEntries, localBytes) = _localStats();
+        RowWithNote(context, 2, "Local lyric files", $"{localEntries} files \u00b7 {FormatBytes(localBytes)}");
+        Button(context, ContentRight - 132f, RowTop(2) + 8f, 132f, 30f, "Open", Control.OpenLocal);
+
+        Row(context, 3, "Clear lyrics cache");
+        Button(context, ContentRight - 132f, RowTop(3) + 8f, 132f, 30f, "Clear", Control.ClearCache);
 
         // Start with Windows left for Behaviour; what is left here is housekeeping, and the one
         // destructive action closes the section. The version is in the footer, said once.
@@ -2521,7 +2539,8 @@ internal sealed class SettingsWindow : WindowBase
         // Advanced
         Control.OpenData => 0,
         Control.OpenCache => 1,
-        Control.ClearCache => 2,
+        Control.OpenLocal => 2,
+        Control.ClearCache => 3,
 
         // Players
         Control.SourcePin => 0,

@@ -105,7 +105,8 @@ timings), **Synced** (line timings only), **Plain** (words without timings), **I
 
 Picking a row applies it immediately, because the overlay is visible behind the selector: choosing a
 version and hearing the effect are one action, not two. The choice is remembered across plays and
-restarts in `%LOCALAPPDATA%\Overlyric\versions.json`.
+restarts in `%LOCALAPPDATA%\Overlyric\selections.json` (the older `versions.json` is migrated on first
+load), together with the third kind of choice: a local file.
 
 Automatic is a guess, and sometimes a close one: for Gentle Giant's *Winning* (256 s) the automatic pick
 is the synced record 36334456 (257 s), while the record a listener had pinned by hand, 14916772
@@ -121,10 +122,49 @@ resolution downloads: one search answer is twenty records with their full bodies
 searching in one session therefore opens its selector at no cost in the next. **Look again** is the
 only thing that throws the list away and asks lrclib afresh.
 
+## Your own lyric file
+
+LRCLIB is a catalogue, not the last word. **Import file…** in the selector's footer opens a file
+picker for `.lrc` or `.txt`, and the file you choose is previewed before anything is stored: its name,
+how many timed lines it holds, the first and last timestamps, whether its length matches the track,
+and a warning when it has no timestamps at all. **Import** stores it under
+`%LOCALAPPDATA%\Overlyric\lyrics` - a `.lrc` plus a small metadata `.json` - and makes it the
+explicit choice for the track. **Cancel** leaves everything as it was.
+
+A local sheet wins over LRCLIB while it is selected, and the selector, the sheet and the control bar
+mark it **Local**. It is read from disk on every play rather than cached, so editing the file in
+Notepad takes effect on the next lookup; **Refresh lyrics** re-reads it too. **Automatic (best
+match)** in the selector returns the track to LRCLIB without deleting the file.
+
+The import is forgiving about encoding: UTF-8, UTF-16 and Windows-1252 are detected, with or without
+a BOM. Other ANSI code pages (Cyrillic, Greek, CJK) are not decoded, so save those files as UTF-8.
+A plain-text sheet is accepted and shown as static text, but it cannot follow the music - the
+preview says so before you commit.
+
+Two escape hatches sit beside Import because a search box is deliberately not part of this window:
+
+- **Open on LRCLIB** opens `lrclib.net` with the playing track's artist and title in the search box,
+  for the case where the automatic query was wrong rather than the catalogue incomplete.
+- **Pin from clipboard** reads an lrclib record id - a bare number, or the digits in a record URL -
+  from the clipboard and pins that record. It is the no-text-input path to the same result as
+  choosing a row in the search results.
+
+The complete sheet can **Export…** the timed lyrics in force as an LRC file (CRLF, millisecond
+timestamps, the `[ar:]`/`[ti:]`/`[al:]`/`[length:]` header), whether they came from LRCLIB or from an
+imported file. Exporting and re-importing reproduces the same timestamps.
+
+There is deliberately no automatic "find the `.lrc` next to the audio file": Windows' media controls
+expose the title, artist, album and duration, not a path, and a streaming player has no local file to
+look beside. Import is an explicit action because that is the only version of it that works for
+every player.
+
+If the stored file is deleted from the lyrics folder, the track falls back to the automatic pipeline
+and Overlyric says so once, rather than leaving a silent gap.
+
 ## The complete lyric sheet
 
-**Full lyrics** opens the whole sheet in its own window: every line, its timestamp, the record it
-came from, and the same badge the selector uses. The line being sung is highlighted and scrolled into
+**Full lyrics** opens the whole sheet in its own window: every line, its timestamp, where it came
+from (an LRCLIB record id or a local file), and the same badge the selector uses. The line being sung is highlighted and scrolled into
 view when the window opens. With plain lyrics the timestamp column is absent rather than filled with
 zeroes, because zeroes would claim a timing the sheet does not have.
 
@@ -159,9 +199,10 @@ the query belongs to the track it was asked about.
 
 The tray's **Refresh lyrics** forgets the cached result for the current track — including the copy
 stored under a pinned record — and asks LRCLIB again. The version choice is kept; "refresh" means ask
-again, not "go back to automatic". **Settings → Advanced** shows the cache size and can clear every
-entry at once. This is the escape hatch for a wrong record, or for a lookup that was cached while the
-network was down.
+again, not "go back to automatic", and an imported local file is re-read rather than forgotten.
+**Settings → Advanced** shows the cache size, the local lyric folder and its size, and can clear
+every cached answer at once; clearing the cache never deletes imported files. This is the escape hatch
+for a wrong record, or for a lookup that was cached while the network was down.
 
 ## Notes on LRCLIB
 

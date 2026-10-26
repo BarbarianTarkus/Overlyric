@@ -147,6 +147,11 @@ show song details, a badge per record, lengths and match deltas side by side, an
 the listener compares choices and hears each one on the overlay behind it. The list scrolls with the
 wheel, the scrollbar and the keyboard; **Automatic (best match)** is the first row.
 
+The selector also owns the local lyric library: **Import file…** previews a `.lrc` or `.txt` against
+the track and, once accepted, that file is used instead of LRCLIB and badged **Local**;
+**Open on LRCLIB** and **Pin from clipboard** are the escape hatches for a wrong query without a text
+box. [Your own lyric file](lyrics.md#your-own-lyric-file) has the details.
+
 ![Choose lyrics in demo mode](images/lyric-picker.png)
 
 *Demo tracks are deliberately not sent to LRCLIB, so the list is empty here; a real track lists its
@@ -154,7 +159,8 @@ records, best first.*
 
 **Full lyrics** opens the complete sheet described under [The complete lyric sheet](lyrics.md#the-complete-lyric-sheet).
 Its **Search LRCLIB** button (or `Ctrl+F`) opens a query field when the automatic lookup cannot find the
-song, and a result picked there is pinned for the track and shown immediately. Both windows are
+song, and a result picked there is pinned for the track and shown immediately; **Export…** writes the
+timed sheet in force as an LRC file. Both windows are
 dark, resize from any edge or corner, and close with **Esc**; they reuse the overlay's
 DirectComposition stack and the settings window's palette, so they add no new UI framework. The
 selector's title column takes the extra width, while its match, length and badge columns stay
@@ -174,7 +180,7 @@ backdrop, what stays lit, and the burn-in preset and tools — see [OLED and bur
 offsets, reset) and **Behaviour** (the hide rules, the
 warnings, and start with Windows). **SETUP** holds **Players** (which music client to follow, and the
 order to prefer them in), **Shortcuts** (rebind the global hotkeys) and **Advanced** (the folders, the
-cache and its size, clearing it, and the version).
+cache and its size, clearing it, the local lyric folder, and the version).
 
 The sections are ordered by the job rather than by the order the features shipped: what it looks like,
 then the two corrections made most often, then when it gets out of the way, then the setup. Inside a
