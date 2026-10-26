@@ -153,6 +153,13 @@ The complete sheet can **Export…** the timed lyrics in force as an LRC file (C
 timestamps, the `[ar:]`/`[ti:]`/`[al:]`/`[length:]` header), whether they came from LRCLIB or from an
 imported file. Exporting and re-importing reproduces the same timestamps.
 
+A second-language sidecar is optional: save a same-named `.trans.lrc` beside the local sheet (the
+lyrics folder is in **Settings → Advanced**), with the translation's own timestamps. Its active line
+is drawn under the active lyric in a smaller, dimmer style, and **Settings → Lyrics → Show
+translation** turns it off. It applies only to local sheets, because it lives beside the file; a
+track resolved from LRCLIB has no folder to put it in. No machine translation is involved: the text
+is exactly what the listener supplied.
+
 There is deliberately no automatic "find the `.lrc` next to the audio file": Windows' media controls
 expose the title, artist, album and duration, not a path, and a streaming player has no local file to
 look beside. Import is an explicit action because that is the only version of it that works for

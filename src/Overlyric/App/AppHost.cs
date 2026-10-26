@@ -85,6 +85,9 @@ internal sealed class AppHost
     private LocalLyricsStore? _localLyrics;
 
     private LyricLine[] _lines = [];
+
+    /// <summary>The optional second-language sidecar for the current local sheet, if one exists.</summary>
+    private LyricLine[] _translation = [];
     private bool _lyricsSynced;
     private string? _lyricsStatus;
     private bool _isInstrumental;
@@ -672,6 +675,7 @@ internal sealed class AppHost
         CheckExternalEditReload();
 
         var visual = BuildVisual(snapshot, position, positionIsUsable);
+        visual = WithTranslation(visual, position);
         visual = WithInfoPopup(visual, snapshot, positionIsUsable);
 
         // The burn-in nudge rides on the visual rather than the window, so placement, dragging and
@@ -699,6 +703,18 @@ internal sealed class AppHost
         UpdateVisibility(snapshot);
         UpdateTimerInterval(snapshot);
         RefreshLyricWindows();
+    }
+
+    /// <summary>Adds the active sidecar line, when there is one and the option is on.</summary>
+    private OverlayVisual WithTranslation(OverlayVisual visual, TimeSpan position)
+    {
+        if (!_config.ShowTranslation || _translation.Length == 0 || visual.ActiveIndex < 0)
+        {
+            return visual;
+        }
+
+        var text = LyricText.TranslationAt(_translation, position);
+        return text is null ? visual : visual with { Translation = text };
     }
 
     private OverlayVisual BuildVisual(NowPlayingSnapshot snapshot, TimeSpan position, bool positionIsUsable)
@@ -1397,6 +1413,7 @@ internal sealed class AppHost
         lock (_gate)
         {
             _lines = [];
+            _translation = [];
             _lyricsSynced = false;
             _lyricsStatus = null;
             _isInstrumental = false;
@@ -1468,6 +1485,14 @@ internal sealed class AppHost
                     _lyricsRecordId = result?.LrclibId;
                     _lyricsSource = result?.Source ?? LyricSource.Lrclib;
                     _localFileMissingRevision = lookup.LocalFileMissing ? revision : -1;
+
+                    // A sidecar only exists beside a local sheet; loading it is a small read on the
+                    // lookup thread, and a missing one is simply no translation.
+                    _translation = _lyricsSource == LyricSource.Local
+                        && _lyrics is not null
+                        && _lyrics.TryLoadTranslation(artist, title, album, out var translationLines)
+                            ? [.. translationLines]
+                            : [];
 
                     _diagnosticLog.Add(
                         "lyrics",
@@ -1640,6 +1665,7 @@ internal sealed class AppHost
             || a.OffsetIsDefault != b.OffsetIsDefault
             || !string.Equals(a.OffsetLabel, b.OffsetLabel, StringComparison.Ordinal)
             || !string.Equals(a.Header, b.Header, StringComparison.Ordinal)
+            || !string.Equals(a.Translation, b.Translation, StringComparison.Ordinal)
             || !string.Equals(a.Status, b.Status, StringComparison.Ordinal)
             || !Equals(a.Notice, b.Notice)
             || a.Lines.Count != b.Lines.Count)
@@ -2578,6 +2604,7 @@ internal sealed class AppHost
         lock (_gate)
         {
             _lines = [];
+            _translation = [];
             _lyricsSynced = false;
             _lyricsStatus = null;
             _isInstrumental = false;

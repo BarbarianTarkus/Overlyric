@@ -84,6 +84,9 @@ internal sealed class AppConfig
     /// <summary>Draw the bar behind the line being sung.</summary>
     public bool ShowActiveLineHighlight { get; set; } = true;
 
+    /// <summary>Show the optional second-language sidecar under the active line.</summary>
+    public bool ShowTranslation { get; set; } = true;
+
     /// <summary>
     /// Sweep the active line as it is sung. Follows word-level timings when the sheet has them and
     /// shares the line's span out over its syllables when it does not.

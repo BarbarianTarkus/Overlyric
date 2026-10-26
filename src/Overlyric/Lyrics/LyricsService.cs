@@ -294,6 +294,26 @@ public sealed class LyricsService
     public bool TryGetSelection(string artist, string track, string? album, out LyricSelection selection) =>
         _selections.TryGet(LyricsCache.MakeKey(artist, track, album), out selection);
 
+    /// <summary>
+    /// Loads the optional translation sidecar for the track's local sheet. Only a local sheet has
+    /// one: the sidecar is stored beside it, and a track resolved from LRCLIB has no local file to
+    /// sit next to.
+    /// </summary>
+    public bool TryLoadTranslation(
+        string artist,
+        string track,
+        string? album,
+        out IReadOnlyList<LyricLine> lines)
+    {
+        lines = [];
+        var key = LyricsCache.MakeKey(artist, track, album);
+
+        return _selections.TryGet(key, out var selection)
+               && selection is not null
+               && selection.Kind == LyricSelectionKind.Local
+               && _localLyrics.TryLoadTranslation(key, out lines);
+    }
+
     /// <summary>Prefills the import dialog's preview without storing anything.</summary>
     public static LocalLyricsPreview PreviewImport(string sourcePath, double? durationSeconds) =>
         LocalLyricsStore.Preview(sourcePath, durationSeconds);

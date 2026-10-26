@@ -116,7 +116,8 @@ because they are the quickest way to re-check a platform assumption.
 | `DiagnosticsTests` | 19 checks over the rolling log (ring bound, file rotation, format) and the diagnostics snapshot's JSON, including a title with quotes and a newline |
 | `PresenceTests` | 24 checks over the Presence decisions: the per-app hide match (names, case, paths, protected processes), the exclusive-fullscreen conjunction, and the ten-second sustain with announce-once |
 | `LyricEditTests` | 37 checks over the timing editor: selection, set start/end, the refusal of an impossible edit, per-line and whole-sheet nudges, clamping at zero, stable sorting, and the bounded undo/redo history |
-| `LocalLyricsTests` | 51 checks over the local lyric library: BOM/UTF-8/UTF-16/Windows-1252 detection, the import preview, save/load/remove and corrupt files, the explicit selection file and its migration from `versions.json`, and the export round-trip |
+| `LocalLyricsTests` | 56 checks over the local lyric library, including the translation sidecar and its replacement |
+| `LyricWindowsTests` | 66 checks over the wording the selector and viewer share: BOM/UTF-8/UTF-16/Windows-1252 detection, the import preview, save/load/remove and corrupt files, the explicit selection file and its migration from `versions.json`, and the export round-trip |
 | `ResilienceTests` | 101 checks: transient-vs-definitive caching, the one-request outage, a validation error never being filed as "no lyrics", the tombstone lifetime, instrumental classification, metadata cleaning (title and album release suffixes, movement listings and duplicated artist prefixes), the manual free-text search, the album-suffix retry, candidate ranking, the synced-same-duration rule, the album-scoped supplement, the stored candidate list and version pinning |
 | `ApiBudget` | What one lyric resolution costs in requests and bytes on every path - a hit, an album edition suffix, a search that settles it, a track lrclib does not hold, an outage, the selector, a replay - against a stub that counts them |
 | `ShortcutsTests` | 35 checks over the hotkey text form: parsing, canonical modifier order, punctuation stored by name, and every malformed string falling back to "unbound" instead of throwing |
@@ -126,7 +127,6 @@ because they are the quickest way to re-check a platform assumption.
 | `TimingTests` | 34 checks over timing-profile resolution: track -> output -> global overrides, a stored zero as an override, session-only nudges, clamping and cleanup of hand-edited maps, and the labels (`+0.25 s · this track`, `+0.15 s · Bluetooth headphones`) |
 | `SourcePreferenceTests` | 46 checks over the source selector: pin beating the list and Windows, list order respected, a listed player that is not running skipped, duplicate app ids resolved to the one actually playing, and a hand-edited list cleaned and capped without throwing |
 | `ThemeTests` | 30 checks over the OLED preset and the colours it produces, the monitor preference's hand-edited map, and the four curated palettes with the active-line weights |
-| `LyricWindowsTests` | 62 checks over the wording the selector and viewer share: offset and length formatting, match deltas, timestamps, badge precedence, candidate labels, the sheet's manual-search state, finding the active line and the gap-progress rule |
 
 Helper scripts: `probe\screenshot.py` (capture the screen) and `probe\crop.py` (crop and upscale a
 region for close inspection). Together they give a way to confirm visually that the overlay is on

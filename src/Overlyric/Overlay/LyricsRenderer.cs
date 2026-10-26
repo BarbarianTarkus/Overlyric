@@ -208,9 +208,20 @@ internal sealed class LyricsRenderer : IDisposable
         // indicator when an instrumental break starts.
         const float gapExtra = 8f;
 
+        var translationLayout = string.IsNullOrWhiteSpace(visual.Translation)
+            ? null
+            : GetLayout(visual.Translation!, MathF.Max(11f, _theme.InactiveFontSize * 0.9f), FontWeight.Normal);
+
+        var translationExtra = translationLayout is null ? 0f : translationLayout.Metrics.Height + 2f;
+
         var lineWidth = Math.Min(lineLayout.Metrics.Width, available);
+        if (translationLayout is not null)
+        {
+            lineWidth = MathF.Min(MathF.Max(lineWidth, translationLayout.Metrics.Width), available);
+        }
+
         var pillWidth = Math.Min(lineWidth + (2 * _theme.PaddingX), width);
-        var pillHeight = lineLayout.Metrics.Height + (2 * _theme.PaddingY) + progressExtra + gapExtra;
+        var pillHeight = lineLayout.Metrics.Height + translationExtra + (2 * _theme.PaddingY) + progressExtra + gapExtra;
 
         var headerHeight = 0f;
         var headerWidth = 0f;
@@ -265,9 +276,18 @@ internal sealed class LyricsRenderer : IDisposable
         // box, so the origin must be the same box the width was measured against.
         DrawLine(context, lineLayout, new Vector2(margin, top + _theme.PaddingY), visual.SungChars);
 
+        if (translationLayout is not null)
+        {
+            DrawTextShadows(
+                context,
+                translationLayout,
+                new Vector2(margin, top + _theme.PaddingY + lineLayout.Metrics.Height + 2f),
+                GetBrush(context, _theme.InactiveTextColor));
+        }
+
         if (visual.GapProgress >= 0f)
         {
-            var gapY = top + _theme.PaddingY + lineLayout.Metrics.Height + 2f;
+            var gapY = top + _theme.PaddingY + lineLayout.Metrics.Height + translationExtra + 2f;
             DrawGapIndicator(context, left + (pillWidth / 2f), gapY, visual.GapProgress);
         }
 
@@ -291,6 +311,11 @@ internal sealed class LyricsRenderer : IDisposable
 
         var layouts = new IDWriteTextLayout[lines.Count];
         var heights = new float[lines.Count];
+        var extras = new float[lines.Count];
+
+        var translationLayout = string.IsNullOrWhiteSpace(visual.Translation)
+            ? null
+            : GetLayout(visual.Translation!, MathF.Max(11f, _theme.InactiveFontSize * 0.9f), FontWeight.Normal);
 
         var contentWidth = 0f;
         var contentHeight = 0f;
@@ -307,9 +332,15 @@ internal sealed class LyricsRenderer : IDisposable
 
             layouts[i] = layout;
             heights[i] = layout.Metrics.Height;
+            extras[i] = isActive && translationLayout is not null ? translationLayout.Metrics.Height + 2f : 0f;
 
             contentWidth = Math.Max(contentWidth, layout.Metrics.Width);
-            contentHeight += heights[i];
+            if (isActive && translationLayout is not null)
+            {
+                contentWidth = MathF.Max(contentWidth, translationLayout.Metrics.Width);
+            }
+
+            contentHeight += heights[i] + extras[i];
             if (i < lines.Count - 1)
             {
                 contentHeight += _theme.LineSpacing;
@@ -371,6 +402,15 @@ internal sealed class LyricsRenderer : IDisposable
             if (isActive)
             {
                 DrawLine(context, layouts[i], new Vector2(margin, y), visual.SungChars);
+
+                if (translationLayout is not null)
+                {
+                    DrawTextShadows(
+                        context,
+                        translationLayout,
+                        new Vector2(margin, y + heights[i] + 2f),
+                        GetBrush(context, _theme.InactiveTextColor));
+                }
             }
             else
             {
@@ -381,7 +421,7 @@ internal sealed class LyricsRenderer : IDisposable
                     GetBrush(context, _theme.InactiveTextColor));
             }
 
-            y += heights[i] + _theme.LineSpacing;
+            y += heights[i] + extras[i] + _theme.LineSpacing;
         }
 
         if (showProgress)

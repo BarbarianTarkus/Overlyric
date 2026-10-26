@@ -125,6 +125,64 @@ public sealed class LocalLyricsStore
     /// <summary>The path this key's sheet would be stored at, whether or not it exists yet.</summary>
     public string StoredPath(string key) => BasePath(key) + ".lrc";
 
+    /// <summary>Where the optional second-language sidecar for this sheet lives.</summary>
+    public string TranslationPath(string key) => BasePath(key) + ".trans.lrc";
+
+    /// <summary>Stores a translated sidecar beside the local sheet; UTF-8, no BOM.</summary>
+    public bool SaveTranslation(string key, string text)
+    {
+        if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        try
+        {
+            System.IO.Directory.CreateDirectory(_directory);
+            WriteAtomic(TranslationPath(key), LyricTextCodec.EncodeUtf8(text));
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>The sidecar's timed lines, or false when there is none (or it has no timestamps).</summary>
+    public bool TryLoadTranslation(string key, out IReadOnlyList<LyricLine> lines)
+    {
+        lines = [];
+
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            return false;
+        }
+
+        try
+        {
+            var path = TranslationPath(key);
+
+            if (!File.Exists(path))
+            {
+                return false;
+            }
+
+            var parsed = LrcParser.Parse(LyricTextCodec.Decode(File.ReadAllBytes(path)));
+
+            if (parsed.Count == 0)
+            {
+                return false;
+            }
+
+            lines = parsed;
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
     /// <summary>Saves the decoded sheet and its metadata. Returns false when nothing could be written.</summary>
     public bool Save(string key, string text, LocalLyricsMetadata metadata)
     {

@@ -90,6 +90,28 @@ internal static class LyricText
         _ => $"{count} lines"
     };
 
+    /// <summary>
+    /// The translation line active at a position, or null when there is none or it is blank. The
+    /// sidecar keeps its own timestamps, so it can be offset differently from the original.
+    /// </summary>
+    public static string? TranslationAt(IReadOnlyList<LyricLine> translation, TimeSpan position)
+    {
+        if (translation.Count == 0 || position < translation[0].Start)
+        {
+            return null;
+        }
+
+        var index = ActiveLine(translation, position);
+
+        if (index < 0 || index >= translation.Count)
+        {
+            return null;
+        }
+
+        var text = translation[index].Text.Trim();
+        return text.Length == 0 ? null : text;
+    }
+
     /// <summary>A short label that cannot draw outside the box it was measured for.</summary>
     public static string Fit(string? text, int limit)
     {

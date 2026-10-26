@@ -103,6 +103,23 @@ internal static class Program
         Check("word-timed words are word-synced",
             LyricBadges.ForSheet(true, false, true, true, true).Kind == LyricBadgeKind.WordSynced);
 
+        var translation = new List<LyricLine>
+        {
+            new(TimeSpan.FromSeconds(1), "Uno"),
+            new(TimeSpan.FromSeconds(5), "Dos")
+        };
+
+        Check("a translation line follows its own timestamps",
+            LyricText.TranslationAt(translation, TimeSpan.FromSeconds(2)) == "Uno"
+            && LyricText.TranslationAt(translation, TimeSpan.FromSeconds(6)) == "Dos",
+            LyricText.TranslationAt(translation, TimeSpan.FromSeconds(6)));
+        Check("no translation before the sidecar's first line",
+            LyricText.TranslationAt(translation, TimeSpan.FromMilliseconds(500)) is null, LyricText.TranslationAt(translation, TimeSpan.FromMilliseconds(500)));
+        Check("a blank translation line is not drawn",
+            LyricText.TranslationAt([new LyricLine(TimeSpan.Zero, "  ")], TimeSpan.FromSeconds(1)) is null, "");
+        Check("an absent sidecar is not a translation",
+            LyricText.TranslationAt([], TimeSpan.FromSeconds(1)) is null, "");
+
         Check(
             "a local source has its own badge, independent of its timing quality",
             LyricBadges.Local.Kind == LyricBadgeKind.Local

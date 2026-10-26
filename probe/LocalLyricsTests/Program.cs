@@ -134,6 +134,26 @@ internal static class Program
         Check("removing a sheet deletes both files", store.Remove(key) && !store.TryLoad(key, out _), "");
         Check("removing a key with nothing stored is false", !store.Remove("absent"), "");
         Check("saving with a blank key is refused", !store.Save("  ", "x", metadata), "");
+
+        // ---- The optional translation sidecar. ----
+        const string transKey = "artist\nsong\nalbum";
+        IReadOnlyList<LyricLine> sidecar = [];
+        Check("a sidecar is stored and read back",
+            store.SaveTranslation(transKey, "[00:01.00]Uno\r\n[00:05.00]Dos\r\n")
+            && store.TryLoadTranslation(transKey, out sidecar)
+            && sidecar.Count == 2
+            && sidecar[0].Text == "Uno"
+            && sidecar[1].Start == TimeSpan.FromSeconds(5),
+            sidecar.Count);
+        Check("the sidecar sits beside the sheet",
+            store.TranslationPath(transKey).EndsWith(".trans.lrc", StringComparison.Ordinal), store.TranslationPath(transKey));
+        Check("a track without a sidecar reports none", !store.TryLoadTranslation("another", out _), "");
+        Check("a sidecar with no timestamps is ignored",
+            store.SaveTranslation("plain-sidecar", "uno\r\ndos\r\n")
+            && !store.TryLoadTranslation("plain-sidecar", out _), "");
+        Check("the sidecar can be replaced",
+            store.SaveTranslation(transKey, "[00:02.00]Eins\r\n") && store.TryLoadTranslation(transKey, out var replaced)
+            && replaced.Count == 1 && replaced[0].Text == "Eins", "");
     }
 
     private static void SelectionChecks()

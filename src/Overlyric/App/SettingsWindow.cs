@@ -240,6 +240,9 @@ internal sealed class SettingsWindow : WindowBase
         WeightSemiBold = 122,
         WeightBold = 123,
 
+        /// <summary>Show the optional second-language sidecar under the active line.</summary>
+        ShowTranslation = 124,
+
         /// <summary>
         /// The four offset nudges and the scrollbar. Their values fill the gap between the shortcut
         /// chips and the OLED block, the only stretch of the id space left; the enum's order documents
@@ -321,7 +324,7 @@ internal sealed class SettingsWindow : WindowBase
     /// One past the last row index each section draws. The viewport needs the height before the section
     /// is drawn, so this is a table rather than something measured twice.
     /// </summary>
-    private static readonly int[] SectionRows = [10, 8, 8, 5, 8, 8, 8, 4];
+    private static readonly int[] SectionRows = [11, 8, 8, 5, 8, 8, 8, 4];
 
     private readonly AppConfig _config;
     private readonly Action<SettingsChange> _changed;
@@ -1206,6 +1209,11 @@ internal sealed class SettingsWindow : WindowBase
                 Apply(SettingsChange.Visibility);
                 return;
 
+            case Control.ShowTranslation:
+                _config.ShowTranslation = !_config.ShowTranslation;
+                Apply(SettingsChange.Visibility);
+                return;
+
             case Control.FontActiveDown:
                 _config.ActiveFontSize = Math.Clamp(_config.ActiveFontSize - 2f, 12f, 72f);
                 Apply(SettingsChange.Appearance);
@@ -1865,6 +1873,9 @@ internal sealed class SettingsWindow : WindowBase
 
         Row(context, 9, "Show progress bar");
         Toggle(context, Control.ProgressBar, _config.ShowProgressBar);
+
+        Row(context, 10, "Show translation");
+        Toggle(context, Control.ShowTranslation, _config.ShowTranslation);
     }
 
     /// <summary>
@@ -2620,6 +2631,7 @@ internal sealed class SettingsWindow : WindowBase
         Control.InfoPopupDown or Control.InfoPopupUp => 7,
         Control.OledAutoHideDown or Control.OledAutoHideUp => 8,
         Control.ProgressBar => 9,
+        Control.ShowTranslation => 10,
 
         // Appearance
         Control.OledPreset => 0,

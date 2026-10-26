@@ -155,6 +155,12 @@ public sealed record OverlayVisual
     /// <summary>Small dim label drawn above the lyrics, normally "Artist - Title".</summary>
     public string? Header { get; init; }
 
+    /// <summary>
+    /// A second-language line shown under the active lyric, from a user-supplied sidecar. Null when
+    /// the track has none or the option is off.
+    /// </summary>
+    public string? Translation { get; init; }
+
     /// <summary>Status text shown instead of lyrics, for example "No lyrics found".</summary>
     public string? Status { get; init; }
 

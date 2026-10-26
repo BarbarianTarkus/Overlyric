@@ -222,7 +222,8 @@ backdrop, what stays lit, and the burn-in preset and tools — see [OLED and bur
 display, anchor, offsets, reset) and **Behaviour** (the hide rules, the per-app hide list, the
 warnings, and start with Windows). **Appearance** also carries the **Palette** (Default, Warm, Cool
 or Mono) and the **Active line weight** (Normal, Semibold or Bold); both move the text and accented
-controls together, and the OLED preset is still a separate bundle of levers. **SETUP** holds **Players** (which music client to follow, and the
+controls together, and the OLED preset is still a separate bundle of levers. **Show translation**
+toggles the optional second-language sidecar under the active line. **SETUP** holds **Players** (which music client to follow, and the
 order to prefer them in), **Shortcuts** (rebind the global hotkeys) and **Advanced** (the folders, the
 cache and its size, clearing it, the local lyric folder, and the version).
 

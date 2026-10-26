@@ -24,6 +24,7 @@ Settings → Advanced has **Open** buttons for this folder and the lyric cache.
 | `InfoPopupSeconds` | `5` | Seconds the song-start pill stays up; 0 turns it off |
 | `NotifyWhenLyricsMissing` | `true` | Notify once per track when LRCLIB has no lyrics, or words without timings |
 | `ShowActiveLineHighlight` | `true` | Draw the highlight bar behind the active line |
+| `ShowTranslation` | `true` | Draw the optional `.trans.lrc` sidecar under the active line |
 | `InactiveLineOpacity` | `0.54` | Opacity of the surrounding lines, 0.05–1.0 |
 | `PixelShift` | `false` | Nudge the drawing a few pixels once a minute, against burn-in |
 | `TextOutline` | `false` | Hard outline instead of a soft shadow, for a transparent backdrop |
