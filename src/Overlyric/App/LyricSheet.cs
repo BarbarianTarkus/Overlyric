@@ -45,6 +45,9 @@ internal sealed record LyricSheet
 
     public long? RecordId { get; init; }
 
+    /// <summary>Where the sheet came from; a local sheet is labelled and badged differently.</summary>
+    public LyricSource Source { get; init; } = LyricSource.Lrclib;
+
     /// <summary>Playback position when the snapshot was taken, so the viewer can open on the current line.</summary>
     public TimeSpan Position { get; init; }
 
@@ -136,6 +139,9 @@ internal sealed record LyricPickerModel
     public int LineCount { get; init; }
 
     public long? CurrentRecordId { get; init; }
+
+    /// <summary>Where the current sheet came from.</summary>
+    public LyricSource Source { get; init; } = LyricSource.Lrclib;
 
     public string? Status { get; init; }
 }

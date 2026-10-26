@@ -168,6 +168,27 @@ for as long as the track or output lasts and is never persisted, so a one-off ad
 quietly rewrite what the next play will use. The control bar, the shortcut toast and the Timing
 section all print the layer in force next to the number.
 
+## Choosing the words: automatic, pinned or local
+
+The automatic matcher is the default, but it is not the only answer the listener may want. Three
+sources can supply a sheet, and exactly one of them is in force at a time - they never stack:
+
+1. **A local file** the listener imported. It wins over everything, because it is a deliberate act.
+2. **A pinned LRCLIB record**, chosen in the selector or pinned from the clipboard.
+3. **The automatic pipeline**: cache, exact lookup, ranked search.
+
+All three are one explicit `LyricSelection` per track in `selections.json`, so "which source wins"
+is a stored fact rather than an implicit precedence between two files. The last explicit action wins:
+import a file, pin a record, or choose Automatic. The store migrates the old `versions.json` map once,
+so earlier pins keep working.
+
+A local sheet is read from disk on every play rather than cached: editing it in Notepad takes effect
+on the next lookup, which is the whole point of "let me supply or correct the lyrics". Its
+`LyricsResult` carries `Source = Local`, and the windows badge it; the automatic result stays in the
+cache for the day the listener switches back. When the file behind a selection is deleted, the
+resolution falls back to automatic and the host says so once for that track - a silent switch would
+look like the import never happened.
+
 ## When nothing reaches Overlyric
 
 The failure this app has to be honest about is silence. If a player never publishes to Windows media

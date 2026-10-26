@@ -94,6 +94,15 @@ internal sealed class AppHost
     /// <summary>The lrclib record behind the lines on screen, when the answer carried one.</summary>
     private long? _lyricsRecordId;
 
+    /// <summary>Where the current sheet came from; a local sheet is badged differently.</summary>
+    private LyricSource _lyricsSource = LyricSource.Lrclib;
+
+    /// <summary>Revision whose explicit local selection could not be read, or -1.</summary>
+    private long _localFileMissingRevision = -1;
+
+    /// <summary>Revision already told about a missing local file, so the warning is said once.</summary>
+    private long _alertedMissingLocalRevision = -1;
+
     /// <summary>How many version searches are in flight; the selector shows a loading state while it is not zero.</summary>
     private int _versionsInFlight;
 
@@ -318,12 +327,17 @@ internal sealed class AppHost
             ApplyLyricOffset();
             ApplyKaraokeTiming();
 
-            var overrides = VersionOverrides.Load(Path.Combine(AppConfig.DataDirectory, "versions.json"));
+            // Explicit choices live in selections.json; the old versions.json is migrated into it on
+            // first load, so a record pinned before the library existed still wins.
+            var selections = LyricSelectionStore.Load(
+                Path.Combine(AppConfig.DataDirectory, "selections.json"),
+                Path.Combine(AppConfig.DataDirectory, "versions.json"));
 
             _lyrics = new LyricsService(
                 new LrclibClient(LrclibClient.DefaultUserAgent),
                 new LyricsCache(AppConfig.CacheDirectory),
-                overrides);
+                selections,
+                new LocalLyricsStore(Path.Combine(AppConfig.DataDirectory, "lyrics")));
         }
 
         RegisterHotKeys();
@@ -545,6 +559,7 @@ internal sealed class AppHost
         // After the track-change block, never before it: the block clears the previous track's
         // verdict, and the notification must not be decided on facts that belong to the song before.
         UpdateLyricsAlert(snapshot);
+        UpdateLocalFileAlert();
 
         var visual = BuildVisual(snapshot, position, positionIsUsable);
         visual = WithInfoPopup(visual, snapshot, positionIsUsable);
@@ -1171,6 +1186,8 @@ internal sealed class AppHost
             _lyricsWordSynced = false;
             _lyricsDefinitive = false;
             _lyricsRecordId = null;
+            _lyricsSource = LyricSource.Lrclib;
+            _localFileMissingRevision = -1;
 
             if (clearVersions)
             {
@@ -1224,6 +1241,8 @@ internal sealed class AppHost
                     _lyricsDefinitive = lookup.Definitive;
                     _lyricsWordSynced = false;
                     _lyricsRecordId = result?.LrclibId;
+                    _lyricsSource = result?.Source ?? LyricSource.Lrclib;
+                    _localFileMissingRevision = lookup.LocalFileMissing ? revision : -1;
 
                     if (result is null)
                     {
@@ -2110,6 +2129,25 @@ internal sealed class AppHost
         StartLyricsFetch(snapshot);
     }
 
+    /// <summary>
+    /// Say once per track that an imported local file has disappeared. The lookup then answers from
+    /// the automatic pipeline, and without a sentence the listener would think the import was lost.
+    /// </summary>
+    private void UpdateLocalFileAlert()
+    {
+        var revision = _lastRevision;
+
+        if (_localFileMissingRevision != revision || _alertedMissingLocalRevision == revision)
+        {
+            return;
+        }
+
+        _alertedMissingLocalRevision = revision;
+        _tray?.Alert(
+            "Overlyric — local lyric file is missing",
+            "The imported file for this track is gone, so Overlyric fell back to lrclib. Import it again from Versions to restore the local sheet.");
+    }
+
     /// <summary>Drop every cached lyric answer. The next lookup for each track asks lrclib again.</summary>
     private void ClearLyricsCache()
     {
@@ -2378,6 +2416,7 @@ internal sealed class AppHost
             HasWordTimings = wordSynced,
             LineCount = lineCount,
             CurrentRecordId = recordId,
+            Source = _lyricsSource,
             Status = status
         };
     }
@@ -2460,6 +2499,7 @@ internal sealed class AppHost
             IsComplete = complete,
             Status = status,
             RecordId = recordId,
+            Source = _lyricsSource,
             Position = position,
             Revision = snapshot.Revision,
             IsDemo = IsDemoActive,

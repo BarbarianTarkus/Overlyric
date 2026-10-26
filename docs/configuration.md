@@ -83,8 +83,6 @@ machine-specific; the settings window writes them and `Settings → Timing` read
 
 ## Cache
 
-## Cache
-
 Fetched lyrics are cached as one JSON file per track in `%LOCALAPPDATA%\Overlyric\cache`, including
 negative entries, so a track LRCLIB has never heard of is not re-queried on every replay.
 
@@ -99,7 +97,47 @@ setting.
 
 Deleting a cache file is safe: the next play looks the track up again. The tray's **Refresh lyrics**
 does the same for the current track without opening the folder, and **Settings → Advanced** shows how
-many entries are cached, how much space they use, and a **Clear** button for all of them.
+many entries are cached, how much space they use, and a **Clear** button for all of them. Refresh
+never discards an explicit local file or pinned record: the selection is the listener's decision, and
+only the automatic answer behind it is discarded.
+
+## Local lyric files
+
+Imported sheets live under `%LOCALAPPDATA%\Overlyric\lyrics`, one pair per track:
+
+```text
+lyrics\<sha256 of the track key>.lrc    the lyric document, exactly as imported
+lyrics\<sha256 of the track key>.json   artist, title, album, source path, added
+selections.json                          track key -> explicit choice
+```
+
+The file name is a hash of the track key (artist and title, normalised), so arbitrary metadata never
+becomes a path. The `.json` sidecar keeps the folder readable when it is opened from **Settings →
+Advanced**. A file the listener deletes from there simply stops being found: the selection falls back
+to the automatic pipeline and the app says so once for that track.
+
+`selections.json` is a bounded map (512 entries) with one entry per track:
+
+```json
+{
+  "tidal\na song for all seasons\n": {
+    "Kind": "Local",
+    "Path": "a song for all seasons.lrc",
+    "RecordId": 0,
+    "AddedAt": 1793000000
+  }
+}
+```
+
+`Kind` is `Local`, `Lrclib` or `Automatic`; the last explicit action wins, and deleting the file is
+safe - it only forgets the choices. The older `versions.json` (pinned record ids) is read once and
+migrated into `selections.json`; the legacy file is left untouched, and deleting it afterwards is
+safe too.
+
+Import accepts UTF-8, UTF-16 and Windows-1252 text, with or without a BOM. Export writes
+CRLF, `[mm:ss.fff]` timestamps and the `[ar:]`/`[ti:]`/`[al:]`/`[length:]` header, so it can be
+re-imported without losing a millisecond. Other ANSI code pages (Cyrillic, Greek, CJK) are not
+decoded; save those files as UTF-8.
 
 ## Start with Windows
 
@@ -108,8 +146,10 @@ many entries are cached, how much space they use, and a **Clear** button for all
 Turning the toggle off removes the value. The per-user uninstaller does not know about a value the app
 wrote, so remove it with the toggle before uninstalling, or delete the **Overlyric** value by hand.
 
-## Pinned versions
+## Explicit choices
 
-Manual version choices live in `%LOCALAPPDATA%\Overlyric\versions.json`, keyed by track. It is derived
-state rather than settings, so it is kept out of `config.json` and bounded to 256 entries. Delete it to
-forget every pinned version.
+Manual version choices used to live in `%LOCALAPPDATA%\Overlyric\versions.json`. They now live in
+`selections.json` alongside local files (see [Local lyric files](#local-lyric-files)); the legacy map
+is migrated on first load. The choices are derived state rather than settings, so they stay out of
+`config.json`; delete `selections.json` to forget every explicit choice and return every track to
+automatic matching.

@@ -173,14 +173,15 @@ public sealed class LocalLyricsStore
             }
 
             var text = LyricTextCodec.Decode(File.ReadAllBytes(lrcPath));
-            var lines = LrcParser.Parse(text);
+            var parsed = LrcParser.Parse(text);
+            var lines = parsed.Count > 0 ? parsed : SplitPlainLines(text);
             var metadata = ReadMetadata(basePath + ".json");
 
             document = new LocalLyricsDocument
             {
                 Text = text,
                 Lines = lines,
-                IsSynced = lines.Count > 0,
+                IsSynced = parsed.Count > 0,
                 Metadata = metadata
             };
 
@@ -265,10 +266,11 @@ public sealed class LocalLyricsStore
             };
         }
 
-        var lines = LrcParser.Parse(text);
-        var plainLineCount = lines.Count == 0 ? CountPlainLines(text) : 0;
-        var first = lines.Count > 0 ? lines[0].Start : (TimeSpan?)null;
-        var last = lines.Count > 0 ? lines[^1].Start : (TimeSpan?)null;
+        var parsed = LrcParser.Parse(text);
+        var synced = parsed.Count > 0;
+        var lines = synced ? parsed : SplitPlainLines(text);
+        var first = synced ? lines[0].Start : (TimeSpan?)null;
+        var last = synced ? lines[^1].Start : (TimeSpan?)null;
 
         return new LocalLyricsPreview
         {
@@ -276,8 +278,8 @@ public sealed class LocalLyricsStore
             FileName = fileName,
             Text = text,
             Lines = lines,
-            IsSynced = lines.Count > 0,
-            LineCount = lines.Count > 0 ? lines.Count : plainLineCount,
+            IsSynced = synced,
+            LineCount = lines.Count,
             FirstStart = first,
             LastStart = last,
             DurationDeltaSeconds = last is { } lastStart && trackDurationSeconds is > 0
@@ -286,9 +288,13 @@ public sealed class LocalLyricsStore
         };
     }
 
-    private static int CountPlainLines(string text)
+    /// <summary>
+    /// A plain sheet has no timestamps, so every line is anchored at zero - the same representation
+    /// the LRCLIB client uses for untimed words. The renderer shows them as static text.
+    /// </summary>
+    private static IReadOnlyList<LyricLine> SplitPlainLines(string text)
     {
-        var count = 0;
+        var lines = new List<LyricLine>();
 
         foreach (var raw in text.Split('\n'))
         {
@@ -300,10 +306,10 @@ public sealed class LocalLyricsStore
                 continue;
             }
 
-            count++;
+            lines.Add(new LyricLine(TimeSpan.Zero, line));
         }
 
-        return count;
+        return lines;
     }
 
     private static LocalLyricsMetadata? ReadMetadata(string path)

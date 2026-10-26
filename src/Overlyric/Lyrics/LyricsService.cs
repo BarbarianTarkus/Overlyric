@@ -14,7 +14,7 @@ namespace Overlyric.Lyrics;
 /// throttling, an outage, a timeout. That distinction decides two things downstream: whether the
 /// answer may be cached as a tombstone, and whether it is fair to tell the user there are no lyrics.
 /// </remarks>
-public readonly record struct LyricsLookup(LyricsResult? Result, bool Definitive);
+public readonly record struct LyricsLookup(LyricsResult? Result, bool Definitive, bool LocalFileMissing = false);
 
 /// <summary>
 /// One manual search: whether lrclib answered at all, and every record it offered. An unavailable
@@ -58,7 +58,8 @@ public sealed class LyricsService
 
     private readonly LrclibClient _client;
     private readonly LyricsCache _cache;
-    private readonly VersionOverrides? _overrides;
+    private readonly LyricSelectionStore _selections;
+    private readonly LocalLyricsStore _localLyrics;
 
     /// <summary>One gate per key, so concurrent callers resolve a track once between them.</summary>
     private readonly Dictionary<string, SemaphoreSlim> _singleFlight = new(StringComparer.Ordinal);
@@ -68,14 +69,21 @@ public sealed class LyricsService
     private string? _candidateKey;
     private IReadOnlyList<LyricsCandidate> _candidates = [];
 
-    public LyricsService(LrclibClient client, LyricsCache cache, VersionOverrides? overrides = null)
+    public LyricsService(
+        LrclibClient client,
+        LyricsCache cache,
+        LyricSelectionStore selections,
+        LocalLyricsStore localLyrics)
     {
         ArgumentNullException.ThrowIfNull(client);
         ArgumentNullException.ThrowIfNull(cache);
+        ArgumentNullException.ThrowIfNull(selections);
+        ArgumentNullException.ThrowIfNull(localLyrics);
 
         _client = client;
         _cache = cache;
-        _overrides = overrides;
+        _selections = selections;
+        _localLyrics = localLyrics;
     }
 
     /// <summary>
@@ -259,15 +267,15 @@ public sealed class LyricsService
     /// <summary>Pin a specific lrclib record for this track and remember the choice.</summary>
     public void PinVersion(string artist, string track, string? album, long lrclibId)
     {
-        _overrides?.Set(LyricsCache.MakeKey(artist, track, album), lrclibId);
-        _overrides?.Save();
+        _selections.SetLrclib(LyricsCache.MakeKey(artist, track, album), lrclibId);
+        _selections.Save();
     }
 
-    /// <summary>Drop any pinned version and go back to automatic matching.</summary>
+    /// <summary>Drop any explicit choice and go back to automatic matching.</summary>
     public void ClearVersion(string artist, string track, string? album)
     {
-        _overrides?.Clear(LyricsCache.MakeKey(artist, track, album));
-        _overrides?.Save();
+        _selections.Clear(LyricsCache.MakeKey(artist, track, album));
+        _selections.Save();
     }
 
     /// <summary>Reports the lrclib record pinned for this track, if the listener chose one.</summary>
@@ -275,8 +283,119 @@ public sealed class LyricsService
     {
         lrclibId = 0;
 
-        return _overrides is not null
-               && _overrides.TryGet(LyricsCache.MakeKey(artist, track, album), out lrclibId);
+        return _selections.TryGet(LyricsCache.MakeKey(artist, track, album), out var selection)
+               && selection is not null
+               && selection.Kind == LyricSelectionKind.Lrclib
+               && (lrclibId = selection.RecordId) > 0;
+    }
+
+    /// <summary>The explicit choice for this track, whatever kind it is, for the windows.</summary>
+    public bool TryGetSelection(string artist, string track, string? album, out LyricSelection selection) =>
+        _selections.TryGet(LyricsCache.MakeKey(artist, track, album), out selection);
+
+    /// <summary>Prefills the import dialog's preview without storing anything.</summary>
+    public LocalLyricsPreview PreviewImport(string sourcePath, double? durationSeconds) =>
+        _localLyrics.Preview(sourcePath, durationSeconds);
+
+    /// <summary>
+    /// Stores an imported sheet and makes it this track's explicit selection. The cached automatic
+    /// answer is forgotten rather than deleted from the selection: switching back to Automatic can
+    /// still resolve it.
+    /// </summary>
+    public bool TryCommitImport(
+        string artist,
+        string track,
+        string? album,
+        LocalLyricsPreview preview,
+        string sourcePath,
+        out string? error)
+    {
+        error = null;
+
+        if (!preview.Ok)
+        {
+            error = preview.Error ?? "That file could not be read.";
+            return false;
+        }
+
+        var key = LyricsCache.MakeKey(artist, track, album);
+        var metadata = new LocalLyricsMetadata
+        {
+            Artist = artist,
+            Title = track,
+            Album = album,
+            SourcePath = sourcePath,
+            AddedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            Note = preview.IsSynced ? null : "plain lyrics: no timestamps, so it cannot follow the music"
+        };
+
+        if (!_localLyrics.Save(key, preview.Text, metadata))
+        {
+            error = "The lyric file could not be saved.";
+            return false;
+        }
+
+        _selections.SetLocal(key, Path.GetFileName(sourcePath));
+        _selections.Save();
+
+        // The automatic answer is not the current answer any more; ask again if the listener returns
+        // to Automatic, and drop the stored candidate list so the selector is honest.
+        _cache.Forget(key);
+
+        lock (_candidateGate)
+        {
+            _candidateKey = null;
+            _candidates = [];
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Writes the timed sheet currently in force - local or cached - as an LRC file. A plain sheet
+    /// has no timestamps to write, and that is reported instead of producing an empty file.
+    /// </summary>
+    public bool TryExport(
+        string artist,
+        string track,
+        string? album,
+        double? durationSeconds,
+        string destinationPath,
+        out string? error)
+    {
+        error = null;
+        var key = LyricsCache.MakeKey(artist, track, album);
+        IReadOnlyList<LyricLine>? lines = null;
+
+        if (_selections.TryGet(key, out var selection) && selection is not null
+            && selection.Kind == LyricSelectionKind.Local
+            && _localLyrics.TryLoad(key, out var local) && local is not null
+            && local.IsSynced)
+        {
+            lines = local.Lines;
+        }
+        else if (_cache.TryGet(key, out var cached) && cached is not null && cached.IsSynced)
+        {
+            lines = cached.Lines;
+        }
+
+        if (lines is null || lines.Count == 0)
+        {
+            error = "There is no timed lyric sheet to export for this track.";
+            return false;
+        }
+
+        try
+        {
+            var text = LyricTextCodec.EncodeLrc(artist, track, album, durationSeconds, lines);
+            File.WriteAllBytes(destinationPath, LyricTextCodec.EncodeUtf8(text));
+            return true;
+        }
+        catch (Exception)
+        {
+            error = "The file could not be written.";
+            return false;
+        }
     }
 
     /// <summary>
@@ -289,9 +408,11 @@ public sealed class LyricsService
         var key = LyricsCache.MakeKey(artist, track, album);
         _cache.Forget(key);
 
-        if (_overrides is not null && _overrides.TryGet(key, out var pinnedId))
+        if (_selections.TryGet(key, out var selection) && selection is not null
+            && selection.Kind == LyricSelectionKind.Lrclib
+            && selection.RecordId > 0)
         {
-            _cache.Forget(VersionOverrides.VersionKey(key, pinnedId));
+            _cache.Forget(VersionOverrides.VersionKey(key, selection.RecordId));
         }
 
         lock (_candidateGate)
@@ -334,21 +455,55 @@ public sealed class LyricsService
         double? durationSeconds,
         CancellationToken ct)
     {
+        var localFileMissing = false;
+
+        // One explicit selection outranks anything automatic, and the layers do not stack: a local
+        // file, a pinned record, or the automatic pipeline - exactly one of them answers.
+        if (_selections.TryGet(key, out var selection) && selection is not null)
+        {
+            switch (selection.Kind)
+            {
+                case LyricSelectionKind.Local:
+                    if (_localLyrics.TryLoad(key, out var local) && local is not null)
+                    {
+                        return new LyricsLookup(LocalResult(local), true);
+                    }
+
+                    // The stored file was deleted or became unreadable. Fall through to automatic,
+                    // but report it once: a silent switch would look like the import never happened.
+                    localFileMissing = true;
+                    break;
+
+                case LyricSelectionKind.Lrclib when selection.RecordId > 0:
+                    var pinned = await LookupPinnedAsync(key, selection.RecordId, ct).ConfigureAwait(false);
+
+                    if (pinned is not null)
+                    {
+                        return pinned.Value;
+                    }
+
+                    break;
+            }
+        }
+
+        var automatic = await ResolveAutomaticAsync(key, artist, track, album, durationSeconds, ct)
+            .ConfigureAwait(false);
+
+        return localFileMissing ? automatic with { LocalFileMissing = true } : automatic;
+    }
+
+    /// <summary>The automatic pipeline: cache, exact lookup, then the ranked search.</summary>
+    private async Task<LyricsLookup> ResolveAutomaticAsync(
+        string key,
+        string artist,
+        string track,
+        string? album,
+        double? durationSeconds,
+        CancellationToken ct)
+    {
         var startedAt = Environment.TickCount64;
         var cleanTitle = MetadataNormaliser.CleanTitle(track, artist);
         var cleanAlbum = MetadataNormaliser.CleanAlbum(album);
-
-        // A version chosen by hand outranks anything automatic. It is cached under its own key, so
-        // the automatic answer survives for when the listener switches back.
-        if (_overrides is not null && _overrides.TryGet(key, out var pinnedId))
-        {
-            var pinned = await LookupPinnedAsync(key, pinnedId, ct).ConfigureAwait(false);
-
-            if (pinned is not null)
-            {
-                return pinned.Value;
-            }
-        }
 
         if (_cache.TryGet(key, out var cached) && cached is not null)
         {
@@ -496,7 +651,7 @@ public sealed class LyricsService
 
         if (_cache.TryGet(versionKey, out var cached) && cached is not null)
         {
-            return new LyricsLookup(cached, true);
+            return new LyricsLookup(cached.WithSource(LyricSource.Pinned), true);
         }
 
         var pinned = await _client.LookupByIdAsync(pinnedId, ct).ConfigureAwait(false);
@@ -505,7 +660,7 @@ public sealed class LyricsService
         {
             case LookupStatus.Found when pinned.Lyrics is not null:
                 _cache.Set(versionKey, pinned.Lyrics);
-                return new LyricsLookup(pinned.Lyrics, true);
+                return new LyricsLookup(pinned.Lyrics.WithSource(LyricSource.Pinned), true);
 
             case LookupStatus.Unavailable:
                 // Not a reason to ask four more questions of a server that just failed.
@@ -516,6 +671,17 @@ public sealed class LyricsService
                 return null;
         }
     }
+
+    /// <summary>A stored local sheet as the same result shape every other source produces.</summary>
+    private static LyricsResult LocalResult(LocalLyricsDocument local) => new()
+    {
+        Lines = local.Lines,
+        IsSynced = local.IsSynced,
+        PlainLyrics = local.IsSynced ? null : local.Text,
+        TrackName = local.Metadata?.Title,
+        ArtistName = local.Metadata?.Artist,
+        Source = LyricSource.Local
+    };
 
     /// <summary>True while this resolution still has budget left for another question.</summary>
     private static bool WithinBudget(long startedAt) =>
