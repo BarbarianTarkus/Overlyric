@@ -118,6 +118,11 @@ timing** returns the current track and output to zero.
 Windows reports engine latency, not Bluetooth codec latency, so Overlyric never guesses a Bluetooth
 offset: the Timing section says the output is Bluetooth and leaves the number to the listener's ears.
 
+![The Timing section](images/settings-timing.png)
+
+*The current output, the correction in force and the layer it came from. The track and output
+buttons are dimmed until there is a value to clear; the hint at the bottom spells out the precedence.*
+
 ## Tray icon
 
 Left-click toggles the overlay. Right-click opens a deliberately short menu: the track line
@@ -188,6 +193,11 @@ scaling on a 1080p display — the rows scroll instead of the window growing pas
 
 *One user's configuration, not the defaults: this is the window as it opens after the settings have
 been changed.*
+
+![Settings → Advanced](images/settings-advanced.png)
+
+*Advanced is the housekeeping section: the settings folder, the lyric cache with its entry and byte
+count, and the one destructive action.*
 
 Changes apply live and are saved as they are made, so the overlay behind the window shows the effect
 immediately. `Esc` or the close button hides the window; the process keeps running and the overlay

@@ -2,7 +2,8 @@
 
 Code quality runs against a self-hosted **SonarQube Server 26.10 (Community Build)** at
 <https://sonarqube.verduguez.com>, project key `overlyric`. There is no cloud organization and no
-license: one long-lived branch (`master`), no pull-request decoration, no Sonar Vortex.
+license: one long-lived branch (`main` on the server; the local git branch is `master` and the scanner
+reports it as `main`), no pull-request decoration, no Sonar Vortex.
 
 ## Running an analysis
 
@@ -38,7 +39,7 @@ For CI, add `/d:sonar.qualitygate.wait=true` to `begin` so a failing gate fails 
 
 ## What is in scope
 
-Only what the solution compiles: `src/Overlyric`, 49 source files, ~12.3k non-comment lines. The
+Only what the solution compiles: `src/Overlyric`, 53 source files, ~14.1k non-comment lines. The
 exclusions in `SonarQube.Analysis.xml` cover everything else — `probe/` (the experiments, not in
 `Overlyric.slnx`), `docs/`, `installer/`, `tools/`, `dist/`, `.dsh-tmp/`, `bin/` and `obj/`.
 Without them the project would list those files as "not analyzed" and their lines would count
@@ -62,10 +63,11 @@ it collected. `SonarQube.Analysis.xml` points the analysis at `coverage/probes.x
 (`sonar.cs.cobertura.reportsPaths`); run the script before `begin`, or the analysis imports nothing.
 `coverage/` is git-ignored.
 
-Measured on 26 October 2026: 27 files, 1,591 of 5,680 executable lines covered - 28.0 % line
-coverage, 36.9 % on Sonar's combined line-and-branch metric. The rest is the layer the probes
-cannot reach: `AppHost`, the window classes, `Interop\`, `AudioSessions` and the DirectComposition
-host need a desktop session, a real player and a GPU.
+Measured on 26 October 2026 (analysis 0.4.0-dev1, commit `bc3f4c1`): the eleven probes compile
+2,049 source lines and cover 1,745 of them (85.2 %), and Sonar reports 35.3 % on its combined
+line-and-branch metric (26.0 % line, 80.7 % branch) over the whole project. The rest is the layer
+the probes cannot reach: `AppHost`, the window classes, `Interop\`, `AudioSessions` and the
+DirectComposition host need a desktop session, a real player and a GPU.
 
 New code is usually exactly that untestable layer: the 0.3.3 change measured 6.1 % of new-code
 coverage against the default gate's 80 % bar. That is why the project does not use that condition;
@@ -88,10 +90,11 @@ every security hotspot reviewed.
 The first full analysis (0.3.1, 49 files) reported 74 open issues: 51 `SYSLIB1054` (use
 `LibraryImport` instead of `DllImport`), 6 `S1244` (exact floating-point comparison) and 17 spread
 over `CA1822`, `CA1859`, `CA1806`, `CA1068`, `S6640`, `S1751` and `S8949`. All of them were fixed
-in code - no issue was marked accepted or false positive - and the 0.3.1 analysis of 26 October 2026
-reports 0 open issues and 0 new violations. With the probe coverage imported, the 0.3.3 analysis
-reports 36.9 % coverage (28.0 % of 5,680 executable lines) and a green gate under `Overlyric`: 36.9 %
-overall coverage against the 30 % floor, no new violations and no duplicated new lines.
+in code - no issue was marked accepted or false positive - and every analysis since then has
+reported 0 open issues and 0 new violations. The 0.4.0-dev1 analysis (26 October 2026) reports
+35.3 % overall coverage against the 30 % floor, no new violations, 3,349 cyclomatic and 1,990
+cognitive complexity over 14,113 non-comment lines, and 122 duplicated lines (0.6 %): a green gate
+under `Overlyric`.
 
 ## Agents (DSH)
 

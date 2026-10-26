@@ -54,4 +54,9 @@ backdrop, so the black is the capture background rather than a theme.
 | ![The Appearance settings section](images/settings-oled.png) | ![The Players settings section](images/settings-source.png) |
 | After **Apply preset**: no backdrop, no highlight bar, dimmed surrounding lines. | Who is followed, and the order the rest are tried in; the list comes before Windows' own choice. |
 
+| Timing | Advanced |
+| --- | --- |
+| ![The Timing settings section](images/settings-timing.png) | ![The Advanced settings section](images/settings-advanced.png) |
+| The current output, the offset in force, and which override layer supplied it. | The folders, the cache size and clearing it, and the version in the footer. |
+
 The [README](../README.md) uses a shorter selection.

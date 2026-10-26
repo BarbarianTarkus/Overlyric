@@ -1949,8 +1949,8 @@ internal sealed class SettingsWindow : WindowBase
         Button(context, ContentRight - 132f, RowTop(6) + 8f, 132f, 30f, "Reset timing", Control.OffsetReset);
 
         Hint(context, 7, timing.OutputIsBluetooth && timing.OutputOffsetMs == 0 && !timing.HasTrackOffset
-            ? "Bluetooth latency is not reported by Windows: nudge until the words line up, then the value is kept for this output."
-            : "Track overrides output, and the output override beats the global default. Hold Shift while nudging to adjust this session only.");
+            ? "Bluetooth latency is not reported: nudge by ear; kept for this output."
+            : "Track beats output, output beats global. Shift keeps a nudge for this session.");
     }
 
     private void DrawPositionSection(ID2D1DeviceContext context)

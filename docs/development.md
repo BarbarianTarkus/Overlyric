@@ -82,7 +82,7 @@ rendering over a running full-screen game:
 | Working set | **~65 MB**, flat over 3+ minutes |
 | Private commit | ~99 MB |
 | CPU | **~0.2 s per 150 s** of playback (≈0.15 % of one core) |
-| Executable | 9.2 MB, single file, no .NET runtime installed |
+| Executable | 9.7 MB, single file, no .NET runtime installed |
 | Handles / threads | ~1280 / ~25 |
 
 Getting there took fixing three things that are easy to get wrong, all found by measuring rather than
@@ -115,7 +115,7 @@ because they are the quickest way to re-check a platform assumption.
 | `ResilienceTests` | 97 checks: transient-vs-definitive caching, the one-request outage, a validation error never being filed as "no lyrics", the tombstone lifetime, instrumental classification, metadata cleaning (title and album release suffixes, movement listings and duplicated artist prefixes), the manual free-text search, the album-suffix retry, candidate ranking, the synced-same-duration rule, the album-scoped supplement, the stored candidate list and version pinning |
 | `ApiBudget` | What one lyric resolution costs in requests and bytes on every path - a hit, an album edition suffix, a search that settles it, a track lrclib does not hold, an outage, the selector, a replay - against a stub that counts them |
 | `ShortcutsTests` | 35 checks over the hotkey text form: parsing, canonical modifier order, punctuation stored by name, and every malformed string falling back to "unbound" instead of throwing |
-| `ShortcutFeedbackTests` | 31 checks over the shortcut toast: the total-offset title (`Offset -0.25s`), direction and step, the clamp saying nothing moved, and every state label |
+| `ShortcutFeedbackTests` | 33 checks over the shortcut toast: the total-offset title and the layer it came from (`Offset -0.25s · this track`), direction and step, the clamp saying nothing moved, and every state label |
 | `KaraokeTests` | 22 checks over the sweep (monotonic, punctuation not sung ahead of the words, word timings honoured, mismatched timings falling back to the line span) and the lyricsfile reader (line ends, words, colons inside text, garbage refused without throwing) |
 | `ClockTests` | 19 checks over the playback clock: attaching mid-song, frozen vs live timelines, pause/resume, seeks, sentinel stamps |
 | `TimingTests` | 34 checks over timing-profile resolution: track -> output -> global overrides, a stored zero as an override, session-only nudges, clamping and cleanup of hand-edited maps, and the labels (`+0.25 s · this track`, `+0.15 s · Bluetooth headphones`) |
