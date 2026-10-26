@@ -117,8 +117,10 @@ wheel, the scrollbar and the keyboard; **Automatic (best match)** is the first r
 records, best first.*
 
 **Full lyrics** opens the complete sheet described under [The complete lyric sheet](lyrics.md#the-complete-lyric-sheet).
-Both windows are fixed-size, dark, and close with **Esc**; they reuse the overlay's DirectComposition
-stack and the settings window's palette, so they add no new UI framework.
+Its **Search LRCLIB** button (or `Ctrl+F`) opens a query field when the automatic lookup cannot find the
+song, and a result picked there is pinned for the track and shown immediately. Both windows are
+fixed-size, dark, and close with **Esc**; they reuse the overlay's DirectComposition stack and the
+settings window's palette, so they add no new UI framework.
 
 ![The full lyric sheet in demo mode](images/lyric-viewer.png)
 

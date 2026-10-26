@@ -60,7 +60,7 @@ internal static class Program
         using var client = new LrclibClient(UserAgent);
         var service = new LyricsService(client, cache);
 
-        var cleanTitle = MetadataNormaliser.CleanTitle(query.Title);
+        var cleanTitle = MetadataNormaliser.CleanTitle(query.Title, query.Artist);
         var key = LyricsCache.MakeKey(query.Artist, query.Title, query.Album);
         var target = query.DurationSeconds;
         var tolerance = target is { } t0 ? Math.Max(2.0, t0 * 0.005) : (double?)null;
@@ -843,7 +843,7 @@ internal static class Program
                    MetadataNormaliser.ForComparison(artist),
                    StringComparison.Ordinal)
                && string.Equals(
-                   MetadataNormaliser.ForComparison(MetadataNormaliser.CleanTitle(query.Title)),
+                   MetadataNormaliser.ForComparison(MetadataNormaliser.CleanTitle(query.Title, query.Artist)),
                    MetadataNormaliser.ForComparison(MetadataNormaliser.CleanTitle(title)),
                    StringComparison.Ordinal);
     }

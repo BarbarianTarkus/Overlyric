@@ -1,7 +1,9 @@
+using System.Runtime.InteropServices;
 using Overlyric.Lyrics;
 using Vortice.Direct2D1;
 using Vortice.DirectWrite;
 using Vortice.Mathematics;
+using static Overlyric.Interop.NativeMethods;
 
 namespace Overlyric.App;
 
@@ -17,6 +19,14 @@ namespace Overlyric.App;
 /// work is what an editor will reuse; the drawing code deliberately has no mutation path yet.
 /// </para>
 /// <para>
+/// It does have one way to ask a different question. When the automatic lookup cannot find the song -
+/// a player that publishes <c>Artist - Title</c> as the title is the common case - the window offers
+/// its own lrclib search. The query is editable, the records it returns are listed here, and choosing
+/// one pins it for the track just as the selector does. The text field is a single line with caret,
+/// arrows, Home/End, Backspace/Delete and paste; a full editor (selection, undo, IME composition) is
+/// deliberately out of scope for this window.
+/// </para>
+/// <para>
 /// The viewer follows the track while it is open: each new lyric result replaces the sheet, and a new
 /// record resets the scroll to the line being sung.
 /// </para>
@@ -24,6 +34,12 @@ namespace Overlyric.App;
 internal sealed class LyricViewerWindow : PanelWindow
 {
     private const int ScrollbarControl = 1;
+    private const int OpenSearchControl = 2;
+    private const int SearchGoControl = 3;
+    private const int SearchCloseControl = 4;
+    private const int SearchFieldControl = 5;
+    private const int SearchScrollbarControl = 6;
+    private const int SearchResultBase = 100;
 
     private const float Pad = 28f;
     private const float HeaderHeight = 98f;
@@ -38,6 +54,17 @@ internal sealed class LyricViewerWindow : PanelWindow
     private const float ActiveFontSize = 16.5f;
     private const float InactiveFontSize = 14.5f;
 
+    private const float SearchFieldHeight = 34f;
+    private const float SearchFieldPadding = 12f;
+    private const float SearchStatusTop = 148f;
+    private const float SearchResultsTop = 174f;
+    private const float SearchRowHeight = 44f;
+    private const float SearchTextSize = 13f;
+    private const float SearchTitleWidth = 500f;
+    private const float SearchDurationLeft = 680f;
+    private const float SearchMatchLeft = 590f;
+    private const int MaxQueryLength = 240;
+
     private static readonly uint ColorReader = 0xFFC9D0DC;
     private static readonly uint ColorReaderActive = 0xFFF5F7FA;
 
@@ -46,6 +73,10 @@ internal sealed class LyricViewerWindow : PanelWindow
     private readonly List<DisplayLine> _lines = [];
     private readonly List<float> _prefix = [];
     private readonly List<float> _heights = [];
+    private readonly Dictionary<int, long> _resultRecords = [];
+
+    private readonly Action<string> _search;
+    private readonly Action<long> _chooseRecord;
 
     private LyricSheet? _sheet;
     private bool _measured;
@@ -53,6 +84,24 @@ internal sealed class LyricViewerWindow : PanelWindow
     private float _contentHeight;
     private float _scroll;
     private int _activeIndex = -1;
+
+    private bool _searchOpen;
+    private string _query = "";
+    private int _caret;
+    private float _queryOffset;
+    private Rect _fieldRect;
+    private int _searchScrollRow;
+    private int _visibleSearchRows;
+    private int _maxSearchRow;
+
+    public LyricViewerWindow(Action<string> search, Action<long> chooseRecord)
+    {
+        ArgumentNullException.ThrowIfNull(search);
+        ArgumentNullException.ThrowIfNull(chooseRecord);
+
+        _search = search;
+        _chooseRecord = chooseRecord;
+    }
 
     protected override float WidthDip => 900f;
 
@@ -67,10 +116,14 @@ internal sealed class LyricViewerWindow : PanelWindow
     /// <summary>Open the window on a sheet, scrolled to the line being sung.</summary>
     public void ShowSheet(LyricSheet sheet)
     {
+        ArgumentNullException.ThrowIfNull(sheet);
+
         _sheet = sheet;
         _measured = false;
         _scrollToActive = true;
         _scroll = 0f;
+        _searchOpen = false;
+        ResetQuery(sheet);
 
         ShowPanel();
     }
@@ -81,8 +134,20 @@ internal sealed class LyricViewerWindow : PanelWindow
     /// </summary>
     public void UpdateSheet(LyricSheet sheet)
     {
+        ArgumentNullException.ThrowIfNull(sheet);
+
         var changed = !string.Equals(_sheet?.Key, sheet.Key, StringComparison.Ordinal);
+        var newTrack = _sheet is null || _sheet.Revision != sheet.Revision;
+
         _sheet = sheet;
+
+        if (newTrack)
+        {
+            // The query belongs to a song: keep it while the same one is playing, and start over when
+            // the track changes.
+            _searchOpen = false;
+            ResetQuery(sheet);
+        }
 
         if (changed)
         {
@@ -101,6 +166,13 @@ internal sealed class LyricViewerWindow : PanelWindow
         var sheet = _sheet;
 
         DrawHeader(context, sheet);
+
+        if (_searchOpen)
+        {
+            DrawSearch(context, sheet);
+            DrawFooter(context, sheet);
+            return;
+        }
 
         if (sheet is null || sheet.Lines.Count == 0)
         {
@@ -373,7 +445,7 @@ internal sealed class LyricViewerWindow : PanelWindow
             null => "Open the overlay and choose Lyrics.",
             { IsComplete: false } => "lrclib has not answered yet. This window will update by itself.",
             { IsInstrumental: true } => "lrclib says there is nothing to sing on this track.",
-            { Lines.Count: 0 } => "Try Choose lyrics in the overlay to look at another record.",
+            { Lines.Count: 0 } => "Try Choose lyrics in the overlay, or search lrclib with a different query.",
             _ => ""
         };
 
@@ -402,42 +474,662 @@ internal sealed class LyricViewerWindow : PanelWindow
             TextAlignment.Center,
             ParagraphAlignment.Near,
             WordWrapping.Wrap);
+
+        if (sheet is { HasTrack: true })
+        {
+            const float searchWidth = 150f;
+
+            var left = (WidthDip - searchWidth) / 2f;
+
+            Button(
+                context,
+                OpenSearchControl,
+                "Search LRCLIB",
+                R(left, center + 48f, left + searchWidth, center + 78f),
+                !sheet.IsDemo);
+        }
     }
 
     private void DrawFooter(ID2D1DeviceContext context, LyricSheet? sheet)
     {
         Fill(context, R(Pad, ListBottom, WidthDip - Pad, ListBottom + 1f), ColorLine);
 
-        var left = sheet is { LineCount: > 0 }
-            ? "Read-only for now. Editing this sheet and uploading it to LRCLIB will live here."
-            : "Esc closes.";
+        if (_searchOpen)
+        {
+            Label(
+                context,
+                "Enter searches \u00b7 Esc returns to the sheet \u00b7 Click a record to use it.",
+                Pad,
+                ListBottom + 9f,
+                WidthDip - (2 * Pad) - 200f,
+                20f,
+                11f,
+                FontWeight.Normal,
+                ColorTextFaint);
+
+            var count = sheet?.SearchResults.Count ?? 0;
+            var right = count > 0 ? $"{count} {(count == 1 ? "record" : "records")}" : "Esc closes";
+
+            Label(
+                context,
+                right,
+                WidthDip - Pad - 180f,
+                ListBottom + 9f,
+                180f,
+                20f,
+                11f,
+                FontWeight.Normal,
+                ColorTextFaint,
+                TextAlignment.Trailing);
+
+            return;
+        }
+
+        if (sheet is { HasTrack: true, LineCount: > 0 })
+        {
+            const float buttonWidth = 116f;
+
+            Button(
+                context,
+                OpenSearchControl,
+                "Search LRCLIB",
+                R(Pad, ListBottom + 7f, Pad + buttonWidth, ListBottom + 31f),
+                !sheet.IsDemo);
+
+            var hint = sheet.IsDemo
+                ? "Demo mode: the canned track is not sent to lrclib."
+                : "Ctrl+F searches lrclib with your own words.";
+
+            Label(
+                context,
+                hint,
+                Pad + buttonWidth + 10f,
+                ListBottom + 9f,
+                WidthDip - (2 * Pad) - buttonWidth - 240f,
+                20f,
+                11f,
+                FontWeight.Normal,
+                ColorTextFaint);
+        }
+
+        // The empty state carries its own Search LRCLIB button, so the footer only has to say how
+        // to leave the window.
+
+        var rightText = sheet is { LineCount: > 0 } ? $"{sheet.LineCount} lines" : "Esc closes";
 
         Label(
             context,
-            left,
-            Pad,
+            rightText,
+            WidthDip - Pad - 180f,
             ListBottom + 9f,
-            WidthDip - (2 * Pad) - 260f,
-            20f,
-            11f,
-            FontWeight.Normal,
-            ColorTextFaint);
-
-        var right = sheet is { LineCount: > 0 }
-            ? $"{sheet.LineCount} lines"
-            : "Esc closes";
-
-        Label(
-            context,
-            right,
-            WidthDip - Pad - 240f,
-            ListBottom + 9f,
-            240f,
+            180f,
             20f,
             11f,
             FontWeight.Normal,
             ColorTextFaint,
             TextAlignment.Trailing);
+    }
+
+    // ---- manual search --------------------------------------------------------------------
+
+    private void DrawSearch(ID2D1DeviceContext context, LyricSheet? sheet)
+    {
+        const float goWidth = 88f;
+        const float backWidth = 76f;
+
+        var left = Pad;
+        var right = WidthDip - Pad - goWidth - 8f - backWidth - 8f;
+        var top = ListTop;
+
+        _fieldRect = R(left, top, right, top + SearchFieldHeight);
+
+        FillRound(context, left, top, right - left, SearchFieldHeight, 8f, ColorControl);
+        Fill(context, R(left, top + SearchFieldHeight - 1f, right, top + SearchFieldHeight), ColorAccent);
+
+        var textLeft = left + SearchFieldPadding;
+        var available = right - textLeft - SearchFieldPadding;
+        var caretWidth = Measure(_query[.._caret], SearchTextSize, FontWeight.Normal);
+        _queryOffset = MathF.Max(0f, caretWidth - available);
+
+        context.PushAxisAlignedClip(_fieldRect, AntialiasMode.Aliased);
+
+        if (_query.Length == 0)
+        {
+            Label(
+                context,
+                "Artist - title",
+                textLeft,
+                top,
+                available,
+                SearchFieldHeight,
+                SearchTextSize,
+                FontWeight.Normal,
+                ColorTextFaint);
+        }
+        else
+        {
+            var textWidth = Measure(_query, SearchTextSize, FontWeight.Normal);
+
+            Label(
+                context,
+                _query,
+                textLeft - _queryOffset,
+                top,
+                MathF.Max(available, textWidth + 2f),
+                SearchFieldHeight,
+                SearchTextSize,
+                FontWeight.Normal,
+                ColorText);
+        }
+
+        var caretX = textLeft - _queryOffset + caretWidth;
+        Fill(context, R(caretX, top + 8f, caretX + 1f, top + SearchFieldHeight - 8f), ColorAccent);
+        context.PopAxisAlignedClip();
+
+        Hit(SearchFieldControl, _fieldRect);
+
+        var searching = sheet is { SearchLoading: true };
+
+        var searchLeft = right + 8f;
+        var backLeft = searchLeft + goWidth + 8f;
+
+        Button(
+            context,
+            SearchGoControl,
+            "Search",
+            R(searchLeft, top, searchLeft + goWidth, top + SearchFieldHeight),
+            _query.Trim().Length > 0 && !searching);
+
+        Button(
+            context,
+            SearchCloseControl,
+            "Back",
+            R(backLeft, top, backLeft + backWidth, top + SearchFieldHeight),
+            true);
+
+        var resultCount = sheet?.SearchResults.Count ?? 0;
+
+        var status = sheet switch
+        {
+            null => "Nothing is playing.",
+            { SearchLoading: true } => "Asking lrclib\u2026",
+            { SearchMessage: { Length: > 0 } message } => message,
+            _ when resultCount > 0 => $"{resultCount} records \u00b7 best fit first",
+            _ => "Type a query and press Enter. The artist and title are a starting point, not a rule."
+        };
+
+        var statusColor = ColorTextFaint;
+
+        if (sheet is { SearchLoading: true })
+        {
+            statusColor = ColorAccent;
+        }
+        else if (sheet is { SearchMessage: { Length: > 0 } })
+        {
+            statusColor = ColorWarning;
+        }
+
+        Label(
+            context,
+            status,
+            Pad,
+            SearchStatusTop,
+            WidthDip - (2 * Pad),
+            20f,
+            11.5f,
+            FontWeight.Normal,
+            statusColor);
+
+        DrawSearchResults(context, sheet);
+    }
+
+    private void DrawSearchResults(ID2D1DeviceContext context, LyricSheet? sheet)
+    {
+        var top = SearchResultsTop;
+        var bottom = ListBottom;
+        var height = bottom - top;
+
+        _visibleSearchRows = Math.Max(1, (int)MathF.Floor(height / SearchRowHeight));
+        _maxSearchRow = 0;
+        _resultRecords.Clear();
+
+        if (sheet is null || !sheet.HasTrack)
+        {
+            DrawCenterMessage(context, "Nothing is playing", "Open a track and search again.", top, bottom);
+            return;
+        }
+
+        if (sheet.SearchResults.Count == 0)
+        {
+            if (sheet.SearchLoading)
+            {
+                DrawCenterMessage(context, "Searching lrclib\u2026", "The answer appears here as soon as it arrives.", top, bottom);
+            }
+            else
+            {
+                DrawCenterMessage(
+                    context,
+                    sheet.SearchMessage ?? "No search yet",
+                    "Edit the query above, then press Enter or click Search.",
+                    top,
+                    bottom);
+            }
+
+            return;
+        }
+
+        var results = sheet.SearchResults;
+        _maxSearchRow = Math.Max(0, results.Count - _visibleSearchRows);
+        _searchScrollRow = Math.Clamp(_searchScrollRow, 0, _maxSearchRow);
+
+        var y = top;
+
+        for (var slot = 0; slot < _visibleSearchRows; slot++)
+        {
+            var index = _searchScrollRow + slot;
+
+            if (index >= results.Count)
+            {
+                break;
+            }
+
+            DrawSearchRow(context, sheet, results[index], index, y);
+            y += SearchRowHeight;
+        }
+
+        if (_maxSearchRow > 0)
+        {
+            Scrollbar(
+                context,
+                WidthDip - 18f,
+                top,
+                height,
+                _visibleSearchRows,
+                results.Count,
+                _searchScrollRow,
+                ColorAccent);
+
+            Hit(SearchScrollbarControl, R(WidthDip - 24f, top, WidthDip - 10f, bottom));
+        }
+    }
+
+    private void DrawSearchRow(
+        ID2D1DeviceContext context,
+        LyricSheet sheet,
+        LyricsCandidate candidate,
+        int index,
+        float top)
+    {
+        var id = SearchResultBase + index;
+        _resultRecords[id] = candidate.Id;
+
+        var row = R(Pad, top + 2f, WidthDip - 44f, top + SearchRowHeight - 2f);
+        var inUse = candidate.Id == sheet.RecordId;
+
+        if (inUse)
+        {
+            FillRound(context, row.Left, row.Top, row.Right - row.Left, row.Bottom - row.Top, 9f, ColorSelected);
+            FillRound(context, row.Left + 4f, row.Top + 7f, 3f, SearchRowHeight - 18f, 1.5f, ColorAccent);
+        }
+        else if (HoverId == id)
+        {
+            FillRound(context, row.Left, row.Top, row.Right - row.Left, row.Bottom - row.Top, 9f, ColorControlHot);
+        }
+
+        Label(
+            context,
+            (index + 1).ToString("00"),
+            Pad + 8f,
+            top + 4f,
+            20f,
+            24f,
+            10.5f,
+            FontWeight.Normal,
+            ColorTextFaint,
+            TextAlignment.Center);
+
+        var title = string.IsNullOrWhiteSpace(candidate.TrackName) ? "Untitled record" : candidate.TrackName!;
+        Label(
+            context,
+            LyricText.Fit(title, 52),
+            Pad + 36f,
+            top + 4f,
+            SearchTitleWidth,
+            20f,
+            13f,
+            FontWeight.SemiBold,
+            ColorText);
+
+        Label(
+            context,
+            LyricText.Fit(BuildResultSubtitle(candidate, inUse), 78),
+            Pad + 36f,
+            top + 24f,
+            SearchTitleWidth,
+            16f,
+            10.5f,
+            FontWeight.Normal,
+            ColorTextDim);
+
+        var delta = LyricText.FormatDurationDelta(candidate.DurationSeconds, sheet.DurationSeconds);
+        Label(
+            context,
+            delta,
+            SearchMatchLeft,
+            top + 4f,
+            70f,
+            SearchRowHeight - 8f,
+            11.5f,
+            FontWeight.SemiBold,
+            delta == "matches" ? ColorGood : ColorTextDim,
+            TextAlignment.Trailing);
+
+        Label(
+            context,
+            LyricText.FormatDuration(candidate.DurationSeconds),
+            SearchDurationLeft,
+            top + 4f,
+            60f,
+            SearchRowHeight - 8f,
+            11.5f,
+            FontWeight.Normal,
+            ColorTextDim,
+            TextAlignment.Trailing);
+
+        var badge = LyricBadges.ForCandidate(candidate);
+        var (foreground, background) = BadgeColors(badge.Tone);
+        Badge(context, badge.Label, WidthDip - 52f, top + (SearchRowHeight / 2f), foreground, background);
+
+        Hit(id, row);
+    }
+
+    private static string BuildResultSubtitle(LyricsCandidate candidate, bool inUse)
+    {
+        var parts = new List<string>(5);
+
+        if (!string.IsNullOrWhiteSpace(candidate.ArtistName))
+        {
+            parts.Add(candidate.ArtistName!);
+        }
+
+        if (!string.IsNullOrWhiteSpace(candidate.AlbumName))
+        {
+            parts.Add(candidate.AlbumName!);
+        }
+
+        parts.Add($"#{candidate.Id}");
+
+        if (inUse)
+        {
+            parts.Add("in use");
+        }
+
+        return string.Join(" \u00b7 ", parts);
+    }
+
+    private void DrawCenterMessage(
+        ID2D1DeviceContext context,
+        string title,
+        string detail,
+        float top,
+        float bottom)
+    {
+        var center = (top + bottom) / 2f;
+
+        Label(
+            context,
+            title,
+            Pad,
+            center - 28f,
+            WidthDip - (2 * Pad),
+            26f,
+            15f,
+            FontWeight.SemiBold,
+            ColorText,
+            TextAlignment.Center);
+
+        Label(
+            context,
+            detail,
+            Pad,
+            center + 2f,
+            WidthDip - (2 * Pad),
+            40f,
+            12f,
+            FontWeight.Normal,
+            ColorTextFaint,
+            TextAlignment.Center,
+            ParagraphAlignment.Near,
+            WordWrapping.Wrap);
+    }
+
+    private void OpenSearch()
+    {
+        if (_sheet is { IsDemo: true })
+        {
+            return;
+        }
+
+        _searchOpen = true;
+        _searchScrollRow = 0;
+        _caret = _query.Length;
+        ClearHover();
+        Invalidate();
+    }
+
+    private void CloseSearch()
+    {
+        _searchOpen = false;
+        ClearHover();
+        Invalidate();
+    }
+
+    private void RunSearch()
+    {
+        var query = _query.Trim();
+
+        if (query.Length == 0)
+        {
+            return;
+        }
+
+        _searchScrollRow = 0;
+        _search(query);
+        Invalidate();
+    }
+
+    private void InsertText(string text)
+    {
+        var clean = text
+            .Replace("\r", string.Empty, StringComparison.Ordinal)
+            .Replace("\n", string.Empty, StringComparison.Ordinal)
+            .Replace('\t', ' ');
+
+        if (clean.Length == 0)
+        {
+            return;
+        }
+
+        var room = MaxQueryLength - _query.Length;
+        if (room <= 0)
+        {
+            return;
+        }
+
+        if (clean.Length > room)
+        {
+            clean = clean[..room];
+        }
+
+        _query = _query.Insert(_caret, clean);
+        _caret += clean.Length;
+        Invalidate();
+    }
+
+    private void PasteText()
+    {
+        var text = ClipboardText();
+
+        if (text is not null)
+        {
+            InsertText(text);
+        }
+    }
+
+    /// <summary>
+    /// Reads the clipboard's Unicode text. Best effort: a clipboard another process is holding open,
+    /// or one with no text in it, simply inserts nothing.
+    /// </summary>
+    private string? ClipboardText()
+    {
+        if (!OpenClipboard(Handle))
+        {
+            return null;
+        }
+
+        try
+        {
+            var handle = GetClipboardData(CF_UNICODETEXT);
+            if (handle == nint.Zero)
+            {
+                return null;
+            }
+
+            var pointer = GlobalLock(handle);
+            if (pointer == nint.Zero)
+            {
+                return null;
+            }
+
+            try
+            {
+                return Marshal.PtrToStringUni(pointer);
+            }
+            finally
+            {
+                _ = GlobalUnlock(handle);
+            }
+        }
+        finally
+        {
+            _ = CloseClipboard();
+        }
+    }
+
+    private bool SearchKey(int virtualKey)
+    {
+        switch (virtualKey)
+        {
+            case VK_RETURN:
+                RunSearch();
+                return true;
+
+            case VK_ESCAPE:
+                CloseSearch();
+                return true;
+
+            case 0x25: // Left
+                if (_caret > 0)
+                {
+                    _caret--;
+                    Invalidate();
+                }
+
+                return true;
+
+            case 0x27: // Right
+                if (_caret < _query.Length)
+                {
+                    _caret++;
+                    Invalidate();
+                }
+
+                return true;
+
+            case VK_HOME:
+                _caret = 0;
+                Invalidate();
+                return true;
+
+            case VK_END:
+                _caret = _query.Length;
+                Invalidate();
+                return true;
+
+            case 0x08: // Backspace
+                if (_caret > 0)
+                {
+                    _query = _query.Remove(_caret - 1, 1);
+                    _caret--;
+                    Invalidate();
+                }
+
+                return true;
+
+            case 0x2E: // Delete
+                if (_caret < _query.Length)
+                {
+                    _query = _query.Remove(_caret, 1);
+                    Invalidate();
+                }
+
+                return true;
+
+            case 0x56 when (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0: // Ctrl+V
+                PasteText();
+                return true;
+
+            case 0x26: // Up
+                ScrollSearch(-1);
+                return true;
+
+            case 0x28: // Down
+                ScrollSearch(1);
+                return true;
+
+            case VK_PRIOR:
+                ScrollSearch(-(_visibleSearchRows - 1));
+                return true;
+
+            case VK_NEXT:
+                ScrollSearch(_visibleSearchRows - 1);
+                return true;
+
+            default:
+                // While the field is open it owns the keyboard, so no key falls through to the
+                // sheet's scroll shortcuts or closes the window behind it.
+                return true;
+        }
+    }
+
+    private int CaretFromX(float x)
+    {
+        var textLeft = _fieldRect.Left + SearchFieldPadding;
+        var target = x - textLeft + _queryOffset;
+        var best = 0;
+        var bestDistance = float.MaxValue;
+
+        for (var i = 0; i <= _query.Length; i++)
+        {
+            var width = Measure(_query[..i], SearchTextSize, FontWeight.Normal);
+            var distance = MathF.Abs(width - target);
+
+            if (distance < bestDistance)
+            {
+                bestDistance = distance;
+                best = i;
+            }
+        }
+
+        return best;
+    }
+
+    private void ResetQuery(LyricSheet sheet)
+    {
+        _query = sheet.SuggestSearchQuery();
+        _caret = _query.Length;
+        _queryOffset = 0f;
+        _searchScrollRow = 0;
     }
 
     private static (uint Foreground, uint Background) BadgeColors(LyricBadgeTone tone) => tone switch
@@ -449,10 +1141,60 @@ internal sealed class LyricViewerWindow : PanelWindow
         _ => (ColorTextDim, 0x1AFFFFFF)
     };
 
-    protected override bool IsDragTarget(int id) => id == ScrollbarControl;
+    protected override bool IsDragTarget(int id) => id is ScrollbarControl or SearchScrollbarControl;
+
+    protected override void OnActivate(int id)
+    {
+        if (id >= SearchResultBase)
+        {
+            if (!_resultRecords.TryGetValue(id, out var recordId))
+            {
+                Invalidate();
+                return;
+            }
+
+            _searchOpen = false;
+            ClearHover();
+            _chooseRecord(recordId);
+            Invalidate();
+            return;
+        }
+
+        switch (id)
+        {
+            case OpenSearchControl:
+                OpenSearch();
+                return;
+
+            case SearchGoControl:
+                RunSearch();
+                return;
+
+            case SearchCloseControl:
+                CloseSearch();
+                return;
+        }
+    }
 
     protected override void OnBodyMouseDown(float x, float y)
     {
+        if (_searchOpen)
+        {
+            if (x >= _fieldRect.Left && x < _fieldRect.Right && y >= _fieldRect.Top && y < _fieldRect.Bottom)
+            {
+                _caret = CaretFromX(x);
+                Invalidate();
+                return;
+            }
+
+            if (IsDragging && DragControl == SearchScrollbarControl)
+            {
+                SetSearchScrollFromY(y);
+            }
+
+            return;
+        }
+
         if (IsDragging && DragControl == ScrollbarControl)
         {
             SetScrollFromY(y);
@@ -461,9 +1203,18 @@ internal sealed class LyricViewerWindow : PanelWindow
 
     protected override void OnBodyMouseMove(float x, float y)
     {
-        if (IsDragging && DragControl == ScrollbarControl)
+        if (!IsDragging)
+        {
+            return;
+        }
+
+        if (DragControl == ScrollbarControl)
         {
             SetScrollFromY(y);
+        }
+        else if (DragControl == SearchScrollbarControl)
+        {
+            SetSearchScrollFromY(y);
         }
     }
 
@@ -488,22 +1239,94 @@ internal sealed class LyricViewerWindow : PanelWindow
         }
     }
 
+    private void SetSearchScrollFromY(float y)
+    {
+        var height = ListBottom - SearchResultsTop;
+
+        if (height <= 0f || _maxSearchRow <= 0)
+        {
+            return;
+        }
+
+        var t = Math.Clamp((y - SearchResultsTop) / height, 0f, 1f);
+        var next = (int)MathF.Round(t * _maxSearchRow);
+
+        if (next != _searchScrollRow)
+        {
+            _searchScrollRow = next;
+            ClearHover();
+            Invalidate();
+        }
+    }
+
     protected override void OnBodyWheel(int notches)
     {
-        var viewport = ListBottom - ListTop;
-        var maxScroll = Math.Max(0f, _contentHeight - viewport);
-
-        if (maxScroll <= 0f || notches == 0)
+        if (notches == 0)
         {
             return;
         }
 
         var steps = Math.Max(1, Math.Abs(notches) / 120);
+
+        if (_searchOpen)
+        {
+            ScrollSearch(notches > 0 ? -steps : steps);
+            return;
+        }
+
+        var viewport = ListBottom - ListTop;
+        var maxScroll = Math.Max(0f, _contentHeight - viewport);
+
+        if (maxScroll <= 0f)
+        {
+            return;
+        }
+
         NextScroll(_scroll + (notches > 0 ? -72f : 72f) * steps, maxScroll);
+    }
+
+    private void ScrollSearch(int rows)
+    {
+        if (_maxSearchRow <= 0 || rows == 0)
+        {
+            return;
+        }
+
+        var next = Math.Clamp(_searchScrollRow + rows, 0, _maxSearchRow);
+
+        if (next != _searchScrollRow)
+        {
+            _searchScrollRow = next;
+            ClearHover();
+            Invalidate();
+        }
+    }
+
+    protected override void OnBodyChar(char character)
+    {
+        if (!_searchOpen || char.IsControl(character))
+        {
+            return;
+        }
+
+        InsertText(character.ToString());
     }
 
     protected override bool OnBodyKey(int virtualKey)
     {
+        if (_searchOpen)
+        {
+            return SearchKey(virtualKey);
+        }
+
+        if (virtualKey == 0x46
+            && (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0
+            && _sheet is { IsDemo: false })
+        {
+            OpenSearch();
+            return true;
+        }
+
         var viewport = ListBottom - ListTop;
         var maxScroll = Math.Max(0f, _contentHeight - viewport);
 
@@ -544,5 +1367,35 @@ internal sealed class LyricViewerWindow : PanelWindow
         _scroll = next;
         ClearHover();
         Invalidate();
+    }
+
+    private void Button(
+        ID2D1DeviceContext context,
+        int id,
+        string text,
+        Rect rect,
+        bool enabled)
+    {
+        var width = rect.Right - rect.Left;
+        var height = rect.Bottom - rect.Top;
+        var hot = enabled && HoverId == id;
+
+        FillRound(context, rect.Left, rect.Top, width, height, 8f, hot ? ColorControlHot : ColorControl);
+        Label(
+            context,
+            text,
+            rect.Left,
+            rect.Top,
+            width,
+            height,
+            12f,
+            FontWeight.Normal,
+            enabled ? ColorText : ColorTextFaint,
+            TextAlignment.Center);
+
+        if (enabled)
+        {
+            Hit(id, rect);
+        }
     }
 }

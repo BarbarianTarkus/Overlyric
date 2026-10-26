@@ -21,12 +21,14 @@ namespace Overlyric.Lyrics;
 /// directory and are then moved over the target, which is atomic on Windows.
 /// <para>
 /// Every entry also records the <see cref="CurrentMatchVersion"/> of the matching rules that produced
-/// it. When those rules change - the release-suffix fix and the synced-same-duration rule both did -
-/// an entry written by the older rules is not wrong on its face, but it is the answer the old rules
-/// gave, and serving it would hide the fix from tracks that were already played. So an entry from an
-/// older matcher reads as a miss: the track is resolved once more against lrclib and the entry is
-/// rewritten. A tombstone is bookkeeping of the same kind and is aged out the same way, because a
-/// search that has since learned to ask a better question may well find what the old one missed.
+/// it. When those rules change - the title release-suffix fix, the synced-same-duration rule, the
+/// artist-prefix fix and the album release-suffix fix all did - an entry written by the older rules
+/// is not wrong on its face, but it is
+/// the answer the old rules gave, and serving it would hide the fix from tracks that were already
+/// played. So an entry from an older matcher reads as a miss: the track is resolved once more against
+/// lrclib and the entry is rewritten. A tombstone is bookkeeping of the same kind and is aged out the
+/// same way, because a search that has since learned to ask a better question may well find what the
+/// old one missed.
 /// </para>
 /// </remarks>
 public sealed class LyricsCache
@@ -51,7 +53,7 @@ public sealed class LyricsCache
     /// Version of the matching rules that decide what an entry means. Bump it when they change, so
     /// that entries produced by the previous rules are re-resolved once instead of being trusted.
     /// </summary>
-    internal const int CurrentMatchVersion = 2;
+    internal const int CurrentMatchVersion = 4;
 
     private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
 

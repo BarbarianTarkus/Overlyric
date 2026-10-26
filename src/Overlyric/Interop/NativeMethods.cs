@@ -31,6 +31,7 @@ internal static partial class NativeMethods
     internal const int WM_PAINT = 0x000F;
     internal const int WM_ERASEBKGND = 0x0014;
     internal const int WM_KEYDOWN = 0x0100;
+    internal const int WM_CHAR = 0x0102;
     internal const int WM_SYSKEYDOWN = 0x0104;
     internal const int WM_MOUSELEAVE = 0x02A3;
     internal const int WM_TIMER = 0x0113;
@@ -46,6 +47,8 @@ internal static partial class NativeMethods
     internal const int WM_APP = 0x8000;
     internal const int WM_RBUTTONUP = 0x0205;
     internal const int WM_CONTEXTMENU = 0x007B;
+
+    internal const uint CF_UNICODETEXT = 13;
 
     internal const int HTTRANSPARENT = -1;
     internal const int HTCAPTION = 2;
@@ -385,6 +388,24 @@ internal static partial class NativeMethods
 
     [LibraryImport("user32.dll")]
     internal static partial short GetAsyncKeyState(int vKey);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool OpenClipboard(IntPtr hWndNewOwner);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool CloseClipboard();
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    internal static partial IntPtr GetClipboardData(uint uFormat);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    internal static partial IntPtr GlobalLock(IntPtr hMem);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GlobalUnlock(IntPtr hMem);
 
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

@@ -17,8 +17,14 @@ namespace Overlyric.Lyrics;
 public readonly record struct LyricsLookup(LyricsResult? Result, bool Definitive);
 
 /// <summary>
+/// One manual search: whether lrclib answered at all, and every record it offered. An unavailable
+/// answer is not the same as "no records", because the window has to say which one happened.
+/// </summary>
+public readonly record struct LyricsSearchOutcome(bool Available, IReadOnlyList<LyricsCandidate> Candidates);
+
+/// <summary>
 /// Resolves the lyrics for a track: a version pinned by the listener, then the cache, then lrclib's
-/// exact endpoint using a <em>cleaned</em> title, then its fuzzy search ranked by likelihood.
+/// exact endpoint using a <em>cleaned</em> title and album, then its fuzzy search ranked by likelihood.
 /// </summary>
 /// <remarks>
 /// The cleaning step is the fix for a real, reproducible failure. TIDAL reports
@@ -26,6 +32,14 @@ public readonly record struct LyricsLookup(LyricsResult? Result, bool Definitive
 /// exact suffix - with plain lyrics only. Asking for the suffixed name returns precisely that family
 /// of records, so the app reported "Lyrics not synced". Asking for <c>A Song For All Seasons</c>
 /// returns twenty candidates including a synced record with an identical duration and album.
+/// <para>
+/// Albums carry the same kind of suffix and need the same cleaning. TIDAL reports
+/// <c>The Lamb Lies Down on Broadway (2007 Stereo Mix)</c>; when lrclib files that edition under the
+/// plain album, the exact lookup with the suffixed name finds nothing and the album-scoped search -
+/// the one place an album is used as a filter - finds nothing either. The reported name is tried
+/// first because it selects the edition actually playing when lrclib does hold it, then the cleaned
+/// name, and only then is the album dropped.
+/// </para>
 /// <para>
 /// A resolution is deliberately cheap and deliberately short. It asks the exact endpoint first,
 /// because that answer is one record and a search answer is twenty; it stops at the first sign that
@@ -163,7 +177,12 @@ public sealed class LyricsService
             }
 
             var (status, _, candidates) = await _client
-                .LookupSearchDetailedAsync(artist, MetadataNormaliser.CleanTitle(track), album, durationSeconds, ct)
+                .LookupSearchDetailedAsync(
+                    artist,
+                    MetadataNormaliser.CleanTitle(track, artist),
+                    MetadataNormaliser.CleanAlbum(album),
+                    durationSeconds,
+                    ct)
                 .ConfigureAwait(false);
 
             // An unavailable answer is not a list of zero alternatives, so it is not remembered:
@@ -194,6 +213,46 @@ public sealed class LyricsService
         finally
         {
             gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Free-text search, for the listener who wants to correct a query the automatic matching could
+    /// not make work. The text is sent to lrclib verbatim - it is the user's question, not metadata to
+    /// clean - and the records come back ranked by how well their length fits the playing track.
+    /// </summary>
+    /// <remarks>
+    /// Nothing is cached: a manual search is an explicit question, so it is asked each time rather
+    /// than remembered as this track's answer. The result is deliberately a list: the whole point is
+    /// that the listener picks the record, because the automatic rank got the track wrong.
+    /// </remarks>
+    public async Task<LyricsSearchOutcome> SearchAsync(
+        string query,
+        double? durationSeconds,
+        CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return new LyricsSearchOutcome(true, []);
+        }
+
+        try
+        {
+            var (status, candidates) = await _client
+                .SearchByQueryAsync(query.Trim(), durationSeconds, ct)
+                .ConfigureAwait(false);
+
+            return new LyricsSearchOutcome(status != LookupStatus.Unavailable, candidates);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            return new LyricsSearchOutcome(false, []);
         }
     }
 
@@ -276,7 +335,8 @@ public sealed class LyricsService
         CancellationToken ct)
     {
         var startedAt = Environment.TickCount64;
-        var cleanTitle = MetadataNormaliser.CleanTitle(track);
+        var cleanTitle = MetadataNormaliser.CleanTitle(track, artist);
+        var cleanAlbum = MetadataNormaliser.CleanAlbum(album);
 
         // A version chosen by hand outranks anything automatic. It is cached under its own key, so
         // the automatic answer survives for when the listener switches back.
@@ -301,8 +361,8 @@ public sealed class LyricsService
             return new LyricsLookup(null, true);
         }
 
-        var exact = await _client
-            .LookupExactAsync(artist, cleanTitle, album, durationSeconds, ct)
+        var exact = await LookupExactWithAlbumAsync(
+                artist, cleanTitle, album, cleanAlbum, durationSeconds, startedAt, ct)
             .ConfigureAwait(false);
 
         if (exact.Status == LookupStatus.Unavailable)
@@ -312,28 +372,12 @@ public sealed class LyricsService
 
         var best = exact.Lyrics;
 
-        // The album is sent verbatim at first, because lrclib matches it exactly and players usually
-        // report it faithfully; it is only dropped when that finds nothing.
-        if (best is null && !string.IsNullOrWhiteSpace(album) && WithinBudget(startedAt))
-        {
-            var withoutAlbum = await _client
-                .LookupExactAsync(artist, cleanTitle, null, durationSeconds, ct)
-                .ConfigureAwait(false);
-
-            if (withoutAlbum.Status == LookupStatus.Unavailable)
-            {
-                return Unknown();
-            }
-
-            best = withoutAlbum.Lyrics;
-        }
-
         // Missing timings deserve a second opinion: lrclib frequently holds a synced sibling, and the
         // ranked search is what turns "Lyrics not synced" into genuinely synced lyrics.
         if ((best is null || !best.IsSynced) && WithinBudget(startedAt))
         {
             var (status, searched, candidates) = await _client
-                .LookupSearchDetailedAsync(artist, cleanTitle, album, durationSeconds, ct)
+                .LookupSearchDetailedAsync(artist, cleanTitle, cleanAlbum, durationSeconds, ct)
                 .ConfigureAwait(false);
 
             if (status == LookupStatus.Found)
@@ -370,6 +414,76 @@ public sealed class LyricsService
         // cache's tombstone lifetime: lrclib backfills missing tracks, so "nothing" is not forever.
         _cache.SetMiss(key);
         return new LyricsLookup(null, true);
+    }
+
+    /// <summary>
+    /// The exact lookup's album ladder: the reported name, then the cleaned name, then no album.
+    /// </summary>
+    /// <remarks>
+    /// The album is the most precise part of the question, so it goes first. It is sent verbatim
+    /// because lrclib matches it exactly and many players report it faithfully - TIDAL's
+    /// "The Lamb Lies Down on Broadway (2007 Stereo Mix)" is a real lrclib album, and that name
+    /// selects the edition actually playing.
+    /// <para>
+    /// When the verbatim name finds nothing, the release suffix is the first suspect: TIDAL also
+    /// reports editions lrclib files under the plain album, and asking for the suffixed name then
+    /// matches nothing at all. The cleaned name is tried before the album is dropped, so a track
+    /// from such an edition still resolves to the right album instead of whichever record an
+    /// album-less exact lookup happens to answer first.
+    /// </para>
+    /// <para>
+    /// Only then is the album dropped entirely, which is the broadest question and the one that can
+    /// still answer when the player's album does not exist in lrclib under any name.
+    /// </para>
+    /// <para>
+    /// A definitive miss on the reported name is the only status that continues the ladder. Found
+    /// and Unavailable both stop it: the first has the answer, and the second is lrclib saying it
+    /// cannot answer now, which the next rung would hear as well.
+    /// </para>
+    /// </remarks>
+    private async Task<LookupOutcome> LookupExactWithAlbumAsync(
+        string artist,
+        string title,
+        string? album,
+        string cleanAlbum,
+        double? durationSeconds,
+        long startedAt,
+        CancellationToken ct)
+    {
+        var reportedAlbum = (album ?? string.Empty).Trim();
+
+        var exact = await _client
+            .LookupExactAsync(artist, title, album, durationSeconds, ct)
+            .ConfigureAwait(false);
+
+        if (exact.Status != LookupStatus.NotFound || reportedAlbum.Length == 0)
+        {
+            return exact;
+        }
+
+        // The comparison trims the reported name first, so a player that pads its metadata does not
+        // buy a redundant request for an album that is already clean.
+        if (!string.Equals(cleanAlbum, reportedAlbum, StringComparison.Ordinal)
+            && WithinBudget(startedAt))
+        {
+            exact = await _client
+                .LookupExactAsync(artist, title, cleanAlbum, durationSeconds, ct)
+                .ConfigureAwait(false);
+
+            if (exact.Status != LookupStatus.NotFound)
+            {
+                return exact;
+            }
+        }
+
+        if (!WithinBudget(startedAt))
+        {
+            return exact;
+        }
+
+        return await _client
+            .LookupExactAsync(artist, title, null, durationSeconds, ct)
+            .ConfigureAwait(false);
     }
 
     /// <summary>

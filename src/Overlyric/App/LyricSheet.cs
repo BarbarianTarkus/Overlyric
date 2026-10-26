@@ -48,9 +48,50 @@ internal sealed record LyricSheet
     /// <summary>Playback position when the snapshot was taken, so the viewer can open on the current line.</summary>
     public TimeSpan Position { get; init; }
 
+    /// <summary>
+    /// The track revision this sheet describes. The viewer uses it to tell a new song from a new
+    /// answer for the same one, which decides whether the search query is reset.
+    /// </summary>
+    public long Revision { get; init; }
+
+    /// <summary>Demo mode deliberately makes no lrclib request, so its search box is disabled.</summary>
+    public bool IsDemo { get; init; }
+
+    /// <summary>True while a manual lrclib search is in flight.</summary>
+    public bool SearchLoading { get; init; }
+
+    /// <summary>Records returned by the manual search, best fit first. Empty until one is run.</summary>
+    public IReadOnlyList<LyricsCandidate> SearchResults { get; init; } = [];
+
+    /// <summary>Why a manual search produced nothing, when it did.</summary>
+    public string? SearchMessage { get; init; }
+
     public bool HasTrack => Title.Length > 0 || Artist.Length > 0;
 
     public int LineCount => Lines.Count;
+
+    /// <summary>
+    /// The starting point for the complete-lyrics window's search field: <c>Artist - Title</c>, or
+    /// whichever of the two exists. An artist the player already folded into the title is not
+    /// repeated, so the suggestion reads like a search and not like a bug.
+    /// </summary>
+    public string SuggestSearchQuery()
+    {
+        var title = Title.Trim();
+        var artist = Artist.Trim();
+
+        if (title.Length == 0)
+        {
+            return artist;
+        }
+
+        if (artist.Length == 0 || title.StartsWith(artist, StringComparison.OrdinalIgnoreCase))
+        {
+            return title;
+        }
+
+        return string.Concat(artist, " - ", title);
+    }
 }
 
 /// <summary>

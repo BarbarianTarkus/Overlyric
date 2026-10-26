@@ -210,6 +210,30 @@ public sealed class LrclibClient : IDisposable
         return (LookupStatus.Found, best, BuildCandidates(ranked));
     }
 
+    /// <summary>
+    /// Free-text search: <c>GET /api/search?q=</c>. Used by the complete-lyrics window's own search
+    /// field, where the listener may be asking a question that the track metadata could not.
+    /// </summary>
+    internal async Task<(LookupStatus Status, IReadOnlyList<LyricsCandidate> Candidates)> SearchByQueryAsync(
+        string query,
+        double? durationSeconds,
+        CancellationToken ct)
+    {
+        var (status, records) = await GetJsonAsync(
+                BuildQuerySearchUrl(query), Json.LrclibGetResponseArray, ct)
+            .ConfigureAwait(false);
+
+        if (status != LookupStatus.Found || records is null)
+        {
+            return (status, Array.Empty<LyricsCandidate>());
+        }
+
+        // There is no title or album to compare against - the query is the listener's own words -
+        // so length and the promise of timings are what order the records.
+        var ranked = RankCandidates(records, null, null, durationSeconds);
+        return (LookupStatus.Found, BuildCandidates(ranked));
+    }
+
     /// <summary>Lookup by id that reports whether an empty answer was definitive.</summary>
     internal Task<LookupOutcome> LookupByIdAsync(long id, CancellationToken ct)
     {
@@ -410,6 +434,16 @@ public sealed class LrclibClient : IDisposable
         return url.ToString();
     }
 
+    private string BuildQuerySearchUrl(string query)
+    {
+        var url = new StringBuilder(_baseUrl).Append("/api/search");
+        var first = true;
+
+        AppendQuery(url, ref first, "q", query);
+
+        return url.ToString();
+    }
+
     private static void AppendQuery(StringBuilder url, ref bool first, string name, string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -450,7 +484,7 @@ public sealed class LrclibClient : IDisposable
         // The album is compared after cleaning too, because players append edition suffixes that lrclib
         // omits: "Scheherazade and Other Stories (Remastered)" must still match
         // "Scheherazade and Other Stories".
-        var comparisonAlbum = MetadataNormaliser.ForComparison(MetadataNormaliser.CleanTitle(wantedAlbum));
+        var comparisonAlbum = MetadataNormaliser.ForComparison(MetadataNormaliser.CleanAlbum(wantedAlbum));
 
         var scored = new List<(LrclibGetResponse Record, double Score)>(records.Count);
 
@@ -474,7 +508,7 @@ public sealed class LrclibClient : IDisposable
             }
 
             if (comparisonAlbum.Length > 0
-                && MetadataNormaliser.ForComparison(MetadataNormaliser.CleanTitle(record.AlbumName)) == comparisonAlbum)
+                && MetadataNormaliser.ForComparison(MetadataNormaliser.CleanAlbum(record.AlbumName)) == comparisonAlbum)
             {
                 score += 250.0;
             }

@@ -143,6 +143,17 @@ internal sealed class AppHost
     private long _candidatesRevision = -1;
 
     /// <summary>
+    /// What the complete-lyrics window's own search found for the current track. Kept apart from the
+    /// selector's list because it answers a different question: the listener's words, not the
+    /// player's metadata.
+    /// </summary>
+    private IReadOnlyList<LyricsCandidate> _searchResults = [];
+    private string? _searchMessage;
+    private bool _searchLoading;
+    private long _searchRevision = -1;
+    private CancellationTokenSource? _searchCts;
+
+    /// <summary>
     /// The live-source list the open source menu was built from. The watcher keeps polling while a
     /// tray menu is up, so the list can change underneath the menu; the command id names an index
     /// into this list, which is the list the user was looking at.
@@ -708,7 +719,7 @@ internal sealed class AppHost
     /// </summary>
     private static string? BuildHeader(NowPlayingSnapshot snapshot)
     {
-        var title = MetadataNormaliser.CleanTitle(snapshot.Title);
+        var title = MetadataNormaliser.CleanTitle(snapshot.Title, snapshot.Artist);
 
         var text = string.IsNullOrWhiteSpace(snapshot.Artist)
             ? title
@@ -858,7 +869,7 @@ internal sealed class AppHost
     /// <summary><c>Artist - Title</c>, with the release noise the header also strips.</summary>
     private static string NoticeTrack(NowPlayingSnapshot snapshot)
     {
-        var title = MetadataNormaliser.CleanTitle(snapshot.Title);
+        var title = MetadataNormaliser.CleanTitle(snapshot.Title, snapshot.Artist);
 
         return string.IsNullOrWhiteSpace(snapshot.Artist)
             ? title.Trim()
@@ -1101,6 +1112,13 @@ internal sealed class AppHost
         var token = _fetchCts.Token;
         var revision = snapshot.Revision;
         var attempt = _lyricsRetryAttempt;
+
+        if (clearVersions)
+        {
+            // A manual search belongs to the track that was playing when it was asked. Cancel it and
+            // drop what it found before this track's answer replaces it.
+            CancelSearch(clear: true);
+        }
 
         lock (_gate)
         {
@@ -1778,6 +1796,118 @@ internal sealed class AppHost
     }
 
     /// <summary>
+    /// Ask lrclib with words the listener typed, rather than the metadata the player published. The
+    /// answer is shown in the complete-lyrics window, where the question was asked.
+    /// </summary>
+    private void SearchLyrics(string query)
+    {
+        var snapshot = _snapshot;
+        if (IsDemoActive || !snapshot.HasTrack || _lyrics is null || string.IsNullOrWhiteSpace(query))
+        {
+            return;
+        }
+
+        query = query.Trim();
+
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+        _searchCts = new CancellationTokenSource();
+        var token = _searchCts.Token;
+        var revision = snapshot.Revision;
+        var duration = snapshot.DurationSeconds;
+
+        lock (_gate)
+        {
+            _searchRevision = revision;
+            _searchLoading = true;
+            _searchResults = [];
+            _searchMessage = null;
+        }
+
+        Interlocked.Increment(ref _lyricsStamp);
+
+        _ = Task.Run(
+            async () =>
+            {
+                LyricsSearchOutcome outcome = default;
+
+                try
+                {
+                    outcome = await _lyrics.SearchAsync(query, duration, token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
+                {
+                    return;
+                }
+                catch (Exception)
+                {
+                    // The service turns a failure into an unavailable outcome; this guards anything
+                    // it did not anticipate.
+                }
+
+                if (token.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                var candidates = outcome.Candidates ?? [];
+
+                lock (_gate)
+                {
+                    if (_lyricsRevision != revision || _searchRevision != revision)
+                    {
+                        return;
+                    }
+
+                    _searchLoading = false;
+                    _searchResults = candidates;
+
+                    if (!outcome.Available)
+                    {
+                        _searchMessage = "lrclib could not answer just now. Try again in a moment.";
+                    }
+                    else if (candidates.Count == 0)
+                    {
+                        _searchMessage = "No records for that search. Try fewer words, or the song title on its own.";
+                    }
+                    else
+                    {
+                        _searchMessage = null;
+                    }
+                }
+
+                Interlocked.Increment(ref _lyricsStamp);
+            },
+            token);
+    }
+
+    /// <summary>
+    /// Stop a manual search that is no longer the right question. <paramref name="clear"/> also drops
+    /// what the previous one found, which is what a track change wants; a chosen record keeps the
+    /// list, so reopening the search shows the alternatives again.
+    /// </summary>
+    private void CancelSearch(bool clear)
+    {
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+        _searchCts = null;
+
+        lock (_gate)
+        {
+            _searchLoading = false;
+
+            if (clear)
+            {
+                _searchResults = [];
+                _searchMessage = null;
+                _searchRevision = -1;
+            }
+        }
+
+        Interlocked.Increment(ref _lyricsStamp);
+    }
+
+    /// <summary>
     /// Pin the chosen lrclib record for this track and re-resolve straight away. A null id means the
     /// automatic pick, which is the row at the top of the selector.
     /// </summary>
@@ -1815,6 +1945,7 @@ internal sealed class AppHost
             _lyrics.ClearVersion(snapshot.Artist, snapshot.Title, snapshot.Album);
         }
 
+        CancelSearch(clear: false);
         StartLyricsFetch(snapshot);
     }
 
@@ -2078,7 +2209,7 @@ internal sealed class AppHost
     /// <summary>Open the complete lyric sheet for the track that is playing.</summary>
     private void OpenLyricViewer()
     {
-        _viewer ??= new LyricViewerWindow();
+        _viewer ??= new LyricViewerWindow(SearchLyrics, id => ChooseVersion(id));
         _viewer.ShowSheet(BuildSheet());
     }
 
@@ -2154,7 +2285,7 @@ internal sealed class AppHost
         {
             HasTrack = snapshot.HasTrack,
             IsDemo = IsDemoActive,
-            Title = MetadataNormaliser.CleanTitle(snapshot.Title),
+            Title = MetadataNormaliser.CleanTitle(snapshot.Title, snapshot.Artist),
             Artist = snapshot.Artist,
             Album = snapshot.Album,
             SourceApp = snapshot.SourceAppFriendly,
@@ -2185,6 +2316,9 @@ internal sealed class AppHost
         bool synced;
         bool wordSynced;
         string? status;
+        bool searchLoading;
+        IReadOnlyList<LyricsCandidate> searchResults;
+        string? searchMessage;
 
         lock (_gate)
         {
@@ -2195,6 +2329,13 @@ internal sealed class AppHost
             synced = _lyricsSynced;
             wordSynced = _lyricsWordSynced;
             status = _lyricsStatus;
+
+            // A manual search is an answer about the track that was playing when it was asked, so a
+            // result memoised for an older revision must not appear under a new one.
+            var current = _searchRevision == snapshot.Revision;
+            searchLoading = current && _searchLoading;
+            searchResults = current ? _searchResults : [];
+            searchMessage = current ? _searchMessage : null;
         }
 
         var position = IsDemoActive ? DemoPosition() : _watcher?.Clock.Position ?? TimeSpan.Zero;
@@ -2229,7 +2370,7 @@ internal sealed class AppHost
         return new LyricSheet
         {
             Key = key,
-            Title = MetadataNormaliser.CleanTitle(snapshot.Title),
+            Title = MetadataNormaliser.CleanTitle(snapshot.Title, snapshot.Artist),
             Artist = snapshot.Artist,
             Album = snapshot.Album,
             SourceApp = snapshot.SourceAppFriendly,
@@ -2241,7 +2382,12 @@ internal sealed class AppHost
             IsComplete = complete,
             Status = status,
             RecordId = recordId,
-            Position = position
+            Position = position,
+            Revision = snapshot.Revision,
+            IsDemo = IsDemoActive,
+            SearchLoading = searchLoading,
+            SearchResults = searchResults,
+            SearchMessage = searchMessage
         };
     }
 
@@ -2496,6 +2642,9 @@ internal sealed class AppHost
     {
         _config.Save();
         _fetchCts?.Cancel();
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+        _searchCts = null;
 
         _settings?.Dispose();
         _settings = null;

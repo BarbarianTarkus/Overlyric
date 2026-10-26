@@ -38,13 +38,53 @@ public static class MetadataNormaliser
         ["i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x", "xi", "xii"];
 
     /// <summary>
-    /// Strips trailing release-noise qualifiers and leading movement listings from a track or album
-    /// name. <c>"A Song For All Seasons (2019 Remaster)"</c> becomes <c>"A Song For All Seasons"</c>,
-    /// and <c>"Song of Scheherazade / I. Fanfare - II. / The Betrayal"</c> becomes
+    /// Strips trailing release-noise qualifiers and leading movement listings from a track name.
+    /// <c>"A Song For All Seasons (2019 Remaster)"</c> becomes <c>"A Song For All Seasons"</c>, and
+    /// <c>"Song of Scheherazade / I. Fanfare - II. / The Betrayal"</c> becomes
     /// <c>"Song of Scheherazade"</c>. Returns the input unchanged when nothing is recognised, so
     /// over-cleaning degrades to a no-op.
     /// </summary>
-    public static string CleanTitle(string? title)
+    public static string CleanTitle(string? title) => CleanTitle(title, artist: null);
+
+    /// <summary>
+    /// Strips the release-edition noise a player can append to an album name, as in
+    /// <c>"The Lamb Lies Down on Broadway (2007 Stereo Mix)"</c> or
+    /// <c>"Scheherazade and Other Stories (Remastered)"</c>.
+    /// </summary>
+    /// <remarks>
+    /// This exists for the same reason <see cref="CleanTitle(string?)"/> does, but albums need their
+    /// own pass. The suffix is part of the player's edition name, which lrclib frequently files under
+    /// the plain album, and lrclib matches <c>album_name</c> exactly: asking for the suffixed name
+    /// returns either nothing (so the album-scoped search finds no records at all) or a different
+    /// family of records. Asking for the plain name asks the question the data can answer.
+    /// <para>
+    /// Only trailing qualifiers are removed. Movement listings are a property of track titles, and a
+    /// dash inside an album name is ordinary punctuation, so neither is touched here. Qualifiers that
+    /// name a genuinely different performance - <c>(Live)</c>, <c>(Acoustic)</c> - are not release
+    /// noise and are deliberately kept, exactly as they are for titles.
+    /// </para>
+    /// </remarks>
+    public static string CleanAlbum(string? album)
+    {
+        var original = (album ?? string.Empty).Trim();
+        if (original.Length == 0)
+        {
+            return original;
+        }
+
+        var cleaned = StripQualifiers(original);
+        return cleaned.Length == 0 ? original : cleaned;
+    }
+
+    /// <summary>
+    /// The same cleaning, plus the one case a title cannot fix on its own: players that put the artist
+    /// in the title. YouTube reports <c>King Crimson - Two Hands</c> while naming the artist
+    /// <c>King Crimson</c>, and lrclib matches <c>Two Hands</c> - asking for
+    /// <c>King Crimson - Two Hands</c> returns no records at all. The prefix is removed only when it
+    /// actually equals the reported artist, so a title such as <c>Simon &amp; Garfunkel - The Boxer</c>
+    /// played by somebody else is left alone.
+    /// </summary>
+    public static string CleanTitle(string? title, string? artist)
     {
         var original = (title ?? string.Empty).Trim();
         if (original.Length == 0)
@@ -52,34 +92,49 @@ public static class MetadataNormaliser
             return original;
         }
 
-        var current = original;
-
         // Movement listings are removed first, so that "Song (Remastered) / I. Fanfare" reduces all
         // the way down to "Song" when the qualifier pass runs afterwards.
-        while (true)
+        var current = StripQualifiers(StripMovementListings(original));
+
+        var withoutArtist = StripArtistPrefix(current, artist);
+        if (!string.Equals(withoutArtist, current, StringComparison.Ordinal))
         {
-            var trimmed = StripMovementListing(current);
-            if (trimmed is null || trimmed.Length == 0)
-            {
-                break;
-            }
-
-            current = trimmed;
-        }
-
-        // Qualifiers stack: "Song (Remastered) (Deluxe Edition)".
-        while (true)
-        {
-            var stripped = StripTrailingQualifier(current);
-            if (stripped is null || stripped.Length == 0)
-            {
-                break;
-            }
-
-            current = stripped;
+            // Removing "Artist - " can expose the end of the title to the same two passes, as in
+            // "Artist - Song (Remastered)" or "Artist - Song / I. Fanfare".
+            current = StripQualifiers(StripMovementListings(withoutArtist));
         }
 
         return current.Length == 0 ? original : current;
+    }
+
+    /// <summary>Repeats the movement-listing pass until the title stops changing.</summary>
+    private static string StripMovementListings(string value)
+    {
+        while (true)
+        {
+            var trimmed = StripMovementListing(value);
+            if (trimmed is null || trimmed.Length == 0)
+            {
+                return value;
+            }
+
+            value = trimmed;
+        }
+    }
+
+    /// <summary>Qualifiers stack: "Song (Remastered) (Deluxe Edition)".</summary>
+    private static string StripQualifiers(string value)
+    {
+        while (true)
+        {
+            var stripped = StripTrailingQualifier(value);
+            if (stripped is null || stripped.Length == 0)
+            {
+                return value;
+            }
+
+            value = stripped;
+        }
     }
 
     /// <summary>
@@ -105,6 +160,57 @@ public static class MetadataNormaliser
         }
 
         return new string(buffer, 0, length);
+    }
+
+    /// <summary>
+    /// Removes a leading <c>Artist - </c> when the reported artist is exactly what precedes the dash.
+    /// Repeated prefixes are removed too, because some metadata pipelines add the artist twice.
+    /// </summary>
+    private static string StripArtistPrefix(string title, string? artist)
+    {
+        var wanted = ForComparison(artist);
+        if (wanted.Length < 2)
+        {
+            return title;
+        }
+
+        var current = title;
+
+        while (true)
+        {
+            var stripped = TryStripArtistPrefix(current, wanted);
+            if (stripped is null)
+            {
+                return current;
+            }
+
+            current = stripped;
+        }
+    }
+
+    private static string? TryStripArtistPrefix(string title, string wanted)
+    {
+        foreach (var separator in DashSeparators)
+        {
+            var index = title.IndexOf(separator, StringComparison.Ordinal);
+            if (index <= 0)
+            {
+                continue;
+            }
+
+            if (!string.Equals(ForComparison(title[..index]), wanted, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var tail = title[(index + separator.Length)..].Trim();
+            if (tail.Length > 0)
+            {
+                return tail;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>

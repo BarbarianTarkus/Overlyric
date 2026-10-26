@@ -18,8 +18,29 @@ the app concluded the track had no timings and displayed "Lyrics not synced". As
 `A Song For All Seasons` instead returns twenty candidates including a synced record with an identical
 duration and album. The suffix was not merely untidy; it selected the wrong record.
 
+**Album suffixes are cleaned the same way, and the album is retried before it is dropped.** TIDAL
+reports `The Lamb Lies Down on Broadway (2007 Stereo Mix)`; when lrclib files that edition under the
+plain album, asking for the suffixed name returns nothing, and the album-scoped search — the one
+search where an album is a filter — returns nothing either. So the exact lookup asks for the reported
+name first, because that is the record of the edition actually playing when lrclib holds it; then for
+the cleaned name; and only then does it drop the album entirely. The album-scoped search always asks
+the cleaned name, so a release qualifier can no longer hide the record the twenty-record cap left out.
+The cache's matching version was bumped with the change, so a track that was already missed is
+resolved again rather than served from its old tombstone.
+
 Qualifiers that identify a genuinely different performance — `(Live)`, `(Acoustic)` — are deliberately
 **not** stripped, so a live take never silently resolves to the studio cut.
+
+**A duplicated artist prefix is removed.** Some players, YouTube among them, publish
+`King Crimson - Two Hands` as the *track title* while separately naming `King Crimson` as the artist.
+lrclib holds `Two Hands`, and asking it for `King Crimson - Two Hands` returns **no records at all** —
+so the track used to settle as "No lyrics found" and cache that verdict. When the part before the dash
+matches the reported artist, the prefix is dropped before any request; the comparison is exact (after
+case and punctuation folding), so a title that legitimately begins with somebody else's name is left
+alone. A prefix repeated twice is removed too, and the release-suffix and movement passes run again on
+what is left, so `King Crimson - Two Hands [50th Anniversary | …]` becomes `Two Hands`. The cache's
+matching version was bumped with the change, so a track that was already wrong is resolved again rather
+than served from its old tombstone.
 
 **Movement listings are cut down to the work.** Some players report a multi-part piece as one
 enormous title: TIDAL sends `Song of Scheherazade / I. Fanfare - II. / The Betrayal / III. The Sultan /
@@ -68,9 +89,9 @@ The "comes back full" part is not caution, it is arithmetic. `album_name` narrow
 than widening it — `album_name=ZZZnotarealalbum` returns nothing at all, measured — so an
 album-scoped answer is always a subset of the unfiltered match set, and a subset can only be missing
 from a page that was truncated. A search that returned nineteen records was complete. A track lrclib
-does not hold at all therefore costs three requests rather than four. The merged list is also what
-the lyric selector shows: for the live case it held 35 records, with id 16359843 appearing exactly
-once.
+does not hold at all therefore costs three requests rather than four, plus the album-cleaning retry
+when the reported name carries a release suffix. The merged list is also what the lyric selector
+shows: for the live case it held 35 records, with id 16359843 appearing exactly once.
 
 ## Choosing a version by hand
 
@@ -107,11 +128,32 @@ came from, and the same badge the selector uses. The line being sung is highligh
 view when the window opens. With plain lyrics the timestamp column is absent rather than filled with
 zeroes, because zeroes would claim a timing the sheet does not have.
 
-The window is read-only today, and deliberately so: the next stage is editing the sheet and uploading
-it to LRCLIB. Both already have a place to live because the window draws from `LyricSheet` — the
-parsed lines, the track details and the record identity in one document — instead of from a formatted
-string. While it is open it follows the track: a new lookup or a different chosen version replaces the
-document, and a new record scrolls back to the active line.
+The sheet itself is read-only: editing it and uploading it to LRCLIB remain the next stage, and both
+already have a place to live because the window draws from `LyricSheet` — the parsed lines, the track
+details and the record identity in one document — instead of from a formatted string.
+
+The window does have one action of its own, because the automatic query is only ever a guess.
+**Search LRCLIB** — the footer button, the one in the empty state, or `Ctrl+F` — opens a single-line
+search field at the top of the sheet, prefilled with `Artist - Title`. Editing it and pressing **Enter** (or clicking **Search**)
+asks lrclib with exactly those words, which is the escape hatch when the metadata is wrong rather than
+merely untidy: a title the player invented, an artist credited differently, a song lrclib stores under
+another name. Nothing is cleaned on the way out, because the listener's words are the question.
+
+The answer is a list of records inside the same window — title, artist, album, lrclib id, length, the
+distance from the playing track's length, and the usual badge. Each row is clickable: choosing one pins
+it for this track and closes the search, so the sheet and the overlay follow it immediately. **Back**
+(or `Esc`) returns to the sheet without changing anything, and the results stay available until the
+track changes. A search that lrclib cannot answer says so instead of pretending it found nothing; it is
+never written to the cache as the track's answer, because the next question may be different.
+
+The field is deliberately a small one: caret movement, Home/End, Backspace/Delete, clicking to place the
+caret and `Ctrl+V`. Selection, undo and IME composition are out of scope — this is a query box, not an
+editor — but pasting a title from anywhere is the intended way to handle an awkward one. Demo mode does
+not send its canned track to lrclib, so the search button is disabled there.
+
+While the window is open it follows the track: a new lookup or a different chosen version replaces the
+document, and a new record scrolls back to the active line. A new *song* also resets the query, because
+the query belongs to the track it was asked about.
 
 ## Refreshing an answer
 
@@ -129,7 +171,9 @@ artist, title, album and duration — about 1.8 kB — while `/api/search` retur
 with their full bodies, about 36 kB, twenty times the bytes for one question. So the exact endpoint
 goes first and the ranked search is spent only when it did not answer, or answered without timings
 (see [Matching the right record](#matching-the-right-record)). A cold track costs one request when
-lrclib knows it well, three when a search has to settle it, and nothing at all on a replay.
+lrclib knows it well, two when the reported album carries a release suffix that has to be cleaned
+away, and four when a search has to settle it after both album forms missed; the album-scoped
+supplement adds the fifth on the path that needs it. A replay costs nothing.
 
 Four rules keep the client inside the API's terms, all of them checked against the live service:
 

@@ -112,15 +112,15 @@ because they are the quickest way to re-check a platform assumption.
 | `VorticeAot` | Does the Vortice COM interop survive NativeAOT, and what does DirectWrite report? |
 | `NowPlaying` | What is playing right now, what does lrclib hold for it, and what does the pipeline resolve the track to — the reproduction harness for a lyric-matching failure |
 | `LyricsTests` | 34 checks over LRC parsing, caching (including matcher-version staleness, forget and clear) and a live LRCLIB round-trip |
-| `ResilienceTests` | 74 checks: transient-vs-definitive caching, the one-request outage, a validation error never being filed as "no lyrics", the tombstone lifetime, instrumental classification, metadata cleaning, candidate ranking, the synced-same-duration rule, the album-scoped supplement, the stored candidate list and version pinning |
-| `ApiBudget` | What one lyric resolution costs in requests and bytes on every path - a hit, a search that settles it, a track lrclib does not hold, an outage, the selector, a replay - against a stub that counts them |
+| `ResilienceTests` | 97 checks: transient-vs-definitive caching, the one-request outage, a validation error never being filed as "no lyrics", the tombstone lifetime, instrumental classification, metadata cleaning (title and album release suffixes, movement listings and duplicated artist prefixes), the manual free-text search, the album-suffix retry, candidate ranking, the synced-same-duration rule, the album-scoped supplement, the stored candidate list and version pinning |
+| `ApiBudget` | What one lyric resolution costs in requests and bytes on every path - a hit, an album edition suffix, a search that settles it, a track lrclib does not hold, an outage, the selector, a replay - against a stub that counts them |
 | `ShortcutsTests` | 35 checks over the hotkey text form: parsing, canonical modifier order, punctuation stored by name, and every malformed string falling back to "unbound" instead of throwing |
 | `ShortcutFeedbackTests` | 31 checks over the shortcut toast: the total-offset title (`Offset -0.25s`), direction and step, the clamp saying nothing moved, and every state label |
 | `KaraokeTests` | 22 checks over the sweep (monotonic, punctuation not sung ahead of the words, word timings honoured, mismatched timings falling back to the line span) and the lyricsfile reader (line ends, words, colons inside text, garbage refused without throwing) |
 | `ClockTests` | 19 checks over the playback clock: attaching mid-song, frozen vs live timelines, pause/resume, seeks, sentinel stamps |
 | `SourcePreferenceTests` | 46 checks over the source selector: pin beating the list and Windows, list order respected, a listed player that is not running skipped, duplicate app ids resolved to the one actually playing, and a hand-edited list cleaned and capped without throwing |
 | `ThemeTests` | 18 checks over the OLED preset and the colours it produces: every preset value moved off its opposite, the unsung half turning pure black, the surrounding lines staying dim, and the transparent backdrop staying absent |
-| `LyricWindowsTests` | 56 checks over the wording the selector and viewer share: offset and length formatting, match deltas, timestamps, badge precedence, candidate labels, finding the active line and the gap-progress rule |
+| `LyricWindowsTests` | 61 checks over the wording the selector and viewer share: offset and length formatting, match deltas, timestamps, badge precedence, candidate labels, the sheet's manual-search state, finding the active line and the gap-progress rule |
 
 Helper scripts: `probe\screenshot.py` (capture the screen) and `probe\crop.py` (crop and upscale a
 region for close inspection). Together they give a way to confirm visually that the overlay is on
@@ -143,7 +143,7 @@ src\Overlyric\
     StartupRegistration.cs   per-user Run key for "start with Windows"
     PanelWindow.cs           shared frameless Direct2D window for the lyric panels
     LyricPickerWindow.cs     the selector: track details, records and badges
-    LyricViewerWindow.cs     the complete sheet, read-only for now
+    LyricViewerWindow.cs     the complete sheet, with its own LRCLIB search
     LyricSheet.cs            the document the selector and viewer share
     LyricBadges.cs           word-synced / synced / plain / instrumental verdicts
     LyricText.cs             shared offsets, lengths, timestamps, active line and gap progress

@@ -418,6 +418,10 @@ internal abstract class PanelWindow : WindowBase
             case WM_KEYDOWN:
                 return OnKeyDown((int)wParam.ToInt64());
 
+            case WM_CHAR:
+                OnBodyChar((char)(wParam.ToInt64() & 0xFFFF));
+                return IntPtr.Zero;
+
             case WM_CLOSE:
                 HidePanel();
                 return IntPtr.Zero;
@@ -626,6 +630,14 @@ internal abstract class PanelWindow : WindowBase
 
     /// <summary>Return true to consume a key the base would otherwise use for Escape.</summary>
     protected virtual bool OnBodyKey(int virtualKey) => false;
+
+    /// <summary>
+    /// A character Windows translated from the keyboard, dead keys and all. The complete-lyrics
+    /// window's search field uses this; the base ignores it.
+    /// </summary>
+    protected virtual void OnBodyChar(char character)
+    {
+    }
 
     // ---- drawing helpers -------------------------------------------------------------------
 

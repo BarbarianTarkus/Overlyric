@@ -180,6 +180,37 @@ internal static class Program
         var empty = new LyricSheet();
         Check("an empty sheet has no track", !empty.HasTrack);
         Check("an empty sheet has no lines", empty.LineCount == 0);
+
+        var searching = new LyricSheet
+        {
+            Revision = 12,
+            SearchLoading = true,
+            SearchMessage = "no records",
+            SearchResults = [new LyricsCandidate { Id = 746655, TrackName = "Two Hands" }]
+        };
+
+        Check("a sheet carries the revision its manual query belongs to", searching.Revision == 12);
+        Check(
+            "a sheet carries the manual search state",
+            searching.SearchLoading && searching.SearchMessage == "no records" && searching.SearchResults.Count == 1);
+
+        var suggestion = new LyricSheet { Title = "Two Hands", Artist = "King Crimson" };
+        Check(
+            "the query suggestion puts the artist before the title",
+            suggestion.SuggestSearchQuery() == "King Crimson - Two Hands",
+            suggestion.SuggestSearchQuery());
+
+        var folded = new LyricSheet { Title = "King Crimson - Two Hands", Artist = "King Crimson" };
+        Check(
+            "the query suggestion does not repeat an artist already in the title",
+            folded.SuggestSearchQuery() == "King Crimson - Two Hands",
+            folded.SuggestSearchQuery());
+
+        var artistOnly = new LyricSheet { Artist = "King Crimson" };
+        Check(
+            "the query suggestion falls back to whichever field exists",
+            artistOnly.SuggestSearchQuery() == "King Crimson" && new LyricSheet().SuggestSearchQuery() == "",
+            artistOnly.SuggestSearchQuery());
     }
 
     private static void Check(string name, bool passed, object? detail = null)

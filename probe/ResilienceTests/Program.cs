@@ -210,6 +210,118 @@ internal static class Program
             MetadataNormaliser.ForComparison("A Song For All Seasons!")
                 == MetadataNormaliser.ForComparison("a song for all seasons"));
 
+        // YouTube reports "King Crimson - Two Hands" as the title while also naming King Crimson as
+        // the artist. Asking lrclib for that whole title returns nothing; asking for "Two Hands" finds
+        // the record. This is the failure that put the artist-prefix pass in the normaliser.
+        Check(
+            "clean: removes an artist prefix the player duplicated into the title",
+            MetadataNormaliser.CleanTitle("King Crimson - Two Hands", "King Crimson") == "Two Hands");
+        Check(
+            "clean: the artist prefix and a release suffix come off together",
+            MetadataNormaliser.CleanTitle(
+                "King Crimson - Two Hands [50th Anniversary | On and Off the Road Box Set 2016]",
+                "King Crimson") == "Two Hands");
+        Check(
+            "clean: a repeated artist prefix is removed too",
+            MetadataNormaliser.CleanTitle("King Crimson - King Crimson - Two Hands", "King Crimson") == "Two Hands");
+        Check(
+            "clean: an en dash between artist and title is recognised",
+            MetadataNormaliser.CleanTitle("King Crimson \u2013 Two Hands", "King Crimson") == "Two Hands");
+        Check(
+            "clean: the prefix only goes when it is the reported artist",
+            MetadataNormaliser.CleanTitle("King Crimson - Two Hands", "Robert Fripp") == "King Crimson - Two Hands");
+        Check(
+            "clean: an ordinary title is left alone by the artist-aware overload",
+            MetadataNormaliser.CleanTitle("Two Hands", "King Crimson") == "Two Hands");
+
+        // Albums need the same pass, but only for release qualifiers: a movement listing is a title
+        // thing and a dash inside an album name is ordinary punctuation.
+        Check(
+            "album clean: strips a stereo-mix edition suffix",
+            MetadataNormaliser.CleanAlbum("The Lamb Lies Down on Broadway (2007 Stereo Mix)")
+                == "The Lamb Lies Down on Broadway");
+        Check(
+            "album clean: strips a remastered-and-expanded suffix",
+            MetadataNormaliser.CleanAlbum("Scheherazade and Other Stories (Remastered)")
+                == "Scheherazade and Other Stories");
+        Check(
+            "album clean: strips a dashed suffix too",
+            MetadataNormaliser.CleanAlbum("The Missing Piece - 2011 Remaster")
+                == "The Missing Piece");
+        Check(
+            "album clean: leaves a numbered edition alone",
+            MetadataNormaliser.CleanAlbum("The Lamb Lies Down on Broadway (1 of 2)")
+                == "The Lamb Lies Down on Broadway (1 of 2)");
+        Check(
+            "album clean: leaves a live album alone",
+            MetadataNormaliser.CleanAlbum("Seconds Out (Live)") == "Seconds Out (Live)");
+        Check(
+            "album clean: leaves an ordinary album alone",
+            MetadataNormaliser.CleanAlbum("The Missing Piece") == "The Missing Piece");
+        Check(
+            "album clean: empty and missing names stay empty",
+            MetadataNormaliser.CleanAlbum(null) == string.Empty
+            && MetadataNormaliser.CleanAlbum("   ") == string.Empty);
+
+        // ---- 7b. A manual search asks the listener's question, and never caches the answer. ----
+        using var manualClient = new LrclibClient("Overlyric.Tests/1.0", server.BaseUrl, paced: false);
+        var manualService = new LyricsService(manualClient, new LyricsCache(Path.Combine(cacheDirectory, "manual")));
+
+        server.StatusCode = 200;
+        server.SearchBody = """
+            [{"id":746655,"trackName":"Two Hands","artistName":"King Crimson","albumName":"Beat","duration":203,"instrumental":false,"plainLyrics":"words","syncedLyrics":"[00:31.23] words"}]
+            """;
+        server.ResetRequests();
+
+        var manual = await manualService.SearchAsync("King Crimson - Two Hands", 203, CancellationToken.None);
+
+        Check(
+            "manual search: the typed query is sent as q= and its records come back",
+            manual.Available && manual.Candidates is [{ Id: 746655 }]
+            && server.Requests.Count == 1
+            && server.Requests[0].Contains("/api/search", StringComparison.OrdinalIgnoreCase)
+            && server.Requests[0].Contains("q=King%20Crimson%20-%20Two%20Hands", StringComparison.OrdinalIgnoreCase));
+
+        server.SearchBody = "[]";
+        server.ResetRequests();
+
+        var manualEmpty = await manualService.SearchAsync("zzz no such song", 203, CancellationToken.None);
+
+        Check(
+            "manual search: a 200 with no records is an empty answer, not an outage",
+            manualEmpty.Available && manualEmpty.Candidates.Count == 0);
+
+        using var outageSearchClient = new LrclibClient("Overlyric.Tests/1.0", server.BaseUrl, paced: false);
+        var outageSearchService = new LyricsService(outageSearchClient, new LyricsCache(Path.Combine(cacheDirectory, "manual-outage")));
+        server.StatusCode = 503;
+        server.ResetRequests();
+
+        var manualOutage = await outageSearchService.SearchAsync("Two Hands", 203, CancellationToken.None);
+
+        Check(
+            "manual search: an outage is reported as unavailable, not as no records",
+            !manualOutage.Available && manualOutage.Candidates.Count == 0);
+
+        server.StatusCode = 200;
+        server.SearchBody = "[]";
+
+        // The cleaned title is not just a display concern: it is what the request carries. The stub
+        // answers the exact endpoint for any URL, so the evidence is the request line itself.
+        server.Body = """
+            {"id":746655,"trackName":"Two Hands","artistName":"King Crimson","albumName":"Beat","duration":203,"instrumental":false,"plainLyrics":"words","syncedLyrics":"[00:31.23] words"}
+            """;
+        server.ResetRequests();
+
+        var duplicateService = new LyricsService(client, new LyricsCache(Path.Combine(cacheDirectory, "duplicate-artist")));
+        var duplicate = await duplicateService.GetLyricsAsync(
+            "King Crimson", "King Crimson - Two Hands", "Brave", 203, CancellationToken.None);
+
+        Check(
+            "artist prefix: the exact lookup is made with the cleaned title",
+            duplicate is { LrclibId: 746655 }
+            && server.Requests.Any(r => r.Contains("track_name=Two%20Hands", StringComparison.OrdinalIgnoreCase))
+            && !server.Requests.Any(r => r.Contains("track_name=King%20Crimson%20-%20Two%20Hands", StringComparison.OrdinalIgnoreCase)));
+
         // ---- 8. Ranking picks the record matching the performance, not merely the title. ----
         // Mirrors the real lrclib data for "A Song For All Seasons": the record whose name carries the
         // remaster suffix has no timings, while the cleanly named one is synced and the same length.
@@ -434,6 +546,142 @@ internal static class Program
             && supplementVersions.Count(c => c.Id == 7002) == 1
             && supplementVersions.Count(c => c.Id == 7003) == 1
             && supplementVersions.Select(c => c.Id).Distinct().Count() == supplementVersions.Count);
+
+        // ---- 12b. An edition suffix on the album: ask verbatim, then the plain album, then no album. ----
+        // TIDAL reports "The Lamb Lies Down on Broadway (2007 Stereo Mix)" while lrclib files the
+        // edition under the plain album. The verbatim name answers 404 here; the cleaned name is the
+        // question the data can answer, and it must be asked before the album is dropped.
+        server.Routes.Clear();
+        server.StatusRoutes.Clear();
+        server.AlbumSearchBody = null;
+        server.SearchBody = "[]";
+        server.Body = """
+            {"id":2510689,"trackName":"The Lamb Lies Down on Broadway","artistName":"Genesis",
+             "albumName":"The Lamb Lies Down on Broadway","duration":289,"instrumental":false,
+             "plainLyrics":"words","syncedLyrics":"[00:38.41] words"}
+            """;
+        server.StatusRoutes["%282007%20Stereo%20Mix%29"] = 404;
+        server.ResetRequests();
+
+        var editionService = new LyricsService(
+            client,
+            new LyricsCache(Path.Combine(cacheDirectory, "album-edition")));
+
+        var edition = await editionService.GetLyricsAsync(
+            "Genesis",
+            "The Lamb Lies Down on Broadway",
+            "The Lamb Lies Down on Broadway (2007 Stereo Mix)",
+            289,
+            CancellationToken.None);
+
+        Check(
+            "album suffix: a suffixed album resolves through the cleaned name",
+            edition is { LrclibId: 2510689 });
+        Check(
+            "album suffix: the reported name is asked first, then the cleaned name",
+            server.Requests.Count == 2
+            && server.Requests[0].Contains(
+                "album_name=The%20Lamb%20Lies%20Down%20on%20Broadway%20%282007%20Stereo%20Mix%29",
+                StringComparison.OrdinalIgnoreCase)
+            && server.Requests[1].Contains(
+                "album_name=The%20Lamb%20Lies%20Down%20on%20Broadway&",
+                StringComparison.OrdinalIgnoreCase)
+            && !server.Requests[1].Contains("%282007", StringComparison.OrdinalIgnoreCase));
+
+        // When lrclib does hold the edition under the reported name, that record is the answer and
+        // the cleaned retry must not be spent.
+        server.StatusRoutes.Clear();
+        server.ResetRequests();
+
+        var exactEditionService = new LyricsService(
+            client,
+            new LyricsCache(Path.Combine(cacheDirectory, "album-edition-exact")));
+
+        var exactEdition = await exactEditionService.GetLyricsAsync(
+            "Genesis",
+            "The Lamb Lies Down on Broadway",
+            "The Lamb Lies Down on Broadway (2007 Stereo Mix)",
+            289,
+            CancellationToken.None);
+
+        Check(
+            "album suffix: an edition lrclib holds costs one request",
+            exactEdition is { LrclibId: 2510689 }
+            && server.Requests.Count == 1
+            && server.Requests[0].Contains("%282007%20Stereo%20Mix%29", StringComparison.OrdinalIgnoreCase));
+
+        // ---- 12c. The album-scoped supplement must ask the cleaned album, or the suffix hides it. ----
+        server.StatusRoutes.Clear();
+        server.Body = "{}";
+        server.StatusRoutes["/api/get"] = 404;
+        server.StatusRoutes["/api/search"] = 200;
+        server.SearchBody = FullSearchPage(
+            """{"id":6001,"trackName":"The Lamb Lies Down on Broadway","albumName":"Some Compilation","duration":289,"instrumental":false,"plainLyrics":"a\nb","syncedLyrics":null}""");
+        server.AlbumSearchBody = """
+            [
+              {"id":2510689,"trackName":"The Lamb Lies Down on Broadway","albumName":"The Lamb Lies Down on Broadway","duration":288.9,"instrumental":false,"plainLyrics":"a\nb","syncedLyrics":"[00:01.00] word"}
+            ]
+            """;
+        server.ResetRequests();
+
+        var suffixSupplementService = new LyricsService(
+            client,
+            new LyricsCache(Path.Combine(cacheDirectory, "album-suffix-supplement")));
+
+        var suffixSupplement = await suffixSupplementService.GetLyricsAsync(
+            "Genesis",
+            "The Lamb Lies Down on Broadway",
+            "The Lamb Lies Down on Broadway (2007 Stereo Mix)",
+            289,
+            CancellationToken.None);
+
+        Check(
+            "album suffix: the supplement still finds the synced sheet the cap hid",
+            suffixSupplement is { IsSynced: true, LrclibId: 2510689 });
+
+        var scopedRequest = server.Requests.SingleOrDefault(r =>
+            r.Contains("/api/search", StringComparison.OrdinalIgnoreCase)
+            && r.Contains("album_name=", StringComparison.OrdinalIgnoreCase));
+
+        Check(
+            "album suffix: the album-scoped search asks the cleaned album",
+            AlbumScopedSearchCount(server) == 1
+            && scopedRequest is not null
+            && scopedRequest.Contains(
+                "album_name=The%20Lamb%20Lies%20Down%20on%20Broadway",
+                StringComparison.OrdinalIgnoreCase)
+            && !scopedRequest.Contains("%282007", StringComparison.OrdinalIgnoreCase));
+
+        // The version menu asks the same question through its own path, so it needs the same cleaned
+        // album - otherwise the picker can still miss a record for an edition-named album.
+        server.ResetRequests();
+
+        var suffixVersionsService = new LyricsService(
+            client,
+            new LyricsCache(Path.Combine(cacheDirectory, "album-suffix-versions")));
+
+        await suffixVersionsService.GetVersionsAsync(
+            "Genesis",
+            "The Lamb Lies Down on Broadway",
+            "The Lamb Lies Down on Broadway (2007 Stereo Mix)",
+            289,
+            CancellationToken.None,
+            refresh: true);
+
+        var pickerScoped = server.Requests.SingleOrDefault(r =>
+            r.Contains("/api/search", StringComparison.OrdinalIgnoreCase)
+            && r.Contains("album_name=", StringComparison.OrdinalIgnoreCase));
+
+        Check(
+            "album suffix: the version picker also asks the cleaned album",
+            AlbumScopedSearchCount(server) == 1
+            && pickerScoped is not null
+            && pickerScoped.Contains(
+                "album_name=The%20Lamb%20Lies%20Down%20on%20Broadway",
+                StringComparison.OrdinalIgnoreCase)
+            && !pickerScoped.Contains("%282007", StringComparison.OrdinalIgnoreCase));
+
+        server.StatusRoutes.Clear();
 
         // ---- 13. No synced candidate matches the length: the plain result stands. ----
         server.Body = "{}";
@@ -774,6 +1022,12 @@ internal sealed class StubServer : IAsyncDisposable
     /// <summary>Per-path overrides, matched by substring, for things like <c>/api/get/123</c>.</summary>
     public Dictionary<string, string> Routes { get; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Per-request status overrides, matched by substring. The global <see cref="StatusCode"/> applies
+    /// to everything else, so a check can make one album's exact lookup 404 while the next one answers.
+    /// </summary>
+    public Dictionary<string, int> StatusRoutes { get; } = new(StringComparer.OrdinalIgnoreCase);
+
     private readonly List<string> _requests = [];
     private readonly object _requestGate = new();
 
@@ -823,6 +1077,19 @@ internal sealed class StubServer : IAsyncDisposable
         }
     }
 
+    private int StatusFor(string requestLine)
+    {
+        foreach (var route in StatusRoutes)
+        {
+            if (requestLine.Contains(route.Key, StringComparison.OrdinalIgnoreCase))
+            {
+                return route.Value;
+            }
+        }
+
+        return StatusCode;
+    }
+
     private string ResolvePayload(string requestLine)
     {
         foreach (var route in Routes)
@@ -863,9 +1130,10 @@ internal sealed class StubServer : IAsyncDisposable
                 }
 
                 var payload = ResolvePayload(requestLine);
+                var status = StatusFor(requestLine);
 
                 var body = Encoding.UTF8.GetBytes(payload);
-                var reason = StatusCode switch
+                var reason = status switch
                 {
                     404 => "Not Found",
                     429 => "Too Many Requests",
@@ -874,7 +1142,7 @@ internal sealed class StubServer : IAsyncDisposable
                 };
 
                 var header =
-                    $"HTTP/1.1 {StatusCode} {reason}\r\n" +
+                    $"HTTP/1.1 {status} {reason}\r\n" +
                     "Content-Type: application/json\r\n" +
                     $"Content-Length: {body.Length}\r\n" +
                     "Connection: close\r\n\r\n";

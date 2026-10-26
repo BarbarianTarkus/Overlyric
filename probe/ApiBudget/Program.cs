@@ -183,6 +183,22 @@ internal static class Program
                 probe.Mark("picker in the next session");
             });
 
+        // An edition suffix on the album: the verbatim name misses, the cleaned name answers. The
+        // second exact request is what buys the fix, so the budget records it as its own path.
+        await Scenario(root, "14 cold track, album carries an edition suffix",
+            Reply.Object(Fixtures.Record(101, Duration - 1.656, synced: SyncedBody)),
+            "[]",
+            albumSearchBody: null,
+            run: (service, probe) => service.LookupDetailedAsync(
+                Artist,
+                Track,
+                Album + " (2007 Stereo Mix)",
+                Duration,
+                CancellationToken.None),
+            getOverride: request => request.Contains("%282007%20Stereo%20Mix%29", StringComparison.OrdinalIgnoreCase)
+                ? Reply.Fault(404)
+                : null);
+
         Console.WriteLine("Summary");
         foreach (var line in Summary)
         {
@@ -210,7 +226,8 @@ internal static class Program
         string searchBody,
         string? albumSearchBody,
         Func<LyricsService, Probe, Task> run,
-        Reply? fault = null)
+        Reply? fault = null,
+        Func<string, Reply?>? getOverride = null)
     {
         var directory = Path.Combine(
             root,
@@ -224,6 +241,11 @@ internal static class Program
                 if (fault is { } failure)
                 {
                     return failure;
+                }
+
+                if (getOverride?.Invoke(request) is { } replaced)
+                {
+                    return replaced;
                 }
 
                 if (request.Contains("/api/search", StringComparison.OrdinalIgnoreCase))
