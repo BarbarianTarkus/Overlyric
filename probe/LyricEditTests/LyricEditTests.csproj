@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>LyricEditTests</AssemblyName>
+    <RootNamespace>Overlyric.LyricEditTests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The timing editor's rules are pure C#: selection, undo/redo, clamping, sorting and the
+         refusal of an impossible edit. No window involved. -->
+    <Compile Include="..\..\src\Overlyric\App\LyricEditSession.cs" />
+    <Compile Include="..\..\src\Overlyric\Lyrics\LyricLine.cs" />
+  </ItemGroup>
+
+</Project>
