@@ -82,7 +82,7 @@ rendering over a running full-screen game:
 | Working set | **~65 MB**, flat over 3+ minutes |
 | Private commit | ~99 MB |
 | CPU | **~0.2 s per 150 s** of playback (≈0.15 % of one core) |
-| Executable | 9.7 MB, single file, no .NET runtime installed |
+| Executable | 9.8 MB, single file, no .NET runtime installed |
 | Handles / threads | ~1280 / ~25 |
 
 Getting there took fixing three things that are easy to get wrong, all found by measuring rather than
