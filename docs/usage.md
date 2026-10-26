@@ -181,8 +181,8 @@ anchored to the right; the sheet re-wraps its lines at the new width.
 sections down the left, in two groups. **ON SCREEN** holds **Lyrics** (mode, lines shown, text sizes,
 the karaoke sweep, and the track info and info pop-up that belong together), **Appearance** (the
 backdrop, what stays lit, and the burn-in preset and tools — see [OLED and burn-in](oled.md)),
-**Timing** (the current output and the track/output/global corrections), **Position** (anchor,
-offsets, reset) and **Behaviour** (the hide rules, the
+**Timing** (the current output and the track/output/global corrections), **Position** (which
+display, anchor, offsets, reset) and **Behaviour** (the hide rules, the
 warnings, and start with Windows). **SETUP** holds **Players** (which music client to follow, and the
 order to prefer them in), **Shortcuts** (rebind the global hotkeys) and **Advanced** (the folders, the
 cache and its size, clearing it, the local lyric folder, and the version).
@@ -191,6 +191,12 @@ The sections are ordered by the job rather than by the order the features shippe
 then the two corrections made most often, then when it gets out of the way, then the setup. Inside a
 section, a row that only means something because of another row sits under it, indented, and stays
 dead until that row is on — turn **Show track info** off and **Info pop-up** greys out with it.
+
+**Position → Display** cycles the overlay between following the cursor, the primary display and each
+connected monitor. The choice is remembered by the display's device name and survives a restart; the
+offsets are remembered per display too, so a laptop and a docked monitor each keep their own
+placement. Dragging the overlay while it is unlocked updates the placement for the display it landed
+on, and a display that is disconnected at startup falls back to the primary with one tray sentence.
 
 A section taller than the window scrolls: the wheel, the scrollbar, `PageUp`/`PageDown` and
 `Home`/`End` move the rows under a header that stays put, so the section's name is always in view.

@@ -73,6 +73,27 @@ internal static class Program
             theme.InactiveTextColor == 0x66F5F7FA,
             theme.InactiveTextColor.ToString("X8"));
 
+        // ---- Monitor preference: a hand-edited map degrades instead of breaking startup. ----
+        var normalised = MonitorSettings.Normalise(new Dictionary<string, MonitorPlacement>
+        {
+            ["  "] = new() { X = 1 },
+            [@"\\.\DISPLAY1"] = new() { X = 20_000, Y = -20_000 },
+            [@"\\.\DISPLAY2"] = null!
+        });
+
+        Check("a hand-edited monitor map drops blank names", normalised.Count == 1, normalised.Count);
+        Check("a monitor offset is clamped to the global range",
+            normalised[@"\\.\DISPLAY1"].X == MonitorSettings.MaxOffset
+            && normalised[@"\\.\DISPLAY1"].Y == -MonitorSettings.MaxOffset,
+            $"{normalised[@"\\.\DISPLAY1"].X}/{normalised[@"\\.\DISPLAY1"].Y}");
+
+        var monitorDefaults = new AppConfig();
+        Check("a fresh config follows the cursor and remembers no display",
+            monitorDefaults.Monitor == MonitorChoice.Cursor
+            && monitorDefaults.MonitorDevice.Length == 0
+            && monitorDefaults.MonitorOffsets.Count == 0,
+            monitorDefaults.Monitor);
+
         Console.WriteLine();
         Console.WriteLine(_failures == 0 ? "ALL CHECKS PASSED" : $"{_failures} CHECK(S) FAILED");
 

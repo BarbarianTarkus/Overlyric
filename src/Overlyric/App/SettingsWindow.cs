@@ -220,6 +220,9 @@ internal sealed class SettingsWindow : WindowBase
         /// <summary>Open the folder holding imported local lyric files.</summary>
         OpenLocal = 113,
 
+        /// <summary>Cycle the overlay's display: cursor, primary, each connected monitor.</summary>
+        MonitorCycle = 114,
+
         /// <summary>
         /// The four offset nudges and the scrollbar. Their values fill the gap between the shortcut
         /// chips and the OLED block, the only stretch of the id space left; the enum's order documents
@@ -301,7 +304,7 @@ internal sealed class SettingsWindow : WindowBase
     /// One past the last row index each section draws. The viewport needs the height before the section
     /// is drawn, so this is a table rather than something measured twice.
     /// </summary>
-    private static readonly int[] SectionRows = [10, 6, 8, 4, 6, 8, 8, 4];
+    private static readonly int[] SectionRows = [10, 6, 8, 5, 6, 8, 8, 4];
 
     private readonly AppConfig _config;
     private readonly Action<SettingsChange> _changed;
@@ -312,6 +315,8 @@ internal sealed class SettingsWindow : WindowBase
     private readonly Func<(int Entries, long Bytes)> _cacheStats;
     private readonly Func<(int Entries, long Bytes)> _localStats;
     private readonly Action _openLocalFolder;
+    private readonly Func<string> _monitorLabel;
+    private readonly Action _cycleMonitor;
     private readonly Action _clearCache;
     private readonly string _version;
 
@@ -390,6 +395,8 @@ internal sealed class SettingsWindow : WindowBase
         Action clearCache,
         Func<(int Entries, long Bytes)> localStats,
         Action openLocalFolder,
+        Func<string> monitorLabel,
+        Action cycleMonitor,
         string version,
         Func<IReadOnlyList<SourceCandidate>> liveSources,
         TimingCommands timing)
@@ -404,6 +411,8 @@ internal sealed class SettingsWindow : WindowBase
         _clearCache = clearCache;
         _localStats = localStats;
         _openLocalFolder = openLocalFolder;
+        _monitorLabel = monitorLabel;
+        _cycleMonitor = cycleMonitor;
         _version = version;
         _liveSources = liveSources;
         _timing = timing;
@@ -1263,6 +1272,11 @@ internal sealed class SettingsWindow : WindowBase
                 SetAnchor(OverlayAnchor.Center);
                 return;
 
+            case Control.MonitorCycle:
+                _cycleMonitor();
+                Render();
+                return;
+
             case Control.ResetPosition:
                 SetAnchor(_config.Anchor);
                 return;
@@ -1968,20 +1982,25 @@ internal sealed class SettingsWindow : WindowBase
 
     private void DrawPositionSection(ID2D1DeviceContext context)
     {
+        // The display is chosen first: the anchor and the offsets below only mean something on one
+        // screen, and a docked laptop has different work areas for the same numbers.
+        RowWithNote(context, 0, "Display", "cursor, primary, or a specific monitor");
+        Button(context, ContentRight - 200f, RowTop(0) + 8f, 200f, 30f, _monitorLabel(), Control.MonitorCycle);
+
         // Three monitors instead of three words: the anchor is a position, and the offsets below are
         // measured from the edge this draws.
-        Row(context, 0, "Anchor");
-        AnchorDiagram(context, 0);
+        Row(context, 1, "Anchor");
+        AnchorDiagram(context, 1);
 
         // Two steppers instead of a read-only label: the offsets were visible but not editable, and
         // dragging the overlay is not possible from the keyboard.
-        Row(context, 1, "Offset from the anchor");
-        OffsetSteppers(context, 1);
+        Row(context, 2, "Offset from the anchor");
+        OffsetSteppers(context, 2);
 
-        Row(context, 2, "Reset position");
-        Button(context, ContentRight - 132f, RowTop(2) + 8f, 132f, 30f, "Reset", Control.ResetPosition);
+        Row(context, 3, "Reset position");
+        Button(context, ContentRight - 132f, RowTop(3) + 8f, 132f, 30f, "Reset", Control.ResetPosition);
 
-        Hint(context, 3, "Drag the overlay while it is unlocked to move it; the offset is measured from the anchored edge.");
+        Hint(context, 4, "Drag the overlay while it is unlocked to move it; the offset is remembered per display.");
     }
 
     private void DrawAdvancedSection(ID2D1DeviceContext context)
@@ -2532,9 +2551,10 @@ internal sealed class SettingsWindow : WindowBase
         Control.OffsetReset => 6,
 
         // Position
-        Control.AnchorBottom or Control.AnchorTop or Control.AnchorCentre => 0,
-        Control.OffsetXDown or Control.OffsetXUp or Control.OffsetYDown or Control.OffsetYUp => 1,
-        Control.ResetPosition => 2,
+        Control.MonitorCycle => 0,
+        Control.AnchorBottom or Control.AnchorTop or Control.AnchorCentre => 1,
+        Control.OffsetXDown or Control.OffsetXUp or Control.OffsetYDown or Control.OffsetYUp => 2,
+        Control.ResetPosition => 3,
 
         // Advanced
         Control.OpenData => 0,

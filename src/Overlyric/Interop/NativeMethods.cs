@@ -583,4 +583,47 @@ internal static partial class NativeMethods
     [LibraryImport("comdlg32.dll", EntryPoint = "GetSaveFileNameW", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool GetSaveFileNameW(ref OpenFileName dialog);
+
+    internal const int MONITORINFOF_PRIMARY = 1;
+
+    internal const int MONITOR_DEFAULTTOPRIMARY = 1;
+
+    internal const int CCHDEVICENAME = 32;
+
+    /// <summary>MONITORINFOEXW: MONITORINFO plus the GDI device name, fixed at 32 characters.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct MONITORINFOEXW
+    {
+        public int cbSize;
+        public RECT rcMonitor;
+        public RECT rcWork;
+        public uint dwFlags;
+        public unsafe fixed char szDevice[CCHDEVICENAME];
+    }
+
+    internal delegate bool MonitorEnumProc(nint monitor, nint hdc, nint rect, nint data);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool EnumDisplayMonitors(nint hdc, nint clip, MonitorEnumProc callback, nint data);
+
+    [LibraryImport("user32.dll", EntryPoint = "GetMonitorInfoW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetMonitorInfoExW(nint monitor, ref MONITORINFOEXW info);
+
+    /// <summary>DISPLAY_DEVICEW: the adapter/monitor description, with two fixed string buffers.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal unsafe struct DISPLAY_DEVICEW
+    {
+        public int cb;
+        public fixed char DeviceName[32];
+        public fixed char DeviceString[128];
+        public uint StateFlags;
+        public fixed char DeviceID[128];
+        public fixed char DeviceKey[128];
+    }
+
+    [LibraryImport("user32.dll", EntryPoint = "EnumDisplayDevicesW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool EnumDisplayDevicesW(nint device, uint deviceNumber, ref DISPLAY_DEVICEW displayDevice, uint flags);
 }

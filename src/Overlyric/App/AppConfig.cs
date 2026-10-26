@@ -118,6 +118,18 @@ internal sealed class AppConfig
     /// </summary>
     public bool StartWithWindows { get; set; }
 
+    /// <summary>Which display the overlay prefers at startup and after a display change.</summary>
+    public MonitorChoice Monitor { get; set; } = MonitorChoice.Cursor;
+
+    /// <summary>
+    /// The GDI device name for <see cref="MonitorChoice.Specific"/>, e.g. <c>\\.\DISPLAY2</c>. The
+    /// name is stable across reconnects; the display number in it is not, so it is only a key.
+    /// </summary>
+    public string MonitorDevice { get; set; } = "";
+
+    /// <summary>Last placement on each display, keyed by device name, so a dock does not move it.</summary>
+    public Dictionary<string, MonitorPlacement> MonitorOffsets { get; set; } = [];
+
     /// <summary>Manual lyric timing correction in milliseconds; positive shows lyrics later.</summary>
     public int LyricsOffsetMs { get; set; }
 
@@ -266,6 +278,22 @@ internal sealed class AppConfig
         // that names no player simply stops matching.
         SourcePriority = SourceSelector.NormalisePriority(SourcePriority);
         SourcePinned = (SourcePinned ?? string.Empty).Trim();
+
+        // A mode or device the app does not understand degrades to the cursor rather than to a
+        // black screen on a monitor that no longer exists.
+        if (Monitor is not (MonitorChoice.Cursor or MonitorChoice.Primary or MonitorChoice.Specific))
+        {
+            Monitor = MonitorChoice.Cursor;
+        }
+
+        MonitorDevice = (MonitorDevice ?? string.Empty).Trim();
+
+        if (Monitor == MonitorChoice.Specific && MonitorDevice.Length == 0)
+        {
+            Monitor = MonitorChoice.Cursor;
+        }
+
+        MonitorOffsets = MonitorSettings.Normalise(MonitorOffsets);
 
         return this;
     }

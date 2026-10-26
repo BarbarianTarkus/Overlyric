@@ -168,6 +168,20 @@ for as long as the track or output lasts and is never persisted, so a one-off ad
 quietly rewrite what the next play will use. The control bar, the shortcut toast and the Timing
 section all print the layer in force next to the number.
 
+## Fitting the machine
+
+The overlay can follow the pointer, stay on the primary display, or be pinned to one named monitor.
+The identity that is stored is the monitor's GDI device name (`MONITORINFOEXW.szDevice`), not its
+number: Windows reassigns numbers when a display is unplugged, so "Display 2" is not a fact about the
+hardware. The friendly label comes from `EnumDisplayDevicesW` and is only what the settings row
+prints.
+
+Placement is remembered per display: the same margin from the anchor is wrong on a laptop panel and
+a docked ultrawide, so each device name keeps its own `OffsetX`/`OffsetY`. Dragging the overlay
+stores the offsets under the display it landed on. On startup, a display change (`WM_DISPLAYCHANGE`)
+or a settings click, the chosen monitor is resolved again and a specific monitor that is no longer
+connected falls back to the primary with one tray sentence rather than opening off-screen.
+
 ## Choosing the words: automatic, pinned or local
 
 The automatic matcher is the default, but it is not the only answer the listener may want. Three

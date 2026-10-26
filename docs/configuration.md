@@ -34,6 +34,9 @@ Settings → Advanced has **Open** buttons for this folder and the lyric cache.
 | `HideWhenInstrumental` | `true` | Hide when the track is instrumental |
 | `WarnWhenPlayerDoesNotPublish` | `true` | Say so when audio is playing but no player publishes to Windows media controls, or when a player publishes a track without a playback position |
 | `StartWithWindows` | `false` | Write the executable into the current user's Run key |
+| `Monitor` | `Cursor` | Which display the overlay prefers: `Cursor`, `Primary` or `Specific` |
+| `MonitorDevice` | `""` | GDI device name for `Specific`, e.g. `\\.\DISPLAY2`. Display numbers are reassigned, so the name is the key and the number is not |
+| `MonitorOffsets` | `{}` | Remembered placement per display device name (`X`, `Y`), so docking and undocking keeps the overlay where it was put |
 | `LyricsOffsetMs` | `0` | Global timing correction in milliseconds; positive shows lyrics later. The fallback when the track or the output has no saved correction |
 | `TrackOffsets` | `{}` | Per-track corrections in milliseconds, keyed by a normalised artist/title key. An entry overrides the output profile and the global default |
 | `OutputOffsets` | `{}` | Per-output-device corrections, keyed by the CoreAudio endpoint id; each value carries `Name`, `OffsetMs` and `Bluetooth`. Used when the track has no override |

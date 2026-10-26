@@ -194,6 +194,9 @@ internal sealed class AppHost
     private string? _lastTooltip;
     private long _lastTopmostReassertAt;
 
+    /// <summary>Device name of the display the overlay is on, for the per-display placement map.</summary>
+    private string _currentMonitorDevice = "";
+
     /// <summary>The default output device as last read; null until CoreAudio answers once.</summary>
     private AudioOutput? _audioOutput;
 
@@ -296,8 +299,17 @@ internal sealed class AppHost
         }
 
         _overlay = new OverlayWindow(_config.ToTheme());
-        _overlay.Create(_config.Mode, _config.Anchor, _config.OffsetX, _config.OffsetY, MonitorUnderCursor());
+
+        // The configured display decides where the overlay opens; its own remembered placement is
+        // loaded before the window is created, so it never appears on the wrong screen first.
+        var monitor = ApplyMonitorPreference(out var monitorWarning);
+        _overlay.Create(_config.Mode, _config.Anchor, _config.OffsetX, _config.OffsetY, monitor);
         RepairLegacyPlacement();
+
+        if (monitorWarning is not null)
+        {
+            _tray?.Alert("Overlyric \u2014 display not found", monitorWarning);
+        }
 
         _locked = _config.Locked;
         _overlay.SetLocked(_locked);
@@ -485,6 +497,10 @@ internal sealed class AppHost
 
             case WM_HOTKEY:
                 _hotKeys?.HandleMessage(wParam);
+                break;
+
+            case WM_DISPLAYCHANGE:
+                OnDisplayChanged();
                 break;
 
             case WM_DESTROY:
@@ -1582,7 +1598,144 @@ internal sealed class AppHost
             ? Math.Max(0, work.Bottom - (y + height))
             : Math.Max(0, y - work.Top);
 
+        // Remember the placement against the display it was made on: a laptop and a docked monitor
+        // have different work areas, and one global offset is wrong on one of them.
+        var device = DisplayMonitors.DeviceNameFor(monitor);
+
+        if (device.Length > 0)
+        {
+            _currentMonitorDevice = device;
+            _config.MonitorOffsets[device] = new MonitorPlacement
+            {
+                X = _config.OffsetX,
+                Y = _config.OffsetY
+            };
+        }
+
         _config.Save();
+    }
+
+    /// <summary>
+    /// Picks the display the config asks for, loads that display's remembered placement and reports a
+    /// requested display that is no longer connected so the caller can say so once.
+    /// </summary>
+    private nint ApplyMonitorPreference(out string? warning)
+    {
+        warning = null;
+        var monitor = ChooseMonitor(out var device, out warning);
+        _currentMonitorDevice = device;
+
+        if (device.Length > 0 && _config.MonitorOffsets.TryGetValue(device, out var placement))
+        {
+            _config.OffsetX = placement.X;
+            _config.OffsetY = placement.Y;
+        }
+
+        return monitor;
+    }
+
+    private nint ChooseMonitor(out string deviceName, out string? warning)
+    {
+        warning = null;
+        deviceName = string.Empty;
+
+        switch (_config.Monitor)
+        {
+            case MonitorChoice.Primary:
+                if ((DisplayMonitors.Primary() ?? DisplayMonitors.Enumerate().FirstOrDefault()) is { } primary)
+                {
+                    deviceName = primary.DeviceName;
+                    return primary.Handle;
+                }
+
+                break;
+
+            case MonitorChoice.Specific:
+                var monitors = DisplayMonitors.Enumerate();
+                var chosen = DisplayMonitors.Find(_config.MonitorDevice)
+                    ?? monitors.FirstOrDefault(static monitor => monitor.Primary)
+                    ?? monitors.FirstOrDefault();
+
+                if (chosen is not null)
+                {
+                    deviceName = chosen.DeviceName;
+
+                    if (!string.Equals(chosen.DeviceName, _config.MonitorDevice.Trim(), StringComparison.OrdinalIgnoreCase))
+                    {
+                        warning = $"The chosen display is not connected, so the overlay uses {chosen.Label}.";
+                    }
+
+                    return chosen.Handle;
+                }
+
+                break;
+        }
+
+        var cursorMonitor = MonitorUnderCursor();
+        deviceName = DisplayMonitors.DeviceNameFor(cursorMonitor);
+        return cursorMonitor;
+    }
+
+    /// <summary>What the Position section prints for the monitor row.</summary>
+    private string MonitorLabel() => _config.Monitor switch
+    {
+        MonitorChoice.Primary => "Primary display",
+        MonitorChoice.Specific => DisplayMonitors.Find(_config.MonitorDevice)?.Label ?? "Chosen display (missing)",
+        _ => "Follow the cursor"
+    };
+
+    /// <summary>Cycles cursor -> primary -> each connected display, applying the choice immediately.</summary>
+    private void CycleMonitor()
+    {
+        var options = new List<(MonitorChoice Mode, string Device)>
+        {
+            (MonitorChoice.Cursor, string.Empty),
+            (MonitorChoice.Primary, string.Empty)
+        };
+
+        foreach (var monitor in DisplayMonitors.Enumerate())
+        {
+            options.Add((MonitorChoice.Specific, monitor.DeviceName));
+        }
+
+        var current = options.FindIndex(option =>
+            option.Mode == _config.Monitor
+            && (option.Mode != MonitorChoice.Specific
+                || string.Equals(option.Device, _config.MonitorDevice, StringComparison.OrdinalIgnoreCase)));
+
+        var next = options[(current < 0 ? 0 : current + 1) % options.Count];
+        _config.Monitor = next.Mode;
+        _config.MonitorDevice = next.Device;
+
+        var monitorHandle = ApplyMonitorPreference(out var warning);
+        _overlay?.SetPlacement(_config.Anchor, _config.OffsetX, _config.OffsetY, monitorHandle);
+        ForceRedraw();
+        _config.Save();
+        _settings?.RefreshIfOpen();
+
+        if (warning is not null)
+        {
+            _tray?.Alert("Overlyric \u2014 display not found", warning);
+        }
+    }
+
+    /// <summary>A monitor was added, removed or rearranged: re-choose it and put the overlay back there.</summary>
+    private void OnDisplayChanged()
+    {
+        if (_overlay is null)
+        {
+            return;
+        }
+
+        var monitor = ApplyMonitorPreference(out var warning);
+        _overlay.SetPlacement(_config.Anchor, _config.OffsetX, _config.OffsetY, monitor);
+        ForceRedraw();
+        _settings?.RefreshIfOpen();
+
+        if (warning is not null)
+        {
+            _tray?.Alert("Overlyric \u2014 display changed", warning);
+        }
     }
 
     /// <summary>
@@ -2413,7 +2566,9 @@ internal sealed class AppHost
     }
 
     /// <summary>The position "now", which is what the timing editor stamps a line with.</summary>
-    private TimeSpan CurrentPosition() => _watcher?.Clock.Position ?? TimeSpan.Zero;
+    private TimeSpan CurrentPosition() => IsDemoActive
+        ? DemoPosition()
+        : _watcher?.Clock.Position ?? TimeSpan.Zero;
 
     /// <summary>Writes the lines the editor currently shows, edited or not, as an LRC file.</summary>
     private void ExportLyrics(IReadOnlyList<LyricLine> lines)
@@ -2674,6 +2829,8 @@ internal sealed class AppHost
                 ClearLyricsCache,
                 LocalLibraryStats,
                 () => OpenFolder(AppConfig.LyricsDirectory),
+                MonitorLabel,
+                CycleMonitor,
                 typeof(AppHost).Assembly.GetName().Version?.ToString(3) ?? "0.1.0",
                 () => _watcher?.LiveSources ?? [],
                 new TimingCommands
