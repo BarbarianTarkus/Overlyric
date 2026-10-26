@@ -255,7 +255,12 @@ been changed.*
 ![Settings → Advanced](images/settings-advanced.png)
 
 *Advanced is the housekeeping section: the settings folder, the lyric cache with its entry and byte
-count, and the one destructive action.*
+count, the local lyric folder, and the one destructive action.*
+
+![Settings → Behaviour](images/settings-behaviour.png)
+
+*Behaviour is when the overlay gets out of the way: pause, no lyrics and instrumental hides, the
+foreground-app hide list, the two warning switches, and start with Windows.*
 
 Changes apply live and are saved as they are made, so the overlay behind the window shows the effect
 immediately. `Esc` or the close button hides the window; the process keeps running and the overlay

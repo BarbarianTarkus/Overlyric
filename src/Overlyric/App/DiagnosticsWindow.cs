@@ -54,7 +54,7 @@ internal sealed class DiagnosticsWindow : PanelWindow
 
     protected override string Title => "Diagnostics";
 
-    private float ListTop => HeaderHeight;
+    private static float ListTop => HeaderHeight;
 
     private float ListBottom => HeightDip - FooterHeight;
 
@@ -250,20 +250,30 @@ internal sealed class DiagnosticsWindow : PanelWindow
             return false;
         }
 
-        var next = virtualKey switch
-        {
-            0x26 => _scroll - 48f,
-            0x28 => _scroll + 48f,
-            0x21 => _scroll - (viewport * 0.85f),
-            0x22 => _scroll + (viewport * 0.85f),
-            0x24 => 0f,
-            0x23 => maxScroll,
-            _ => float.MinValue
-        };
+        float next;
 
-        if (next == float.MinValue)
+        switch (virtualKey)
         {
-            return false;
+            case 0x26:
+                next = _scroll - 48f;
+                break;
+            case 0x28:
+                next = _scroll + 48f;
+                break;
+            case 0x21:
+                next = _scroll - (viewport * 0.85f);
+                break;
+            case 0x22:
+                next = _scroll + (viewport * 0.85f);
+                break;
+            case 0x24:
+                next = 0f;
+                break;
+            case 0x23:
+                next = maxScroll;
+                break;
+            default:
+                return false;
         }
 
         next = Math.Clamp(next, 0f, maxScroll);

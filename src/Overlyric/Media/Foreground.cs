@@ -14,7 +14,7 @@ internal static class Foreground
     public static nint Handle() => GetForegroundWindow();
 
     /// <summary>The full image path of the foreground process, or null when it cannot be read.</summary>
-    public static unsafe string? ProcessPath()
+    public static string? ProcessPath()
     {
         var handle = GetForegroundWindow();
         if (handle == nint.Zero)
@@ -35,18 +35,19 @@ internal static class Foreground
             return null;
         }
 
+        var buffer = Marshal.AllocHGlobal(1024 * sizeof(char));
+
         try
         {
-            const int capacity = 1024;
-            var buffer = stackalloc char[capacity];
-            var size = (uint)capacity;
+            var size = 1024u;
 
-            return QueryFullProcessImageNameW(process, 0, buffer, ref size)
-                ? new string(buffer, 0, (int)size)
+            return QueryFullProcessImageNamePtr(process, 0, buffer, ref size)
+                ? Marshal.PtrToStringUni(buffer, (int)size)
                 : null;
         }
         finally
         {
+            Marshal.FreeHGlobal(buffer);
             _ = CloseHandle(process);
         }
     }
@@ -56,25 +57,31 @@ internal static class Foreground
     /// desktop and its worker windows are always full-screen; counting them as a game would raise a
     /// notice on every desktop click.
     /// </summary>
-    public static unsafe bool IsShellWindow(nint window)
+    public static bool IsShellWindow(nint window)
     {
         if (window == nint.Zero)
         {
             return false;
         }
 
-        const int capacity = 64;
-        var buffer = stackalloc char[capacity];
-        var length = GetClassNameW(window, buffer, capacity);
+        var buffer = Marshal.AllocHGlobal(64 * sizeof(char));
 
-        if (length <= 0)
+        try
         {
-            return false;
+            var length = GetClassNamePtr(window, buffer, 64);
+
+            if (length <= 0)
+            {
+                return false;
+            }
+
+            var name = Marshal.PtrToStringUni(buffer, length);
+            return name is "Progman" or "WorkerW" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd";
         }
-
-        var name = new string(buffer, 0, length);
-
-        return name is "Progman" or "WorkerW" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd";
+        finally
+        {
+            Marshal.FreeHGlobal(buffer);
+        }
     }
 
     /// <summary>SHQueryUserNotificationState, or 0 when the shell cannot answer.</summary>
@@ -97,9 +104,9 @@ internal static class Foreground
             return false;
         }
 
-        var info = new MONITORINFOEXW { cbSize = Marshal.SizeOf<MONITORINFOEXW>() };
+        var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
 
-        if (!GetMonitorInfoExW(monitor, ref info))
+        if (!GetMonitorInfoW(monitor, ref info))
         {
             return false;
         }

@@ -563,6 +563,7 @@ internal sealed class AppHost
 
             case WM_DESTROY:
                 _commandCts.Cancel();
+                _commandCts.Dispose();
                 PostQuitMessage(0);
                 break;
 
@@ -1167,13 +1168,31 @@ internal sealed class AppHost
             || window == _picker?.Handle
             || window == _viewer?.Handle);
 
-    /// <summary>What the Behaviour section prints for "add the app in front".</summary>
-    private string ForegroundAppLabel() =>
-        string.IsNullOrWhiteSpace(_foregroundPath) ? "No app detected" : Path.GetFileName(_foregroundPath);
+    /// <summary>
+    /// What the Behaviour section prints for "add the app in front". Overlyric's own windows are
+    /// foreground whenever the settings window is open, and offering to hide the overlay for
+    /// Overlyric itself would be a trap, so that case is named instead of added.
+    /// </summary>
+    private string ForegroundAppLabel()
+    {
+        if (IsOwnWindow(_foregroundWindow))
+        {
+            return "Overlyric itself";
+        }
+
+        return string.IsNullOrWhiteSpace(_foregroundPath) ? "No app detected" : Path.GetFileName(_foregroundPath);
+    }
 
     /// <summary>Adds the foreground executable's name to the hide list.</summary>
     private void AddForegroundApp()
     {
+        // Adding Overlyric to its own hide list would make the overlay vanish whenever the settings
+        // window is open and appear broken; the row says why instead.
+        if (IsOwnWindow(_foregroundWindow))
+        {
+            return;
+        }
+
         var name = Path.GetFileName(_foregroundPath ?? string.Empty);
 
         if (name.Length == 0)
@@ -1968,7 +1987,7 @@ internal sealed class AppHost
         switch (_config.Monitor)
         {
             case MonitorChoice.Primary:
-                if ((DisplayMonitors.Primary() ?? DisplayMonitors.Enumerate().FirstOrDefault()) is { } primary)
+                if ((DisplayMonitors.Primary() ?? FirstMonitor()) is { } primary)
                 {
                     deviceName = primary.DeviceName;
                     return primary.Handle;
@@ -1977,10 +1996,21 @@ internal sealed class AppHost
                 break;
 
             case MonitorChoice.Specific:
-                var monitors = DisplayMonitors.Enumerate();
-                var chosen = DisplayMonitors.Find(_config.MonitorDevice)
-                    ?? monitors.FirstOrDefault(static monitor => monitor.Primary)
-                    ?? monitors.FirstOrDefault();
+                var chosen = DisplayMonitors.Find(_config.MonitorDevice);
+
+                if (chosen is null)
+                {
+                    foreach (var monitor in DisplayMonitors.Enumerate())
+                    {
+                        if (monitor.Primary)
+                        {
+                            chosen = monitor;
+                            break;
+                        }
+                    }
+                }
+
+                chosen ??= FirstMonitor();
 
                 if (chosen is not null)
                 {
@@ -2000,6 +2030,12 @@ internal sealed class AppHost
         var cursorMonitor = MonitorUnderCursor();
         deviceName = DisplayMonitors.DeviceNameFor(cursorMonitor);
         return cursorMonitor;
+    }
+
+    private static DisplayMonitor? FirstMonitor()
+    {
+        var monitors = DisplayMonitors.Enumerate();
+        return monitors.Count > 0 ? monitors[0] : null;
     }
 
     /// <summary>What the Position section prints for the monitor row.</summary>
@@ -2831,7 +2867,7 @@ internal sealed class AppHost
 
             Process.Start(new ProcessStartInfo
             {
-                FileName = "notepad.exe",
+                FileName = Path.Combine(Environment.SystemDirectory, "notepad.exe"),
                 Arguments = string.Concat("\"", path, "\""),
                 UseShellExecute = true
             });

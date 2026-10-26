@@ -82,7 +82,7 @@ rendering over a running full-screen game:
 | Working set | **~65 MB**, flat over 3+ minutes |
 | Private commit | ~99 MB |
 | CPU | **~0.2 s per 150 s** of playback (≈0.15 % of one core) |
-| Executable | 9.9 MB, single file, no .NET runtime installed |
+| Executable | 10.5 MB, single file, no .NET runtime installed |
 | Handles / threads | ~1280 / ~25 |
 
 Getting there took fixing three things that are easy to get wrong, all found by measuring rather than
@@ -115,7 +115,7 @@ because they are the quickest way to re-check a platform assumption.
 | `CommandLineTests` | 27 checks over the scripting grammar and the named-pipe round trip: every switch, unknown values refused, last-command-wins, and a send with nothing listening failing instead of hanging |
 | `DiagnosticsTests` | 19 checks over the rolling log (ring bound, file rotation, format) and the diagnostics snapshot's JSON, including a title with quotes and a newline |
 | `PresenceTests` | 24 checks over the Presence decisions: the per-app hide match (names, case, paths, protected processes), the exclusive-fullscreen conjunction, and the ten-second sustain with announce-once |
-| `LyricEditTests` | 37 checks over the timing editor: selection, set start/end, the refusal of an impossible edit, per-line and whole-sheet nudges, clamping at zero, stable sorting, and the bounded undo/redo history |
+| `LyricEditTests` | 38 checks over the timing editor: selection, set start/end, the refusal of an impossible edit, per-line and whole-sheet nudges, clamping at zero, stable sorting, and the bounded undo/redo history |
 | `LocalLyricsTests` | 56 checks over the local lyric library, including the translation sidecar and its replacement |
 | `LyricWindowsTests` | 66 checks over the wording the selector and viewer share: BOM/UTF-8/UTF-16/Windows-1252 detection, the import preview, save/load/remove and corrupt files, the explicit selection file and its migration from `versions.json`, and the export round-trip |
 | `ResilienceTests` | 101 checks: transient-vs-definitive caching, the one-request outage, a validation error never being filed as "no lyrics", the tombstone lifetime, instrumental classification, metadata cleaning (title and album release suffixes, movement listings and duplicated artist prefixes), the manual free-text search, the album-suffix retry, candidate ranking, the synced-same-duration rule, the album-scoped supplement, the stored candidate list and version pinning |

@@ -324,7 +324,7 @@ internal sealed class SettingsWindow : WindowBase
     /// One past the last row index each section draws. The viewport needs the height before the section
     /// is drawn, so this is a table rather than something measured twice.
     /// </summary>
-    private static readonly int[] SectionRows = [11, 8, 8, 5, 8, 8, 9, 4];
+    private static readonly int[] SectionRows = [11, 8, 8, 5, 8, 8, ShortcutActions.All.Length + 1, 4];
 
     private readonly AppConfig _config;
     private readonly Action<SettingsChange> _changed;
@@ -2703,7 +2703,9 @@ internal sealed class SettingsWindow : WindowBase
     /// <summary>Height of the open section's rows, in DIP.</summary>
     private float ContentHeight => SectionRows[(int)_section] * RowHeightDip;
 
-    private float MaxScroll => MathF.Max(0f, ContentHeight - (ViewportBottom - ViewportTop));
+    // The rows start at RowTop(0) = RowsTopDip, which is below ViewportTop: a scroll range of
+    // ContentHeight - viewport would leave that 24 DIP gap unreachable and clip the last rows.
+    private float MaxScroll => MathF.Max(0f, ContentHeight + (RowsTopDip - ViewportTop) - (ViewportBottom - ViewportTop));
 
     /// <summary>
     /// A scrollbar only while the section is taller than the viewport, proportional with a floor so a

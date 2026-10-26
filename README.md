@@ -145,7 +145,7 @@ Measured on Windows 11, 3840×2160 at 150 % with TIDAL playing over a running ga
 | --- | --- |
 | Working set | ~65 MB, flat over 3+ minutes |
 | CPU | ~0.2 s per 150 s of playback (≈0.15 % of one core) |
-| Executable | 9.9 MB, single file, no .NET runtime installed |
+| Executable | 10.5 MB, single file, no .NET runtime installed |
 | Handles / threads | ~1280 / ~25 |
 
 ```powershell

@@ -597,42 +597,24 @@ internal static partial class NativeMethods
 
     internal const int CCHDEVICENAME = 32;
 
-    /// <summary>MONITORINFOEXW: MONITORINFO plus the GDI device name, fixed at 32 characters.</summary>
-    [StructLayout(LayoutKind.Sequential)]
-    internal struct MONITORINFOEXW
-    {
-        public int cbSize;
-        public RECT rcMonitor;
-        public RECT rcWork;
-        public uint dwFlags;
-        public unsafe fixed char szDevice[CCHDEVICENAME];
-    }
-
     internal delegate bool MonitorEnumProc(nint monitor, nint hdc, nint rect, nint data);
 
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool EnumDisplayMonitors(nint hdc, nint clip, MonitorEnumProc callback, nint data);
 
+    /// <summary>
+    /// GetMonitorInfoW into caller-owned memory. MONITORINFOEXW holds fixed-size buffers, which the
+    /// LibraryImport source generator cannot marshal inside a struct, so the block is read by offset
+    /// instead: the shapes are fixed by Windows and the comments in DisplayMonitors name them.
+    /// </summary>
     [LibraryImport("user32.dll", EntryPoint = "GetMonitorInfoW", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    internal static partial bool GetMonitorInfoExW(nint monitor, ref MONITORINFOEXW info);
-
-    /// <summary>DISPLAY_DEVICEW: the adapter/monitor description, with two fixed string buffers.</summary>
-    [StructLayout(LayoutKind.Sequential)]
-    internal unsafe struct DISPLAY_DEVICEW
-    {
-        public int cb;
-        public fixed char DeviceName[32];
-        public fixed char DeviceString[128];
-        public uint StateFlags;
-        public fixed char DeviceID[128];
-        public fixed char DeviceKey[128];
-    }
+    internal static partial bool GetMonitorInfoPtr(nint monitor, nint info);
 
     [LibraryImport("user32.dll", EntryPoint = "EnumDisplayDevicesW")]
     [return: MarshalAs(UnmanagedType.Bool)]
-    internal static partial bool EnumDisplayDevicesW(nint device, uint deviceNumber, ref DISPLAY_DEVICEW displayDevice, uint flags);
+    internal static partial bool EnumDisplayDevicesPtr(nint device, uint deviceNumber, nint displayDevice, uint flags);
 
     internal const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 
@@ -644,15 +626,15 @@ internal static partial class NativeMethods
     [LibraryImport("user32.dll")]
     internal static partial uint GetWindowThreadProcessId(nint hWnd, out uint processId);
 
-    [LibraryImport("user32.dll", SetLastError = true)]
-    internal static unsafe partial int GetClassNameW(nint hWnd, char* className, int maxCount);
+    [LibraryImport("user32.dll", SetLastError = true, EntryPoint = "GetClassNameW")]
+    internal static partial int GetClassNamePtr(nint hWnd, nint className, int maxCount);
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
     internal static partial nint OpenProcess(uint desiredAccess, [MarshalAs(UnmanagedType.Bool)] bool inheritHandle, uint processId);
 
-    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [LibraryImport("kernel32.dll", SetLastError = true, EntryPoint = "QueryFullProcessImageNameW")]
     [return: MarshalAs(UnmanagedType.Bool)]
-    internal static unsafe partial bool QueryFullProcessImageNameW(nint process, uint flags, char* name, ref uint size);
+    internal static partial bool QueryFullProcessImageNamePtr(nint process, uint flags, nint name, ref uint size);
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

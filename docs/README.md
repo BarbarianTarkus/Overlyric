@@ -59,4 +59,9 @@ backdrop, so the black is the capture background rather than a theme.
 | ![The Timing settings section](images/settings-timing.png) | ![The Advanced settings section](images/settings-advanced.png) |
 | The current output, the offset in force, and which override layer supplied it. | The folders, the cache size and clearing it, and the version in the footer. |
 
+![The Behaviour settings section](images/settings-behaviour.png)
+
+**Behaviour** is where the overlay gets out of the way: pause / no-lyrics / instrumental hides, the
+per-app hide list (add the app currently in front), the two warnings, and start with Windows.
+
 The [README](../README.md) uses a shorter selection.
