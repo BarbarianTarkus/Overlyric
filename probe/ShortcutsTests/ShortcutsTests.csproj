@@ -7,6 +7,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>ShortcutsTests</AssemblyName>
     <RootNamespace>Overlyric.ShortcutsTests</RootNamespace>
+    <!-- NativeMethods uses [LibraryImport], whose source-generated marshalling is unsafe code. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>

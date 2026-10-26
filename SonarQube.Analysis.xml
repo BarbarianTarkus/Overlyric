@@ -13,4 +13,8 @@
   <!-- The C# analyzer owns what the solution compiles. probe/ holds the experiments (not in
        Overlyric.slnx), docs/ and installer/ are not code, and bin/obj are build output. -->
   <Property Name="sonar.exclusions">probe/**,docs/**,dist/**,installer/**,tools/**,.dsh-tmp/**,**/bin/**,**/obj/**</Property>
+
+  <!-- Line coverage measured from the probe programs, merged by toolscollect-coverage.ps1. A missing
+       file only warns and the project falls back to 0 %, so run the script before the scanner. -->
+  <Property Name="sonar.cs.cobertura.reportsPaths">coverage/probes.xml</Property>
 </SonarQubeAnalysisProperties>

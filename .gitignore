@@ -7,5 +7,6 @@ publish/
 dist/
 installer/Payload.wxs
 .sonarqube/
+coverage/
 .env
 .agents/
