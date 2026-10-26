@@ -46,6 +46,7 @@ $defaultProbes = @(
     'TimingTests',
     'InfoTests',
     'KaraokeTests',
+    'LocalLyricsTests',
     'LyricWindowsTests',
     'LyricsTests',
     'ResilienceTests',
