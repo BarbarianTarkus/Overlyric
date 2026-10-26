@@ -174,7 +174,9 @@ internal abstract class PanelWindow : WindowBase
         var dark = 1;
         if (DwmSetWindowAttribute(Handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref dark, sizeof(int)) != 0)
         {
-            DwmSetWindowAttribute(Handle, DWMWA_USE_IMMERSIVE_DARK_MODE_OLD, ref dark, sizeof(int));
+            // Pre-20H1 builds only know the old attribute. If this one is refused too there is no
+            // third fallback, and a light title bar is not worth failing the window over.
+            _ = DwmSetWindowAttribute(Handle, DWMWA_USE_IMMERSIVE_DARK_MODE_OLD, ref dark, sizeof(int));
         }
 
         _dpi = ResolveDpi();

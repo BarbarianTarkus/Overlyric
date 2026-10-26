@@ -295,7 +295,7 @@ internal sealed class SettingsWindow : WindowBase
     /// </summary>
     private float _clientHeightDip = HeightDip;
 
-    private float ViewportTop => 108f;
+    private static float ViewportTop => 108f;
 
     private float ViewportBottom => _clientHeightDip - 40f;
 
@@ -420,7 +420,9 @@ internal sealed class SettingsWindow : WindowBase
         var dark = 1;
         if (DwmSetWindowAttribute(Handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref dark, sizeof(int)) != 0)
         {
-            DwmSetWindowAttribute(Handle, DWMWA_USE_IMMERSIVE_DARK_MODE_OLD, ref dark, sizeof(int));
+            // Pre-20H1 builds only know the old attribute. If this one is refused too there is no
+            // third fallback, and a light title bar is not worth failing the window over.
+            _ = DwmSetWindowAttribute(Handle, DWMWA_USE_IMMERSIVE_DARK_MODE_OLD, ref dark, sizeof(int));
         }
     }
 
@@ -2215,7 +2217,7 @@ internal sealed class SettingsWindow : WindowBase
     }
 
     /// <summary>The row each control lives in, so a control can be positioned without a second table.</summary>
-    private int RowOf(Control id) => id switch
+    private static int RowOf(Control id) => id switch
     {
         // Lyrics
         Control.ModeSingle or Control.ModePeek or Control.ModeMulti => 0,

@@ -685,7 +685,7 @@ public sealed class LrclibClient : IDisposable
             : LrcParser.Parse(record.SyncedLyrics!);
         var syncedUsable = synced.Count > 0 && !InstrumentalDetector.IsPlaceholderOnly(synced);
 
-        IReadOnlyList<LyricLine> plain = string.IsNullOrWhiteSpace(record.PlainLyrics)
+        List<LyricLine> plain = string.IsNullOrWhiteSpace(record.PlainLyrics)
             ? []
             : SplitPlainLyrics(record.PlainLyrics!);
         var plainUsable = plain.Count > 0 && !InstrumentalDetector.IsPlaceholderOnly(plain);

@@ -6,3 +6,6 @@ obj/
 publish/
 dist/
 installer/Payload.wxs
+.sonarqube/
+.env
+.agents/

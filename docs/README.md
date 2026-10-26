@@ -13,6 +13,7 @@ the design, the exact behaviour of each feature, and the measurements the claims
 | [OLED and burn-in](oled.md) | The burn-in controls and the one-click OLED preset |
 | [Configuration](configuration.md) | Every key in `config.json`, the lyric cache and pinned versions |
 | [Development](development.md) | Requirements, build, the icon, resource budget, the probes, and the project layout |
+| [SonarQube](sonarqube.md) | The self-hosted instance, how an analysis runs, what is in scope, and the tools agents get |
 | [Fullscreen feasibility](fullscreen-overlay-feasibility.md) | Why borderless works, why true exclusive fullscreen cannot, and what the alternatives would cost |
 
 The supporting research for the fullscreen question lives in [`feasibility/`](feasibility/).

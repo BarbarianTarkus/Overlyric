@@ -43,7 +43,7 @@ internal static class LyricsFile
         }
     }
 
-    private static IReadOnlyList<LyricLine> Parse(string yaml)
+    private static List<LyricLine> Parse(string yaml)
     {
         var lines = new List<LyricLine>();
 

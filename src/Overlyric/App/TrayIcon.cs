@@ -55,12 +55,12 @@ internal sealed class TrayIcon : IDisposable
             szInfoTitle = ""
         };
 
-        _added = Shell_NotifyIconW(NIM_ADD, ref data);
+        _added = ShellNotifyIcon(NIM_ADD, data);
 
         if (_added)
         {
             data.uFlags = NIF_TIP | NIF_SHOWTIP;
-            Shell_NotifyIconW(NIM_SETVERSION, ref data);
+            ShellNotifyIcon(NIM_SETVERSION, data);
         }
     }
 
@@ -83,7 +83,7 @@ internal sealed class TrayIcon : IDisposable
             szInfoTitle = ""
         };
 
-        Shell_NotifyIconW(NIM_MODIFY, ref data);
+        ShellNotifyIcon(NIM_MODIFY, data);
     }
 
     /// <summary>
@@ -111,7 +111,7 @@ internal sealed class TrayIcon : IDisposable
             dwInfoFlags = NIIF_INFO
         };
 
-        Shell_NotifyIconW(NIM_MODIFY, ref data);
+        ShellNotifyIcon(NIM_MODIFY, data);
     }
 
     /// <summary>Handle the raw messages Windows sends to the owner window for the tray icon.</summary>
@@ -237,7 +237,7 @@ internal sealed class TrayIcon : IDisposable
                 szInfoTitle = ""
             };
 
-            Shell_NotifyIconW(NIM_DELETE, ref data);
+            ShellNotifyIcon(NIM_DELETE, data);
             _added = false;
         }
     }

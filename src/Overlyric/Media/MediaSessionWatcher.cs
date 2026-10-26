@@ -79,7 +79,7 @@ internal sealed class MediaSessionWatcher : IAsyncDisposable
         _manager = manager;
         _readSettings = readSettings;
         _manager.CurrentSessionChanged += OnCurrentSessionChanged;
-        _pollTask = Task.Run(() => PollLoopAsync(_cts.Token));
+        _pollTask = Task.Run(() => PollLoopAsync(_cts.Token), _cts.Token);
     }
 
     /// <summary>Acquires the Windows media session manager. Works from any thread; GSMTC is agile.</summary>
@@ -419,9 +419,9 @@ internal sealed class MediaSessionWatcher : IAsyncDisposable
     /// The session to follow: Windows' own answer when nothing is configured, the selector's when
     /// something is. Null means nothing is to be followed.
     /// </summary>
-    private GlobalSystemMediaTransportControlsSession? SelectSession(
-        IReadOnlyList<SourceCandidate> candidates,
-        IReadOnlyList<GlobalSystemMediaTransportControlsSession> sessionsByKey,
+    private static GlobalSystemMediaTransportControlsSession? SelectSession(
+        List<SourceCandidate> candidates,
+        List<GlobalSystemMediaTransportControlsSession> sessionsByKey,
         SourceSettings settings,
         GlobalSystemMediaTransportControlsSession? current)
     {

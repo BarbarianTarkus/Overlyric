@@ -1,19 +1,26 @@
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using static Overlyric.Interop.NativeMethods;
 
 namespace Overlyric.Interop;
 
 /// <summary>
-/// Shared Win32 window plumbing. The window procedure is a <c>[UnmanagedCallersOnly]</c> static
-/// method reached through a function pointer, which is the NativeAOT-friendly alternative to
-/// marshalling a managed delegate.
+/// Shared Win32 window plumbing. The window procedure is a static method reached through a
+/// function-pointer thunk built once from <see cref="WndProcDelegate"/>. Keeping the delegate in a
+/// static field roots the thunk for the lifetime of the process, and building it through
+/// <see cref="System.Runtime.InteropServices.Marshal.GetFunctionPointerForDelegate{TDelegate}"/>
+/// keeps the interop in safe code.
 /// </summary>
 internal abstract class WindowBase : IDisposable
 {
     private static readonly Dictionary<nint, WindowBase> Registry = [];
     private static readonly HashSet<string> RegisteredClasses = [];
     private static readonly Lock Gate = new();
+
+    /// <summary>Roots the reverse P/Invoke thunk the window classes hand to Windows.</summary>
+    private static readonly WndProcDelegate WindowProcThunk = StaticWindowProc;
+
+    private static readonly nint WindowProcPointer =
+        Marshal.GetFunctionPointerForDelegate(WindowProcThunk);
 
     private bool _disposed;
 
@@ -77,13 +84,16 @@ internal abstract class WindowBase : IDisposable
                 return;
             }
 
-            unsafe
+            // RegisterClassExW copies the name into the atom table, so the native copy only has to
+            // outlive the call. The structure carries pointers to stay blittable for LibraryImport.
+            var className = Marshal.StringToHGlobalUni(ClassName);
+            try
             {
                 var windowClass = new WNDCLASSEXW
                 {
                     cbSize = Marshal.SizeOf<WNDCLASSEXW>(),
                     style = 0,
-                    lpfnWndProc = (nint)(delegate* unmanaged[Stdcall]<nint, uint, nint, nint, nint>)&StaticWindowProc,
+                    lpfnWndProc = WindowProcPointer,
                     cbClsExtra = 0,
                     cbWndExtra = 0,
                     hInstance = GetModuleHandleW(null),
@@ -92,8 +102,8 @@ internal abstract class WindowBase : IDisposable
                     hIcon = AppIcon.Large,
                     hCursor = LoadCursorW(IntPtr.Zero, new IntPtr(32512)),
                     hbrBackground = BackgroundBrush,
-                    lpszMenuName = null,
-                    lpszClassName = ClassName,
+                    lpszMenuName = IntPtr.Zero,
+                    lpszClassName = className,
                     hIconSm = AppIcon.Small
                 };
 
@@ -104,10 +114,13 @@ internal abstract class WindowBase : IDisposable
                         $"RegisterClassExW failed for '{ClassName}' (error {Marshal.GetLastWin32Error()}).");
                 }
             }
+            finally
+            {
+                Marshal.FreeHGlobal(className);
+            }
         }
     }
 
-    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static IntPtr StaticWindowProc(nint hWnd, uint msg, nint wParam, nint lParam)
     {
         WindowBase? target;

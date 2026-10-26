@@ -201,7 +201,7 @@ internal sealed class CompositionHost : IDisposable
 
         // Setting the same DPI again would invalidate Direct2D's device-dependent resources and
         // make it rebuild them, so only touch it when the value actually changed.
-        if (_appliedDpi != _dpi)
+        if (MathF.Abs(_appliedDpi - _dpi) >= 0.01f)
         {
             _d2dContext.SetDpi(_dpi, _dpi);
             _appliedDpi = _dpi;

@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using static Overlyric.Interop.NativeMethods;
 
 namespace Overlyric.Media;
@@ -14,16 +15,28 @@ namespace Overlyric.Media;
 /// <remarks>
 /// CoreAudio's session interfaces, driven through raw vtable calls rather than <c>[ComImport]</c>:
 /// NativeAOT carries no built-in COM support unless it is switched on, and switching it on to read
-/// one peak value would cost more than this costs. The call is deliberately shaped like the rest of
+/// one peak value would cost more than this costs. Every vtable slot is reached through a blittable
+/// delegate, so the calls themselves stay in safe code. The shape is the same as the rest of
 /// <c>Interop\NativeMethods.cs</c> - a handful of entry points, nothing else.
 /// </remarks>
-internal static unsafe class AudioSessions
+internal static class AudioSessions
 {
     /// <summary>
     /// Above this peak a session counts as audible. Digital silence reads exactly zero, so the bar
     /// only has to clear rounding noise; anything louder would start missing quiet playback.
     /// </summary>
     private const float AudiblePeak = 0.0005f;
+
+    // COM vtable slots. Every interface begins with IUnknown: QueryInterface 0, AddRef 1, Release 2.
+    private const int QueryInterfaceSlot = 0;
+    private const int ReleaseSlot = 2;
+    private const int GetPeakValueSlot = 3;           // IAudioMeterInformation
+    private const int ActivateSlot = 3;               // IMMDevice
+    private const int GetSessionCountSlot = 3;        // IAudioSessionEnumerator
+    private const int GetSessionSlot = 4;             // IAudioSessionEnumerator
+    private const int GetDefaultEndpointSlot = 4;     // IMMDeviceEnumerator
+    private const int GetSessionEnumeratorSlot = 5;   // IAudioSessionManager2
+    private const int IsSystemSoundsSessionSlot = 15; // IAudioSessionControl2
 
     private static readonly Guid ClsidMMDeviceEnumerator = new("BCDE0395-E52F-467C-8E3D-C4579291692E");
     private static readonly Guid IidIMMDeviceEnumerator = new("A95664D2-9614-4F35-A746-DE8DB63617E6");
@@ -59,12 +72,10 @@ internal static unsafe class AudioSessions
 
     private static bool AnySessionAudible(nint enumerator)
     {
-        var enumeratorVtbl = *(nint**)enumerator;
-        var getDefaultEndpoint = (delegate* unmanaged[Stdcall]<nint, int, int, nint*, int>)enumeratorVtbl[4];
+        var getDefaultEndpoint = Slot<GetDefaultEndpointDelegate>(enumerator, GetDefaultEndpointSlot);
 
-        nint device;
         // eRender, eMultimedia: the device Windows itself treats as "what you hear".
-        if (getDefaultEndpoint(enumerator, 0, 1, &device) < 0)
+        if (getDefaultEndpoint(enumerator, 0, 1, out var device) < 0)
         {
             return false;
         }
@@ -81,12 +92,9 @@ internal static unsafe class AudioSessions
 
     private static bool AnySessionAudibleOn(nint device)
     {
-        var deviceVtbl = *(nint**)device;
-        var activate = (delegate* unmanaged[Stdcall]<nint, Guid*, uint, nint, nint*, int>)deviceVtbl[3];
+        var activate = Slot<ActivateDelegate>(device, ActivateSlot);
 
-        var managerIid = IidIAudioSessionManager2;
-        nint manager;
-        if (activate(device, &managerIid, CLSCTX_ALL, IntPtr.Zero, &manager) < 0)
+        if (activate(device, IidIAudioSessionManager2, CLSCTX_ALL, IntPtr.Zero, out var manager) < 0)
         {
             return false;
         }
@@ -103,31 +111,26 @@ internal static unsafe class AudioSessions
 
     private static bool AnySessionAudibleUnder(nint manager)
     {
-        var managerVtbl = *(nint**)manager;
-        var getSessionEnumerator = (delegate* unmanaged[Stdcall]<nint, nint*, int>)managerVtbl[5];
+        var getSessionEnumerator = Slot<GetSessionEnumeratorDelegate>(manager, GetSessionEnumeratorSlot);
 
-        nint sessions;
-        if (getSessionEnumerator(manager, &sessions) < 0)
+        if (getSessionEnumerator(manager, out var sessions) < 0)
         {
             return false;
         }
 
         try
         {
-            var sessionsVtbl = *(nint**)sessions;
-            var getCount = (delegate* unmanaged[Stdcall]<nint, int*, int>)sessionsVtbl[3];
-            var getSession = (delegate* unmanaged[Stdcall]<nint, int, nint*, int>)sessionsVtbl[4];
+            var getCount = Slot<GetSessionCountDelegate>(sessions, GetSessionCountSlot);
+            var getSession = Slot<GetSessionDelegate>(sessions, GetSessionSlot);
 
-            int count;
-            if (getCount(sessions, &count) < 0)
+            if (getCount(sessions, out var count) < 0)
             {
                 return false;
             }
 
             for (var i = 0; i < count; i++)
             {
-                nint control;
-                if (getSession(sessions, i, &control) < 0)
+                if (getSession(sessions, i, out var control) < 0)
                 {
                     continue;
                 }
@@ -155,8 +158,7 @@ internal static unsafe class AudioSessions
 
     private static bool IsAudible(nint control)
     {
-        var vtbl = *(nint**)control;
-        var queryInterface = (delegate* unmanaged[Stdcall]<nint, Guid*, nint*, int>)vtbl[0];
+        var queryInterface = Slot<QueryInterfaceDelegate>(control, QueryInterfaceSlot);
 
         // Windows' own beeps and chimes are not a player, and would otherwise always count.
         if (IsSystemSounds(control, queryInterface))
@@ -166,20 +168,16 @@ internal static unsafe class AudioSessions
 
         // The meter hangs off the session control, and the peak is what separates "making noise"
         // from "holding a stream open" - a game sitting in a menu keeps a session alive for hours.
-        var meterIid = IidIAudioMeterInformation;
-        nint meter;
-        if (queryInterface(control, &meterIid, &meter) < 0)
+        if (queryInterface(control, IidIAudioMeterInformation, out var meter) < 0)
         {
             return false;
         }
 
         try
         {
-            var meterVtbl = *(nint**)meter;
-            var getPeakValue = (delegate* unmanaged[Stdcall]<nint, float*, int>)meterVtbl[3];
+            var getPeakValue = Slot<GetPeakValueDelegate>(meter, GetPeakValueSlot);
 
-            float peak;
-            return getPeakValue(meter, &peak) >= 0 && peak > AudiblePeak;
+            return getPeakValue(meter, out var peak) >= 0 && peak > AudiblePeak;
         }
         finally
         {
@@ -187,21 +185,16 @@ internal static unsafe class AudioSessions
         }
     }
 
-    private static bool IsSystemSounds(
-        nint control,
-        delegate* unmanaged[Stdcall]<nint, Guid*, nint*, int> queryInterface)
+    private static bool IsSystemSounds(nint control, QueryInterfaceDelegate queryInterface)
     {
-        var control2Iid = IidIAudioSessionControl2;
-        nint control2;
-        if (queryInterface(control, &control2Iid, &control2) < 0)
+        if (queryInterface(control, IidIAudioSessionControl2, out var control2) < 0)
         {
             return false;
         }
 
         try
         {
-            var vtbl = *(nint**)control2;
-            var isSystemSoundsSession = (delegate* unmanaged[Stdcall]<nint, int>)vtbl[15];
+            var isSystemSoundsSession = Slot<IsSystemSoundsDelegate>(control2, IsSystemSoundsSessionSlot);
 
             // S_OK means "yes, this is the system sounds session".
             return isSystemSoundsSession(control2) == 0;
@@ -216,8 +209,40 @@ internal static unsafe class AudioSessions
     {
         if (unknown != IntPtr.Zero)
         {
-            var vtbl = *(nint**)unknown;
-            ((delegate* unmanaged[Stdcall]<nint, uint>)vtbl[2])(unknown);
+            Slot<ReleaseDelegate>(unknown, ReleaseSlot)(unknown);
         }
     }
+
+    /// <summary>Reads one slot out of an interface's vtable as a callable delegate.</summary>
+    private static T Slot<T>(nint instance, int slot)
+        where T : Delegate =>
+        Marshal.GetDelegateForFunctionPointer<T>(
+            Marshal.ReadIntPtr(Marshal.ReadIntPtr(instance), slot * IntPtr.Size));
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int QueryInterfaceDelegate(nint self, in Guid iid, out nint result);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate uint ReleaseDelegate(nint self);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int GetDefaultEndpointDelegate(nint self, int dataFlow, int role, out nint device);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int ActivateDelegate(nint self, in Guid iid, uint classContext, nint outer, out nint result);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int GetSessionEnumeratorDelegate(nint self, out nint enumerator);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int GetSessionCountDelegate(nint self, out int count);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int GetSessionDelegate(nint self, int index, out nint control);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int GetPeakValueDelegate(nint self, out float peak);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int IsSystemSoundsDelegate(nint self);
 }

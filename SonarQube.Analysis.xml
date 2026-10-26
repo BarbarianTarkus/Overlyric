@@ -1,0 +1,16 @@
+<SonarQubeAnalysisProperties xmlns="http://www.sonarsource.com/msbuild/integration/2015/1">
+  <!--
+    Settings for the SonarScanner for .NET. The scanner for .NET does not read
+    sonar-project.properties; its settings file is this one, passed with /s: on the begin
+    command. The project key and the version stay on the command line because the scanner
+    requires them there, and the token comes from SONARQUBE_TOKEN so it never enters the
+    repository.
+  -->
+  <Property Name="sonar.projectName">Overlyric</Property>
+  <Property Name="sonar.host.url">https://sonarqube.verduguez.com</Property>
+  <Property Name="sonar.sourceEncoding">UTF-8</Property>
+
+  <!-- The C# analyzer owns what the solution compiles. probe/ holds the experiments (not in
+       Overlyric.slnx), docs/ and installer/ are not code, and bin/obj are build output. -->
+  <Property Name="sonar.exclusions">probe/**,docs/**,dist/**,installer/**,tools/**,.dsh-tmp/**,**/bin/**,**/obj/**</Property>
+</SonarQubeAnalysisProperties>

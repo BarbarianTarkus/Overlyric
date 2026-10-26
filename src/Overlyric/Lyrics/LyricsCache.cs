@@ -483,7 +483,7 @@ public sealed class LyricsCache
         return Now() - writtenAt >= (long)TombstoneLifetime.TotalSeconds;
     }
 
-    private void WriteAtomic(string path, string json)
+    private static void WriteAtomic(string path, string json)
     {
         var temp = string.Concat(path, ".", Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture), ".tmp");
 

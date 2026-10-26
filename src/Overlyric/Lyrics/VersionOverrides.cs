@@ -104,13 +104,8 @@ public sealed class VersionOverrides
     {
         while (_map.Count > MaxEntries)
         {
-            string? oldest = null;
-
-            foreach (var key in _map.Keys)
-            {
-                oldest = key;
-                break;
-            }
+            // The dictionary is insertion ordered, so its first key is the least recently added one.
+            var oldest = _map.Keys.FirstOrDefault();
 
             if (oldest is null)
             {

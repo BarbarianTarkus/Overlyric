@@ -1213,7 +1213,7 @@ internal sealed class AppHost
 
                 if (needsVersions)
                 {
-                    await LoadVersionsAsync(artist, title, album, duration, revision, token, refresh: false)
+                    await LoadVersionsAsync(artist, title, album, duration, revision, refresh: false, token)
                         .ConfigureAwait(false);
                 }
             },
@@ -1229,8 +1229,8 @@ internal sealed class AppHost
         string? album,
         double? durationSeconds,
         long revision,
-        CancellationToken ct,
-        bool refresh)
+        bool refresh,
+        CancellationToken ct)
     {
         if (_lyrics is null)
         {
@@ -1308,6 +1308,13 @@ internal sealed class AppHost
         };
     }
 
+    /// <summary>
+    /// Compares the floats of a frame. Every one of them is quantised before it reaches the visual
+    /// (progress to 1/200, the burn-in shift to whole pixels), so a tolerance far below that step
+    /// compares exactly what the eye sees without testing floating-point values for exact equality.
+    /// </summary>
+    private static bool SameValue(float a, float b) => MathF.Abs(a - b) < 0.0001f;
+
     private static bool VisualEquals(OverlayVisual a, OverlayVisual b)
     {
         if (a.Mode != b.Mode
@@ -1315,8 +1322,8 @@ internal sealed class AppHost
             || a.ShowHeader != b.ShowHeader
             || a.ShowProgressBar != b.ShowProgressBar
             || a.SungChars != b.SungChars
-            || a.OffsetX != b.OffsetX
-            || a.OffsetY != b.OffsetY
+            || !SameValue(a.OffsetX, b.OffsetX)
+            || !SameValue(a.OffsetY, b.OffsetY)
             || a.OffsetIsDefault != b.OffsetIsDefault
             || !string.Equals(a.OffsetLabel, b.OffsetLabel, StringComparison.Ordinal)
             || !string.Equals(a.Header, b.Header, StringComparison.Ordinal)
@@ -1328,7 +1335,7 @@ internal sealed class AppHost
         }
 
         // A gap indicator is drawn even when the progress bar is off, so it gets its own check.
-        if (a.GapProgress != b.GapProgress)
+        if (!SameValue(a.GapProgress, b.GapProgress))
         {
             return false;
         }
@@ -1336,7 +1343,7 @@ internal sealed class AppHost
         // Progress only warrants a redraw when it is actually being drawn; otherwise a moving
         // position would force a frame every tick for something invisible.
         if (a.ShowProgressBar
-            && (a.LineProgress != b.LineProgress || a.TrackProgress != b.TrackProgress))
+            && (!SameValue(a.LineProgress, b.LineProgress) || !SameValue(a.TrackProgress, b.TrackProgress)))
         {
             return false;
         }
@@ -1846,8 +1853,8 @@ internal sealed class AppHost
             snapshot.Album,
             snapshot.DurationSeconds,
             snapshot.Revision,
-            CancellationToken.None,
-            refresh);
+            refresh,
+            CancellationToken.None);
     }
 
     /// <summary>
@@ -1999,7 +2006,7 @@ internal sealed class AppHost
         OnTick();
     }
 
-    private void OpenFolder(string path)
+    private static void OpenFolder(string path)
     {
         try
         {
@@ -2413,7 +2420,7 @@ internal sealed class AppHost
     /// polling while the menu is open, so re-reading <see cref="MediaSessionWatcher.LiveSources"/> at
     /// click time could name a different player than the row that was clicked.
     /// </remarks>
-    private IReadOnlyList<TrayMenuItem> SourceMenuItems()
+    private List<TrayMenuItem> SourceMenuItems()
     {
         var pinned = (_config.SourcePinned ?? "").Trim();
         var sources = _watcher?.LiveSources ?? [];
