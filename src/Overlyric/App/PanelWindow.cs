@@ -35,6 +35,9 @@ internal abstract class PanelWindow : WindowBase
     private const int WmCaptureChanged = 0x0215;
     private const int IdcHand = 32649;
 
+    /// <summary>How close to an edge the pointer has to be, in DIP, to start a resize.</summary>
+    private const float ResizeBorderDip = 6f;
+
     protected const uint ColorWindow = 0xFF0F1116;
     protected const uint ColorTitle = 0xFF0A0C10;
     protected const uint ColorLine = 0xFF1E222B;
@@ -65,9 +68,23 @@ internal abstract class PanelWindow : WindowBase
     private int _dragControl;
     private bool _dragging;
 
-    protected abstract float WidthDip { get; }
+    /// <summary>The live size in DIP. It starts at the subclass default and follows the window border.</summary>
+    private float _widthDip = 900f;
+    private float _heightDip = 560f;
 
-    protected abstract float HeightDip { get; }
+    protected float WidthDip => _widthDip;
+
+    protected float HeightDip => _heightDip;
+
+    /// <summary>The size a panel opens at; the user can then resize it down to the minimums below.</summary>
+    protected abstract float DefaultWidthDip { get; }
+
+    protected abstract float DefaultHeightDip { get; }
+
+    /// <summary>The smallest body the layout can still draw without overlapping its own columns.</summary>
+    protected virtual float MinWidthDip => 640f;
+
+    protected virtual float MinHeightDip => 380f;
 
     protected abstract string Title { get; }
 
@@ -127,9 +144,12 @@ internal abstract class PanelWindow : WindowBase
         }
         else if (!_open)
         {
-            // A hidden panel keeps its last position; only the first show centres it. The DPI is
-            // re-read because the panel may have been hidden while the monitor changed.
+            // A hidden panel keeps its last position and the size the user left it at; only the
+            // first show centres it. The DPI is re-read because the panel may have been hidden
+            // while the monitor changed, and the size is clamped so a window dragged onto a
+            // smaller screen does not reopen with its edges off screen.
             _dpi = ResolveDpi();
+            FitToMonitor(MonitorFromWindow(Handle, MONITOR_DEFAULTTONEAREST));
             ApplyBounds(center: false);
         }
 
@@ -169,6 +189,9 @@ internal abstract class PanelWindow : WindowBase
 
     private void CreatePanel(nint monitor)
     {
+        _widthDip = DefaultWidthDip;
+        _heightDip = DefaultHeightDip;
+
         CreateWindow(Title, (int)WidthDip, (int)WindowHeight);
 
         var dark = 1;
@@ -180,9 +203,46 @@ internal abstract class PanelWindow : WindowBase
         }
 
         _dpi = ResolveDpi();
+        FitToMonitor(monitor != nint.Zero ? monitor : MonitorUnderCursor());
         ApplyBounds(center: true, monitor);
         EnsureHost();
         OnPanelCreated();
+    }
+
+    /// <summary>
+    /// Keep a panel inside the monitor's work area. The defaults were chosen for a 1080p desktop at
+    /// 100 %; at 200 % the same DIP size can be taller than the screen, and the footer is the part
+    /// that would fall off. Clamping in DIP keeps the layout and the window in the same unit.
+    /// </summary>
+    private void FitToMonitor(nint monitor)
+    {
+        var target = monitor != nint.Zero
+            ? monitor
+            : MonitorFromWindow(Handle, MONITOR_DEFAULTTONEAREST);
+
+        if (target == nint.Zero)
+        {
+            return;
+        }
+
+        var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+
+        if (!GetMonitorInfoW(target, ref info))
+        {
+            return;
+        }
+
+        var scale = _dpi / 96f;
+        var maxWidth = MathF.Max(320f, (info.rcWork.Width / scale) - 12f);
+
+        // The body is what the subclass sizes; the title bar is added on top of it, so it has to
+        // come out of the work area as well or the footer lands just below the screen.
+        var maxHeight = MathF.Max(240f, (info.rcWork.Height / scale) - 12f - TitleHeight);
+        var minWidth = MathF.Min(MinWidthDip, maxWidth);
+        var minHeight = MathF.Min(MinHeightDip, maxHeight);
+
+        _widthDip = Math.Clamp(_widthDip, minWidth, maxWidth);
+        _heightDip = Math.Clamp(_heightDip, minHeight, maxHeight);
     }
 
     protected virtual void OnPanelCreated()
@@ -238,6 +298,31 @@ internal abstract class PanelWindow : WindowBase
 
         _host?.Resize(width, height, _dpi);
         OnPanelResized();
+    }
+
+    /// <summary>
+    /// Follow a live resize. The frame has already moved by the time WM_SIZE arrives, so the new
+    /// size is read back from the client rectangle; the composition surface follows in the same
+    /// message, which is what keeps the panel from showing a stretched frame or a blank strip
+    /// while the border is being dragged.
+    /// </summary>
+    private void OnClientSizeChanged()
+    {
+        if (Handle == nint.Zero
+            || !GetClientRect(Handle, out var client)
+            || client.Width <= 0
+            || client.Height <= 0)
+        {
+            return;
+        }
+
+        var scale = _dpi / 96f;
+        _widthDip = client.Width / scale;
+        _heightDip = MathF.Max(0f, (client.Height / scale) - TitleHeight);
+
+        _host?.Resize(client.Width, client.Height, _dpi);
+        OnPanelResized();
+        Render();
     }
 
     /// <summary>The monitor under the cursor, which is where the click that opened the panel happened.</summary>
@@ -378,6 +463,16 @@ internal abstract class PanelWindow : WindowBase
                 Render();
                 return IntPtr.Zero;
 
+            case WM_SIZE:
+                OnClientSizeChanged();
+                return IntPtr.Zero;
+
+            case WM_GETMINMAXINFO:
+                // The minimum is a body size in DIP; the native sizing loop wants window pixels,
+                // and a panel's window is its body plus the title bar.
+                ApplyMinimumTrackSize(lParam, _dpi, MinWidthDip, MinHeightDip + TitleHeight);
+                return IntPtr.Zero;
+
             case WM_NCHITTEST:
                 return HitTest(lParam);
 
@@ -427,8 +522,17 @@ internal abstract class PanelWindow : WindowBase
                 return IntPtr.Zero;
 
             case WM_DPICHANGED:
+                // Keep the top-left corner: a resizable window that jumps to the middle of the
+                // screen whenever it crosses a monitor boundary is worse than one that does not.
+                _dpi = ResolveDpi();
+                FitToMonitor(MonitorFromWindow(Handle, MONITOR_DEFAULTTONEAREST));
+                ApplyBounds(center: false);
+                Render();
+                return IntPtr.Zero;
+
             case WM_DISPLAYCHANGE:
                 _dpi = ResolveDpi();
+                FitToMonitor(MonitorFromWindow(Handle, MONITOR_DEFAULTTONEAREST));
                 ApplyBounds(center: true);
                 Render();
                 return IntPtr.Zero;
@@ -443,6 +547,15 @@ internal abstract class PanelWindow : WindowBase
 
     private IntPtr HitTest(nint lParam)
     {
+        // The border wins over the title bar and the body: a press there must size the window,
+        // not drag it, and Windows turns the returned HT* code into the resize cursor for free.
+        var resize = ResizeFrameHitTest(Handle, lParam, _dpi, ResizeBorderDip);
+
+        if (resize.ToInt64() != HTCLIENT)
+        {
+            return resize;
+        }
+
         var raw = lParam.ToInt64();
         var point = new POINT
         {

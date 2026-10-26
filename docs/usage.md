@@ -119,8 +119,10 @@ records, best first.*
 **Full lyrics** opens the complete sheet described under [The complete lyric sheet](lyrics.md#the-complete-lyric-sheet).
 Its **Search LRCLIB** button (or `Ctrl+F`) opens a query field when the automatic lookup cannot find the
 song, and a result picked there is pinned for the track and shown immediately. Both windows are
-fixed-size, dark, and close with **Esc**; they reuse the overlay's DirectComposition stack and the
-settings window's palette, so they add no new UI framework.
+dark, resize from any edge or corner, and close with **Esc**; they reuse the overlay's
+DirectComposition stack and the settings window's palette, so they add no new UI framework. The
+selector's title column takes the extra width, while its match, length and badge columns stay
+anchored to the right; the sheet re-wraps its lines at the new width.
 
 ![The full lyric sheet in demo mode](images/lyric-viewer.png)
 
@@ -128,7 +130,7 @@ settings window's palette, so they add no new UI framework.
 
 ## Settings window
 
-`Settings…` in the tray, or `Overlyric.exe --settings`, opens a fixed-width dark window with eight
+`Settings…` in the tray, or `Overlyric.exe --settings`, opens a resizable dark window with eight
 sections down the left, in two groups. **ON SCREEN** holds **Lyrics** (mode, lines shown, text sizes,
 the karaoke sweep, and the track info and info pop-up that belong together), **Appearance** (the
 backdrop, what stays lit, and the burn-in preset and tools — see [OLED and burn-in](oled.md)),
@@ -145,9 +147,10 @@ dead until that row is on — turn **Show track info** off and **Info pop-up** g
 A section taller than the window scrolls: the wheel, the scrollbar, `PageUp`/`PageDown` and
 `Home`/`End` move the rows under a header that stays put, so the section's name is always in view.
 `Tab` and `Shift+Tab` walk the controls in reading order and ring the one that has focus; `Enter`
-or `Space` presses it. The window also shrinks to the monitor's work area, which is what keeps it
-reachable at 200 % scaling on a 1080p display — the rows scroll instead of the window growing past the
-screen.
+or `Space` presses it. Drag any edge or corner to resize the window: the navigation keeps its
+width, the content columns take the new width, and the viewport shows more or fewer rows before they
+scroll. It also shrinks to the monitor's work area, which is what keeps it reachable at 200 %
+scaling on a 1080p display — the rows scroll instead of the window growing past the screen.
 
 ![The settings window, on the Lyrics section](images/settings-window.png)
 

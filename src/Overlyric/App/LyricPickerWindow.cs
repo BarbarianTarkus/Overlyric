@@ -38,13 +38,15 @@ internal sealed class LyricPickerWindow : PanelWindow
     private const float RowHeight = 46f;
 
     /// <summary>
-    /// The fixed columns after the title. They are left edges rather than right edges so the title,
-    /// the match delta, the length and the badges cannot drift into one another. The delta leads: it
-    /// is the number that decides the choice, and the length only explains it.
+    /// The columns after the title are measured from the right edge, so the badges and the numbers
+    /// stay where the eye expects them and the title gets whatever room is left. On the default
+    /// 900 DIP window that puts the delta at 470 and the length at 558; shrinking the window shortens
+    /// the title first, and growing it lengthens the title rather than scattering the columns.
     /// </summary>
-    private const float TitleWidth = 438f;
-    private const float MatchLeft = 505f;
-    private const float DurationLeft = 578f;
+    private const float BadgeColumnWidth = 220f;
+    private const float MatchColumnWidth = 70f;
+    private const float DurationColumnWidth = 60f;
+    private const float ColumnGap = 18f;
 
     private readonly Func<LyricPickerModel> _model;
     private readonly Action<long?> _select;
@@ -70,15 +72,25 @@ internal sealed class LyricPickerWindow : PanelWindow
         _viewLyrics = viewLyrics;
     }
 
-    protected override float WidthDip => 900f;
+    protected override float DefaultWidthDip => 900f;
 
-    protected override float HeightDip => 580f;
+    protected override float DefaultHeightDip => 580f;
+
+    protected override float MinWidthDip => 720f;
+
+    protected override float MinHeightDip => 360f;
 
     protected override string Title => "Choose lyrics";
 
     private float ListBottom => HeightDip - FooterHeight;
 
     private float ListRight => WidthDip - 44f;
+
+    private float TitleWidth => MathF.Max(80f, MatchLeft - (Pad + 34f) - 16f);
+
+    private float MatchLeft => ListRight - BadgeColumnWidth - ColumnGap - DurationColumnWidth - ColumnGap - MatchColumnWidth;
+
+    private float DurationLeft => ListRight - BadgeColumnWidth - ColumnGap - DurationColumnWidth;
 
     protected override void DrawBody(ID2D1DeviceContext context)
     {

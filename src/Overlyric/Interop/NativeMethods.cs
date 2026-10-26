@@ -27,8 +27,10 @@ internal static partial class NativeMethods
     internal const int WS_MINIMIZEBOX = 0x00020000;
 
     internal const int WM_DESTROY = 0x0002;
+    internal const int WM_SIZE = 0x0005;
     internal const int WM_CLOSE = 0x0010;
     internal const int WM_PAINT = 0x000F;
+    internal const int WM_GETMINMAXINFO = 0x0024;
     internal const int WM_ERASEBKGND = 0x0014;
     internal const int WM_KEYDOWN = 0x0100;
     internal const int WM_CHAR = 0x0102;
@@ -51,8 +53,16 @@ internal static partial class NativeMethods
     internal const uint CF_UNICODETEXT = 13;
 
     internal const int HTTRANSPARENT = -1;
-    internal const int HTCAPTION = 2;
     internal const int HTCLIENT = 1;
+    internal const int HTCAPTION = 2;
+    internal const int HTLEFT = 10;
+    internal const int HTRIGHT = 11;
+    internal const int HTTOP = 12;
+    internal const int HTTOPLEFT = 13;
+    internal const int HTTOPRIGHT = 14;
+    internal const int HTBOTTOM = 15;
+    internal const int HTBOTTOMLEFT = 16;
+    internal const int HTBOTTOMRIGHT = 17;
 
     internal static readonly IntPtr HWND_TOPMOST = new(-1);
     internal const uint SWP_NOSIZE = 0x0001;
@@ -147,6 +157,20 @@ internal static partial class NativeMethods
 
         public readonly int Width => Right - Left;
         public readonly int Height => Bottom - Top;
+    }
+
+    /// <summary>
+    /// The sizing limits a window reports for WM_GETMINMAXINFO. Only the minimum tracking size is
+    /// written; the remaining fields are left exactly as Windows supplied them.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct MINMAXINFO
+    {
+        public POINT ptReserved;
+        public POINT ptMaxSize;
+        public POINT ptMaxPosition;
+        public POINT ptMinTrackSize;
+        public POINT ptMaxTrackSize;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]

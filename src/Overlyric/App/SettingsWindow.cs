@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using Overlyric.Interop;
 using Overlyric.Media;
 using Overlyric.Overlay;
@@ -180,17 +181,23 @@ internal sealed class SettingsWindow : WindowBase
         Scrollbar = 54
     }
 
-    private const float WidthDip = 780f;
-    private const float HeightDip = 540f;
+    private const float DefaultWidthDip = 780f;
+    private const float DefaultHeightDip = 540f;
     private const float TitleHeightDip = 44f;
-    private const float WindowHeightDip = HeightDip + TitleHeightDip;
+
+    /// <summary>The narrowest window whose rows still keep their labels and controls apart.</summary>
+    private const float MinWidthDip = 700f;
+
+    private const float MinWindowHeightDip = 400f;
+
+    /// <summary>How close to an edge the pointer has to be, in DIP, to start a resize.</summary>
+    private const float ResizeBorderDip = 6f;
+
     private const float NavWidthDip = 196f;
     private const float PadDip = 30f;
     private const float RowHeightDip = 46f;
     private const float RowsTopDip = 132f;
     private const float ContentLeft = NavWidthDip + PadDip;
-    private const float ContentRight = WidthDip - PadDip;
-    private const float ContentWidth = ContentRight - ContentLeft;
 
     /// <summary>
     /// The cluster of up, down and remove buttons at the right of a priority row, sized and spaced
@@ -290,10 +297,21 @@ internal sealed class SettingsWindow : WindowBase
     private int _focus = -1;
 
     /// <summary>
-    /// The live client height in DIP. The window prefers 540 but shrinks to fit the monitor's work area,
-    /// which is what keeps a 200 % window on a 1080p screen reachable rather than taller than the screen.
+    /// The live window size in DIP. The window opens at 780x584 but the user can resize it, and it
+    /// clamps to the monitor's work area so a 200 % window stays reachable instead of growing past
+    /// the screen. The layout reads these two values rather than constants, which is what makes the
+    /// navigation stay put while the content columns take the new width.
     /// </summary>
-    private float _clientHeightDip = HeightDip;
+    private float _widthDip = DefaultWidthDip;
+
+    private float _windowHeightDip = DefaultHeightDip + TitleHeightDip;
+
+    /// <summary>The content area below the title bar, in DIP.</summary>
+    private float _clientHeightDip => _windowHeightDip - TitleHeightDip;
+
+    private float ContentRight => _widthDip - PadDip;
+
+    private float ContentWidth => ContentRight - ContentLeft;
 
     private static float ViewportTop => 108f;
 
@@ -367,7 +385,7 @@ internal sealed class SettingsWindow : WindowBase
         }
         else if (!_open)
         {
-            ApplyDpi();
+            Resume();
         }
 
         _open = true;
@@ -407,14 +425,17 @@ internal sealed class SettingsWindow : WindowBase
 
     private void Create()
     {
-        CreateWindow("Overlyric Settings", (int)WidthDip, (int)HeightDip);
+        CreateWindow("Overlyric Settings", (int)DefaultWidthDip, (int)(DefaultHeightDip + TitleHeightDip));
 
-        // A fixed-size window: no maximise box, no resize border, nothing to reflow.
+        // Resizable, but not maximizable: the content is a single column of rows, and a maximise box
+        // would stretch it across the screen with no way back except restore.
         var style = GetWindowLongPtrW(Handle, -16).ToInt64();
         style &= ~0x00010000L; // WS_MAXIMIZEBOX
         SetWindowLongPtrW(Handle, -16, new nint(style));
 
-        ApplyDpi();
+        _dpi = ResolveDpi();
+        FitToWorkArea();
+        ApplyBounds(center: true);
 
         // Dark title bar, so the window does not sit in a bright frame.
         var dark = 1;
@@ -426,41 +447,151 @@ internal sealed class SettingsWindow : WindowBase
         }
     }
 
-    private void ApplyDpi()
+    private float ResolveDpi()
     {
         var dpi = GetDpiForWindow(Handle);
-        _dpi = dpi > 0 ? dpi : 96f;
+        return dpi > 0 ? dpi : 96f;
+    }
 
-        // Frameless: the window is exactly the client area.
-        var clientWidth = ToPixels(WidthDip);
-        var windowWidth = clientWidth;
-        var windowHeight = ToPixels(WindowHeightDip);
+    /// <summary>
+    /// Reopening keeps the size and position the user left the window at. The DPI is re-read because
+    /// the window may have been hidden while the monitor changed, and the size is clamped so a
+    /// window left on a monitor that has since gone away is still reachable.
+    /// </summary>
+    private void Resume()
+    {
+        _dpi = ResolveDpi();
+        FitToWorkArea();
+        ApplyBounds(center: false);
+    }
 
+    /// <summary>
+    /// Shrink to the monitor's work area. At 200 % on a 1080p panel the work area is only about
+    /// 520 DIP tall, shorter than the window wants to be; shrinking keeps the footer and the last
+    /// row on screen, and the rows scroll instead of the window growing past the display.
+    /// </summary>
+    private void FitToWorkArea()
+    {
         var monitor = MonitorFromWindow(Handle, MONITOR_DEFAULTTONEAREST);
-        var info = new MONITORINFO { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<MONITORINFO>() };
+        var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+
+        if (!GetMonitorInfoW(monitor, ref info))
+        {
+            return;
+        }
+
+        var scale = _dpi / 96f;
+        var maxWidth = MathF.Max(320f, (info.rcWork.Width / scale) - 12f);
+        var maxHeight = MathF.Max(240f, (info.rcWork.Height / scale) - 12f);
+
+        // On a screen smaller than the minimum the clamp has to allow the maximum: a window that
+        // cannot fit is better than one that cannot be reached.
+        _widthDip = Math.Clamp(_widthDip, MathF.Min(MinWidthDip, maxWidth), maxWidth);
+        _windowHeightDip = Math.Clamp(_windowHeightDip, MathF.Min(MinWindowHeightDip, maxHeight), maxHeight);
+    }
+
+    /// <summary>
+    /// Match the window to the stored DIP size. Centring is for the first show; after that the
+    /// top-left corner is kept, because a window that jumps to the middle whenever it is reopened
+    /// is a window that cannot be placed.
+    /// </summary>
+    private void ApplyBounds(bool center)
+    {
+        var width = ToPixels(_widthDip);
+        var height = ToPixels(_windowHeightDip);
+        var monitor = MonitorFromWindow(Handle, MONITOR_DEFAULTTONEAREST);
+        var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+        var placed = GetWindowRect(Handle, out var current);
         var x = 0;
         var y = 0;
 
         if (GetMonitorInfoW(monitor, ref info))
         {
-            // At 200 % on a 1080p panel the work area is 540 DIP, shorter than this window wants to be.
-            // Shrinking to the work area keeps the footer and the last row on screen; the rows scroll
-            // instead of the window growing past the display.
-            windowHeight = Math.Min(windowHeight, info.rcWork.Height - ToPixels(12f));
-            x = info.rcWork.Left + ((info.rcWork.Width - windowWidth) / 2);
-            y = info.rcWork.Top + ((info.rcWork.Height - windowHeight) / 2);
+            if (center || !placed)
+            {
+                x = info.rcWork.Left + ((info.rcWork.Width - width) / 2);
+                y = info.rcWork.Top + ((info.rcWork.Height - height) / 2);
+            }
+            else
+            {
+                x = Math.Clamp(current.Left, info.rcWork.Left, Math.Max(info.rcWork.Left, info.rcWork.Right - width));
+                y = Math.Clamp(current.Top, info.rcWork.Top, Math.Max(info.rcWork.Top, info.rcWork.Bottom - height));
+            }
+        }
+        else if (placed)
+        {
+            x = current.Left;
+            y = current.Top;
         }
 
-        // Content coordinates start below the title bar, so this is the window minus the title: the
-        // footer sits 30 DIP above it, and a value that forgot the title would push the footer off the
-        // bottom edge and let the last row draw past the clip.
-        _clientHeightDip = (windowHeight / (_dpi / 96f)) - TitleHeightDip;
+        SetWindowPos(Handle, IntPtr.Zero, x, y, width, height, SWP_NOACTIVATE | SWP_NOZORDER);
 
-        SetWindowPos(Handle, IntPtr.Zero, x, y, windowWidth, windowHeight, SWP_NOACTIVATE | SWP_NOZORDER);
-
-        _host?.Resize(windowWidth, windowHeight, _dpi);
-        EnsureHost(windowWidth, windowHeight);
+        _host?.Resize(width, height, _dpi);
+        EnsureHost(width, height);
         Render();
+    }
+
+    /// <summary>
+    /// Follow a live resize. Windows has already moved the frame by the time WM_SIZE arrives, so
+    /// the size is read back from the client rectangle; the composition surface follows in the same
+    /// message, which keeps a dragged border from showing a stretched row or a blank strip.
+    /// </summary>
+    private void OnClientSizeChanged()
+    {
+        if (!GetClientRect(Handle, out var client) || client.Width <= 0 || client.Height <= 0)
+        {
+            return;
+        }
+
+        var scale = _dpi / 96f;
+        _widthDip = client.Width / scale;
+        _windowHeightDip = client.Height / scale;
+
+        _host?.Resize(client.Width, client.Height, _dpi);
+
+        // A taller viewport can make the old scroll position past the end of the section.
+        _scroll = Math.Clamp(_scroll, 0f, MaxScroll);
+        Render();
+    }
+
+    /// <summary>
+    /// Adopt the rectangle Windows recommends for a new DPI. It carries the old size scaled by the
+    /// DPI ratio, so the window keeps its visual size instead of jumping a third of the screen.
+    /// </summary>
+    private void OnDpiChanged(nint lParam)
+    {
+        _dpi = ResolveDpi();
+        var suggested = Marshal.PtrToStructure<RECT>(lParam);
+        var scale = _dpi / 96f;
+
+        if (suggested.Width > 0 && suggested.Height > 0)
+        {
+            _widthDip = suggested.Width / scale;
+            _windowHeightDip = suggested.Height / scale;
+
+            SetWindowPos(
+                Handle,
+                IntPtr.Zero,
+                suggested.Left,
+                suggested.Top,
+                suggested.Width,
+                suggested.Height,
+                SWP_NOACTIVATE | SWP_NOZORDER);
+
+            _host?.Resize(suggested.Width, suggested.Height, _dpi);
+            Render();
+            return;
+        }
+
+        FitToWorkArea();
+        ApplyBounds(center: false);
+    }
+
+    private void OnDisplayChanged()
+    {
+        _dpi = ResolveDpi();
+        FitToWorkArea();
+        ApplyBounds(center: false);
     }
 
     private void EnsureHost(int pixelWidth, int pixelHeight)
@@ -481,7 +612,7 @@ internal sealed class SettingsWindow : WindowBase
 
         try
         {
-            EnsureHost(ToPixels(WidthDip), ToPixels(HeightDip));
+            EnsureHost(ToPixels(_widthDip), ToPixels(_windowHeightDip));
             Render();
         }
         catch (Exception)
@@ -520,6 +651,14 @@ internal sealed class SettingsWindow : WindowBase
                 BeginPaint(hWnd, out var paint);
                 EndPaint(hWnd, ref paint);
                 Render();
+                return IntPtr.Zero;
+
+            case WM_SIZE:
+                OnClientSizeChanged();
+                return IntPtr.Zero;
+
+            case WM_GETMINMAXINFO:
+                ApplyMinimumTrackSize(lParam, _dpi, MinWidthDip, MinWindowHeightDip);
                 return IntPtr.Zero;
 
             case WM_LBUTTONDOWN:
@@ -570,11 +709,11 @@ internal sealed class SettingsWindow : WindowBase
                 return IntPtr.Zero;
 
             case WM_DPICHANGED:
-                ApplyDpi();
+                OnDpiChanged(lParam);
                 return IntPtr.Zero;
 
             case WM_DISPLAYCHANGE:
-                ApplyDpi();
+                OnDisplayChanged();
                 return IntPtr.Zero;
 
             case WM_DESTROY:
@@ -588,6 +727,15 @@ internal sealed class SettingsWindow : WindowBase
     /// <summary>The title bar drags the window; the close button is the only live part of it.</summary>
     private IntPtr HitTest(nint lParam)
     {
+        // The edges size the window and win over the title bar; the close button is inside the
+        // title bar but far enough from the right edge that the two never overlap.
+        var resize = ResizeFrameHitTest(Handle, lParam, _dpi, ResizeBorderDip);
+
+        if (resize.ToInt64() != HTCLIENT)
+        {
+            return resize;
+        }
+
         var raw = lParam.ToInt64();
         var point = new POINT
         {
@@ -1299,7 +1447,7 @@ internal sealed class SettingsWindow : WindowBase
 
     private void Draw(ID2D1DeviceContext context)
     {
-        Fill(context, R(0f, 0f, WidthDip, WindowHeightDip), ColorWindow);
+        Fill(context, R(0f, 0f, _widthDip, _windowHeightDip), ColorWindow);
 
         DrawTitleBar(context);
 
@@ -1318,7 +1466,7 @@ internal sealed class SettingsWindow : WindowBase
         // Clip first, in unscrolled coordinates, then move the rows. The clip is stored in device
         // space, so a translation applied after the push does not drag it along with the content.
         context.PushAxisAlignedClip(
-            R(NavWidthDip + 1f, ViewportTop, WidthDip, ViewportBottom),
+            R(NavWidthDip + 1f, ViewportTop, _widthDip, ViewportBottom),
             AntialiasMode.Aliased);
 
         context.Transform = Matrix3x2.CreateTranslation(0f, TitleHeightDip - _scroll);
@@ -1382,15 +1530,15 @@ internal sealed class SettingsWindow : WindowBase
 
     private void DrawTitleBar(ID2D1DeviceContext context)
     {
-        Fill(context, R(0f, 0f, WidthDip, TitleHeightDip), ColorNav);
-        Fill(context, R(0f, TitleHeightDip - 1f, WidthDip, TitleHeightDip), ColorLine);
+        Fill(context, R(0f, 0f, _widthDip, TitleHeightDip), ColorNav);
+        Fill(context, R(0f, TitleHeightDip - 1f, _widthDip, TitleHeightDip), ColorLine);
 
         Label(
             context,
             "Overlyric Settings",
             22f,
             0f,
-            WidthDip - 120f,
+            _widthDip - 120f,
             TitleHeightDip,
             12.5f,
             FontWeight.SemiBold,
@@ -1419,7 +1567,7 @@ internal sealed class SettingsWindow : WindowBase
         Hit((int)Control.Close, close);
     }
 
-    private static Rect CloseRect() => R(WidthDip - 52f, 6f, WidthDip - 12f, TitleHeightDip - 6f);
+    private Rect CloseRect() => R(_widthDip - 52f, 6f, _widthDip - 12f, TitleHeightDip - 6f);
 
     private void DrawNavigation(ID2D1DeviceContext context)
     {
@@ -2312,7 +2460,10 @@ internal sealed class SettingsWindow : WindowBase
         const float width = 4f;
 
         var viewport = ViewportBottom - ViewportTop;
-        var left = WidthDip - 14f;
+
+        // Eighteen DIP from the edge rather than fourteen: the resize border owns the outer six,
+        // and a scrollbar whose last pixels start a resize is a scrollbar that misses.
+        var left = _widthDip - 18f;
         var top = ViewportTop + 2f;
         var length = viewport - 4f;
         var thumb = MathF.Max(36f, length * (viewport / ContentHeight));

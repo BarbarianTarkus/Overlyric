@@ -60,10 +60,18 @@ internal sealed class LyricViewerWindow : PanelWindow
     private const float SearchResultsTop = 174f;
     private const float SearchRowHeight = 44f;
     private const float SearchTextSize = 13f;
-    private const float SearchTitleWidth = 500f;
-    private const float SearchDurationLeft = 680f;
-    private const float SearchMatchLeft = 590f;
     private const int MaxQueryLength = 240;
+
+    /// <summary>
+    /// The search result columns are anchored to the right edge, like the selector's, so the badge
+    /// stays next to the scrollbar and the title takes the width the window has. The constants are
+    /// gaps and column widths rather than absolute lefts, because those are what must survive a
+    /// resize.
+    /// </summary>
+    private const float SearchBadgeColumnWidth = 110f;
+    private const float SearchColumnGap = 16f;
+    private const float SearchMatchWidth = 70f;
+    private const float SearchDurationWidth = 60f;
 
     private static readonly uint ColorReader = 0xFFC9D0DC;
     private static readonly uint ColorReaderActive = 0xFFF5F7FA;
@@ -80,6 +88,7 @@ internal sealed class LyricViewerWindow : PanelWindow
 
     private LyricSheet? _sheet;
     private bool _measured;
+    private float _measuredWidth = -1f;
     private bool _scrollToActive;
     private float _contentHeight;
     private float _scroll;
@@ -103,15 +112,26 @@ internal sealed class LyricViewerWindow : PanelWindow
         _chooseRecord = chooseRecord;
     }
 
-    protected override float WidthDip => 900f;
+    protected override float DefaultWidthDip => 900f;
 
-    protected override float HeightDip => 620f;
+    protected override float DefaultHeightDip => 620f;
+
+    protected override float MinWidthDip => 640f;
+
+    protected override float MinHeightDip => 400f;
 
     protected override string Title => "Lyrics";
 
     private float ListBottom => HeightDip - FooterHeight;
 
     private float TextWidth => WidthDip - TextLeft - TextRightPadding;
+
+    private float SearchDurationLeft =>
+        WidthDip - 52f - SearchBadgeColumnWidth - SearchColumnGap - SearchDurationWidth;
+
+    private float SearchMatchLeft => SearchDurationLeft - SearchColumnGap - SearchMatchWidth;
+
+    private float SearchTitleWidth => MathF.Max(80f, SearchMatchLeft - (Pad + 36f) - 16f);
 
     /// <summary>Open the window on a sheet, scrolled to the line being sung.</summary>
     public void ShowSheet(LyricSheet sheet)
@@ -335,14 +355,22 @@ internal sealed class LyricViewerWindow : PanelWindow
         return parts.Count == 0 ? "Unknown track" : string.Join(" \u00b7 ", parts);
     }
 
+    /// <summary>
+    /// Re-wrap the sheet whenever the width changes. Wrapped line heights are the one part of this
+    /// window's layout that depends on the window size, so a resize has to throw the measurements
+    /// away; the height only moves the viewport, which the scroll clamp already handles.
+    /// </summary>
     private void MeasureIfNeeded(LyricSheet sheet)
     {
-        if (_measured)
+        var width = TextWidth;
+
+        if (_measured && MathF.Abs(_measuredWidth - width) < 0.5f)
         {
             return;
         }
 
         _measured = true;
+        _measuredWidth = width;
         _lines.Clear();
         _prefix.Clear();
         _heights.Clear();

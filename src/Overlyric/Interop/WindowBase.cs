@@ -75,6 +75,79 @@ internal abstract class WindowBase : IDisposable
     protected static IntPtr DefaultWindowProc(nint hWnd, uint msg, nint wParam, nint lParam) =>
         DefWindowProcW(hWnd, msg, wParam, lParam);
 
+    /// <summary>
+    /// Map a screen point onto the window's sizing border for WM_NCHITTEST.
+    /// <para>
+    /// These windows are frameless, so there is no non-client area for Windows to find on its own.
+    /// Reporting the edges by hand is what starts the system's sizing loop - it drags, snaps and
+    /// clamps against <see cref="ApplyMinimumTrackSize"/> exactly as it would for a framed window.
+    /// The border is measured in DIP and rounded to pixels, so it stays a comfortable target at
+    /// 200 % scaling.
+    /// </para>
+    /// </summary>
+    protected static IntPtr ResizeFrameHitTest(nint hWnd, nint lParam, float dpi, float borderDip)
+    {
+        var raw = lParam.ToInt64();
+        var point = new POINT
+        {
+            X = (short)(raw & 0xFFFF),
+            Y = (short)((raw >> 16) & 0xFFFF)
+        };
+
+        if (!ScreenToClient(hWnd, ref point) || !GetClientRect(hWnd, out var client))
+        {
+            return new IntPtr(HTCLIENT);
+        }
+
+        if (point.X < 0 || point.Y < 0 || point.X >= client.Width || point.Y >= client.Height)
+        {
+            return new IntPtr(HTCLIENT);
+        }
+
+        var border = Math.Max(1, (int)MathF.Round(borderDip * dpi / 96f));
+        var left = point.X < border;
+        var right = point.X >= client.Width - border;
+        var top = point.Y < border;
+        var bottom = point.Y >= client.Height - border;
+
+        var code = (left, right, top, bottom) switch
+        {
+            (true, _, true, _) => HTTOPLEFT,
+            (_, true, true, _) => HTTOPRIGHT,
+            (true, _, _, true) => HTBOTTOMLEFT,
+            (_, true, _, true) => HTBOTTOMRIGHT,
+            (true, _, _, _) => HTLEFT,
+            (_, true, _, _) => HTRIGHT,
+            (_, _, true, _) => HTTOP,
+            (_, _, _, true) => HTBOTTOM,
+            _ => HTCLIENT
+        };
+
+        return new IntPtr(code);
+    }
+
+    /// <summary>
+    /// Hand the native sizing loop a minimum size. WM_GETMINMAXINFO carries physical pixels, while
+    /// every layout in the application is written in DIP, so the conversion happens here once.
+    /// </summary>
+    protected static void ApplyMinimumTrackSize(nint lParam, float dpi, float widthDip, float heightDip)
+    {
+        if (lParam == nint.Zero)
+        {
+            return;
+        }
+
+        var scale = dpi / 96f;
+        var info = Marshal.PtrToStructure<MINMAXINFO>(lParam);
+        info.ptMinTrackSize = new POINT
+        {
+            X = (int)MathF.Round(widthDip * scale),
+            Y = (int)MathF.Round(heightDip * scale)
+        };
+
+        Marshal.StructureToPtr(info, lParam, false);
+    }
+
     private void EnsureClassRegistered()
     {
         lock (Gate)
