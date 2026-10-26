@@ -295,7 +295,7 @@ public sealed class LyricsService
 
     /// <summary>Prefills the import dialog's preview without storing anything.</summary>
     public LocalLyricsPreview PreviewImport(string sourcePath, double? durationSeconds) =>
-        _localLyrics.Preview(sourcePath, durationSeconds);
+        LocalLyricsStore.Preview(sourcePath, durationSeconds);
 
     /// <summary>
     /// Stores an imported sheet and makes it this track's explicit selection. The cached automatic

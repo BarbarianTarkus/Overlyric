@@ -97,7 +97,7 @@ public sealed class LocalLyricsStore
     public string Directory => _directory;
 
     /// <summary>Builds a preview of a file without storing it. Never throws.</summary>
-    public LocalLyricsPreview Preview(string sourcePath, double? trackDurationSeconds)
+    public static LocalLyricsPreview Preview(string sourcePath, double? trackDurationSeconds)
     {
         try
         {
@@ -119,7 +119,7 @@ public sealed class LocalLyricsStore
     }
 
     /// <summary>Same preview for text that came from somewhere other than a file (a test, a paste).</summary>
-    public LocalLyricsPreview PreviewText(string text, string fileName, double? trackDurationSeconds) =>
+    public static LocalLyricsPreview PreviewText(string text, string fileName, double? trackDurationSeconds) =>
         BuildPreview(text, fileName, trackDurationSeconds);
 
     /// <summary>Saves the decoded sheet and its metadata. Returns false when nothing could be written.</summary>

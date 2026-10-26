@@ -78,32 +78,32 @@ internal static class Program
         var synced = "[ar:Someone]\r\n[00:01.00]Hello\r\n[00:03.50]World\r\n";
         var store = NewStore();
 
-        var preview = store.PreviewText(synced, "song.lrc", 4.0);
+        var preview = LocalLyricsStore.PreviewText(synced, "song.lrc", 4.0);
         Check("a synced sheet is recognised", preview.Ok && preview.IsSynced && !preview.IsPlain, preview.IsSynced);
         Check("the preview counts the timed lines", preview.LineCount == 2, preview.LineCount);
         Check("the preview reports the first timestamp", preview.FirstStart == TimeSpan.FromSeconds(1), preview.FirstStart);
         Check("the preview reports the last timestamp", preview.LastStart == TimeSpan.FromSeconds(3.5), preview.LastStart);
         Check("the preview reports the duration delta against the track", preview.DurationDeltaSeconds == -0.5, preview.DurationDeltaSeconds);
 
-        var over = store.PreviewText("[00:10.00]Only", "over.lrc", 4.0);
+        var over = LocalLyricsStore.PreviewText("[00:10.00]Only", "over.lrc", 4.0);
         Check("a sheet longer than the track reports a positive delta", over.DurationDeltaSeconds == 6.0, over.DurationDeltaSeconds);
 
-        var plain = store.PreviewText("First line\r\nSecond line\r\nThird line\r\n", "plain.txt", 4.0);
+        var plain = LocalLyricsStore.PreviewText("First line\r\nSecond line\r\nThird line\r\n", "plain.txt", 4.0);
         Check("plain text is not mistaken for synced text", plain.Ok && !plain.IsSynced && plain.IsPlain, plain.IsSynced);
         Check("the preview counts non-empty plain lines", plain.LineCount == 3, plain.LineCount);
         Check("plain text has no duration delta", plain.DurationDeltaSeconds is null, plain.DurationDeltaSeconds);
 
-        var metadataOnly = store.PreviewText("[ar:Someone]\r\n[ti:Something]\r\n", "tags.lrc", 4.0);
+        var metadataOnly = LocalLyricsStore.PreviewText("[ar:Someone]\r\n[ti:Something]\r\n", "tags.lrc", 4.0);
         Check("a file with only metadata tags has no lyric lines", metadataOnly.IsSynced == false && metadataOnly.LineCount == 0, metadataOnly.LineCount);
 
-        var empty = store.PreviewText("", "empty.lrc", 4.0);
+        var empty = LocalLyricsStore.PreviewText("", "empty.lrc", 4.0);
         Check("an empty file is a failed preview, not a crash", !empty.Ok && empty.Error is not null, empty.Error);
 
-        var missing = store.Preview(Path.Combine(_root, "does-not-exist.lrc"), 4.0);
+        var missing = LocalLyricsStore.Preview(Path.Combine(_root, "does-not-exist.lrc"), 4.0);
         Check("a missing file is a failed preview with a sentence", !missing.Ok && missing.Error is not null, missing.Error);
 
         var coded = WriteFile("coded.lrc", new byte[] { 0xEF, 0xBB, 0xBF }.Concat(Encoding.UTF8.GetBytes("[00:01.00]Caf\u00e9")).ToArray());
-        var decoded = store.Preview(coded, 4.0);
+        var decoded = LocalLyricsStore.Preview(coded, 4.0);
         Check("the preview decodes the file it was given", decoded.Ok && decoded.Lines.Count == 1 && decoded.Lines[0].Text == "Caf\u00e9", decoded.Lines.FirstOrDefault().Text);
     }
 
