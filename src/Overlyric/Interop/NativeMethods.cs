@@ -419,6 +419,13 @@ internal static partial class NativeMethods
 
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool EmptyClipboard();
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    internal static partial IntPtr SetClipboardData(uint uFormat, IntPtr hMem);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool CloseClipboard();
 
     [LibraryImport("user32.dll", SetLastError = true)]

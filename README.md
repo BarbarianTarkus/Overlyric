@@ -36,6 +36,9 @@ There is no per-player integration to install. Deep dives live in [`docs/`](docs
   text, and the unsung half of the current line left unlit.
 - **Says when something is wrong.** If audio is playing but no player publishes, or a player publishes
   no position, the tray says so instead of leaving you with a silent overlay.
+- **Answers "why is it showing this?"** A diagnostics window shows the session, clock, lyric source,
+  timing in force, output and display, Presence rules and the last events; one button copies it as
+  JSON for a bug report.
 - **Fits the machine and the setup.** Follows the cursor, the primary display or a named monitor and
   remembers placement per display; hides itself for chosen apps such as calls or screen shares; and
   when a game is in exclusive fullscreen - which no normal window can cover - it says so once and

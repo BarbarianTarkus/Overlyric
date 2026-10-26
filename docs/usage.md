@@ -175,6 +175,19 @@ anchored to the right; the sheet re-wraps its lines at the new width.
 
 *The sheet in demo mode. A real track also carries the LRCLIB record it came from; demo tracks do not.*
 
+## Diagnostics
+
+**Diagnostics…** in the tray opens a read-only window that answers "why is it showing this?": the
+session and playback state, whether the clock is following a live timeline or self-clocking, where
+the lyric sheet came from (local file, pinned record, automatic, cache), the line count and verdict,
+the timing in force and which layer supplied it, the output device, the chosen display, the
+foreground app and whether a hide rule matched, and whether the fullscreen notice is active. The
+bottom shows the last events from a small rolling log.
+
+**Copy as JSON** puts the whole snapshot on the clipboard for a bug report, and **Open log folder**
+opens the folder that holds `diagnostics.log`. The log is bounded in memory (256 lines) and on disk
+(256 KB, rotated in place), so it can be left running without growing without limit.
+
 ## Settings window
 
 `Settings…` in the tray, or `Overlyric.exe --settings`, opens a resizable dark window with eight

@@ -212,6 +212,11 @@ internal sealed class AppHost
     /// <summary>True while the fullscreen heuristic is sustained, for the tray menu row.</summary>
     private bool _fullscreenNotice;
 
+    /// <summary>The rolling decision log behind the diagnostics window; bounded in memory and on disk.</summary>
+    private readonly DiagnosticLog _diagnosticLog = new(Path.Combine(AppConfig.DataDirectory, "diagnostics.log"));
+
+    private DiagnosticsWindow? _diagnostics;
+
     /// <summary>The default output device as last read; null until CoreAudio answers once.</summary>
     private AudioOutput? _audioOutput;
 
@@ -298,6 +303,13 @@ internal sealed class AppHost
         _tray.LeftClicked += ToggleOverlay;
         _tray.MenuRequested += ShowTrayMenu;
         _tray.Show("Overlyric - waiting for playback");
+
+        _diagnosticLog.Add(
+            "app",
+            string.Concat(
+                "started ",
+                typeof(AppHost).Assembly.GetName().Version?.ToString(3) ?? "?",
+                _demo ? " (demo)" : string.Empty));
 
         if (_config.StartWithWindows)
         {
@@ -582,6 +594,17 @@ internal sealed class AppHost
             _trackKey = demoActive ? null : TimingProfiles.TrackKey(snapshot.Artist, snapshot.Title);
             _sessionOffsetMs = 0;
             RefreshAudioOutput(force: true);
+
+            _diagnosticLog.Add(
+                "track",
+                string.Concat(
+                    snapshot.Artist,
+                    snapshot.Artist.Length > 0 && snapshot.Title.Length > 0 ? " - " : string.Empty,
+                    snapshot.Title,
+                    " [",
+                    snapshot.SourceAppFriendly,
+                    "] rev ",
+                    snapshot.Revision.ToString(System.Globalization.CultureInfo.InvariantCulture)));
 
             // A new song - or the first one seen after start-up - is exactly when a listener wants
             // to know what is playing and what the lyric lookup made of it.
@@ -1410,6 +1433,17 @@ internal sealed class AppHost
                     _lyricsSource = result?.Source ?? LyricSource.Lrclib;
                     _localFileMissingRevision = lookup.LocalFileMissing ? revision : -1;
 
+                    _diagnosticLog.Add(
+                        "lyrics",
+                        string.Concat(
+                            _lyricsSource.ToString(),
+                            " lines=",
+                            _lines.Length.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                            _lyricsSynced ? " synced" : " untimed",
+                            _lyricsStatus is null ? string.Empty : " status=" + _lyricsStatus,
+                            _lyricsRecordId is { } loggedId ? " record=" + loggedId.ToString(System.Globalization.CultureInfo.InvariantCulture) : string.Empty,
+                            lookup.LocalFileMissing ? " (local file missing)" : string.Empty));
+
                     if (result is null)
                     {
                         // lrclib has no record for this track. If the title or album announces it as
@@ -2096,6 +2130,10 @@ internal sealed class AppHost
 
             case Commands.OpenSettings:
                 OpenSettings();
+                break;
+
+            case Commands.OpenDiagnostics:
+                OpenDiagnostics();
                 break;
 
             case Commands.SourceAutomatic:
@@ -2866,6 +2904,12 @@ internal sealed class AppHost
         ApplyLyricOffset();
         ForceRedraw();
         _settings?.RefreshIfOpen();
+        _diagnosticLog.Add(
+            "timing",
+            string.Concat(
+                deltaMs.ToString("+#;-#;0", System.Globalization.CultureInfo.InvariantCulture),
+                " ms -> ",
+                TimingProfiles.Describe(_timing, _audioOutput)));
     }
 
     /// <summary>
@@ -2976,6 +3020,79 @@ internal sealed class AppHost
         }
 
         _settings.Show();
+    }
+
+    /// <summary>Open the diagnostics window: what is being shown, and why, plus copy-as-JSON.</summary>
+    private void OpenDiagnostics()
+    {
+        _diagnostics ??= new DiagnosticsWindow(BuildDiagnosticsSnapshot, () => OpenFolder(AppConfig.DataDirectory));
+        _diagnostics.ShowDiagnostics();
+    }
+
+    /// <summary>The live facts the diagnostics window paints; pulled on each draw.</summary>
+    private DiagnosticsSnapshot BuildDiagnosticsSnapshot()
+    {
+        NowPlayingSnapshot snapshot = _snapshot;
+        LyricLine[] lines;
+        string? status;
+        bool synced;
+        bool wordSynced;
+        bool instrumental;
+        bool complete;
+        long? recordId;
+
+        lock (_gate)
+        {
+            lines = _lines;
+            status = _lyricsStatus;
+            synced = _lyricsSynced;
+            wordSynced = _lyricsWordSynced;
+            instrumental = _isInstrumental;
+            complete = _fetchCompleted;
+            recordId = _lyricsRecordId;
+        }
+
+        var position = IsDemoActive ? DemoPosition() : _watcher?.Clock.Position ?? TimeSpan.Zero;
+        var clock = _watcher?.Clock;
+        var output = _audioOutput?.Name ?? "No output device";
+
+        return new DiagnosticsSnapshot
+        {
+            CapturedAt = DateTimeOffset.Now,
+            Version = typeof(AppHost).Assembly.GetName().Version?.ToString(3) ?? "?",
+            HasSession = snapshot.HasTrack,
+            SourceApp = snapshot.HasTrack ? snapshot.SourceAppFriendly : null,
+            Title = snapshot.Title,
+            Artist = snapshot.Artist,
+            Album = snapshot.Album,
+            IsPlaying = snapshot.IsPlaying,
+            DurationSeconds = snapshot.DurationSeconds,
+            Position = LyricText.FormatTimestamp(position),
+            ClockIsLive = clock?.TimelineIsLive ?? IsDemoActive,
+            PositionIsUsable = clock?.PositionIsUsable ?? true,
+            SeekCount = clock?.SeekCount ?? 0,
+            LyricSource = complete ? _lyricsSource.ToString() : "looking up",
+            RecordId = recordId,
+            LineCount = lines.Length,
+            Synced = synced,
+            WordSynced = wordSynced,
+            Instrumental = instrumental,
+            LyricStatus = status,
+            CacheEntries = CacheStats().Entries,
+            CacheBytes = CacheStats().Bytes,
+            LocalFiles = LocalLibraryStats().Entries,
+            LocalBytes = LocalLibraryStats().Bytes,
+            OffsetMs = _timing.OffsetMs,
+            OffsetLabel = TimingProfiles.FormatOffset(_timing.OffsetMs),
+            OffsetSource = TimingProfiles.SourceLabel(_timing.Source, _audioOutput),
+            OutputDevice = output,
+            OutputBluetooth = _audioOutput?.IsBluetooth ?? false,
+            Monitor = MonitorLabel(),
+            ForegroundApp = string.IsNullOrWhiteSpace(_foregroundPath) ? null : Path.GetFileName(_foregroundPath),
+            HiddenForApp = PresenceRules.IsHiddenForApp(_config.HideApps, _foregroundPath),
+            FullscreenNotice = _fullscreenNotice,
+            Log = _diagnosticLog.Recent(24)
+        };
     }
 
     /// <summary>Open the settings window straight on the source list, from the tray menu.</summary>
@@ -3482,6 +3599,7 @@ internal sealed class AppHost
             new(Commands.OpenLyricPicker, "Versions\u2026"),
             new(Commands.RefreshLyrics, "Refresh lyrics"),
             new(Commands.PreviewOverlay, "Preview overlay"),
+            new(Commands.OpenDiagnostics, "Diagnostics\u2026"),
             TrayMenuItem.Submenu("Players", SourceMenuItems()),
             TrayMenuItem.Separator,
             new(Commands.ToggleOverlay, "Show overlay", _overlayEnabled),

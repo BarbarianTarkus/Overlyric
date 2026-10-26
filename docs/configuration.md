@@ -143,6 +143,13 @@ CRLF, `[mm:ss.fff]` timestamps and the `[ar:]`/`[ti:]`/`[al:]`/`[length:]` heade
 re-imported without losing a millisecond. Other ANSI code pages (Cyrillic, Greek, CJK) are not
 decoded; save those files as UTF-8.
 
+## Diagnostics log
+
+The rolling decision log lives at `%LOCALAPPDATA%\Overlyric\diagnostics.log`. It records track
+changes, lookup verdicts, timing nudges and Presence decisions, and it is the same content the
+diagnostics window's "Copy as JSON" includes. It is capped at 256 KB and cut in half when it passes
+that size; delete it at any time and it starts again.
+
 ## Start with Windows
 
 `StartWithWindows` writes the executable into the current user's
