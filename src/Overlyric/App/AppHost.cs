@@ -197,6 +197,21 @@ internal sealed class AppHost
     /// <summary>Device name of the display the overlay is on, for the per-display placement map.</summary>
     private string _currentMonitorDevice = "";
 
+    /// <summary>The foreground process image path as last polled, for the per-app hide list.</summary>
+    private string? _foregroundPath;
+
+    /// <summary>The foreground window at the same poll, for the fullscreen comparison.</summary>
+    private nint _foregroundWindow;
+
+    /// <summary>When the foreground/fullscreen facts are polled again.</summary>
+    private long _nextPresenceCheckAt;
+
+    /// <summary>The sustained exclusive-fullscreen watch; one quiet tray sentence per situation.</summary>
+    private readonly FullscreenWatch _fullscreenWatch = new();
+
+    /// <summary>True while the fullscreen heuristic is sustained, for the tray menu row.</summary>
+    private bool _fullscreenNotice;
+
     /// <summary>The default output device as last read; null until CoreAudio answers once.</summary>
     private AudioOutput? _audioOutput;
 
@@ -523,6 +538,10 @@ internal sealed class AppHost
         {
             return;
         }
+
+        // Foreground and fullscreen facts change slowly; two seconds is the roadmap cadence, and it
+        // is also the interval the topmost re-assertion already uses.
+        UpdatePresence(Environment.TickCount64);
 
         // A device switch applies that endpoint's profile. The read is cheap and only happens when
         // the slow interval is up, or when the track changed (see below).
@@ -989,6 +1008,13 @@ internal sealed class AppHost
             return false;
         }
 
+        // A listed application owns the foreground window: stay out of its way. An unknown
+        // foreground process never matches, so a protected game cannot hide the overlay by accident.
+        if (PresenceRules.IsHiddenForApp(_config.HideApps, _foregroundPath))
+        {
+            return false;
+        }
+
         lock (_gate)
         {
             if (_fetchCompleted && _lines.Length == 0)
@@ -1012,6 +1038,98 @@ internal sealed class AppHost
     /// all, or a track without a position. Neither is Overlyric's fault and neither is visible
     /// otherwise: the overlay simply never appears, or holds the first line for the whole song.
     /// </summary>
+    /// <summary>
+    /// Polls the foreground process and the shell's notification state on the Presence cadence.
+    /// The hide list acts on every tick through <see cref="IsOverlayVisible"/>; the fullscreen
+    /// heuristic has to be sustained for ten seconds before it earns one tray sentence, and it
+    /// never draws through the overlay (which is invisible in exactly that case).
+    /// </summary>
+    private void UpdatePresence(long now)
+    {
+        if (now < _nextPresenceCheckAt)
+        {
+            return;
+        }
+
+        _nextPresenceCheckAt = now + 2000;
+        _foregroundWindow = Foreground.Handle();
+        _foregroundPath = Foreground.ProcessPath();
+
+        var overlayMonitor = _overlay is { IsVisible: true }
+            ? MonitorFromWindow(_overlay.Handle, MONITOR_DEFAULTTONEAREST)
+            : MonitorUnderCursor();
+
+        var foregroundIsOwnOrShell = IsOwnWindow(_foregroundWindow) || Foreground.IsShellWindow(_foregroundWindow);
+        var sameMonitor = _foregroundWindow != nint.Zero
+            && Foreground.MonitorOf(_foregroundWindow) == overlayMonitor;
+        var coversMonitor = Foreground.CoversMonitor(_foregroundWindow, overlayMonitor);
+
+        _fullscreenWatch.Update(
+            PresenceRules.LooksExclusiveFullscreen(
+                Foreground.NotificationState(),
+                foregroundIsOwnOrShell,
+                sameMonitor,
+                coversMonitor),
+            now);
+
+        _fullscreenNotice = _fullscreenWatch.Candidate;
+
+        if (!_fullscreenWatch.IsNewSituation || _tray is null)
+        {
+            return;
+        }
+
+        _tray.Alert(
+            "Overlyric - fullscreen game",
+            "The game is running in exclusive fullscreen, where no overlay can draw. Switch it to Borderless or Windowed Fullscreen to see the lyrics over it.");
+    }
+
+    /// <summary>True when a window belongs to one of Overlyric's own visible windows.</summary>
+    private bool IsOwnWindow(nint window) =>
+        window != nint.Zero
+        && (window == _overlay?.Handle
+            || window == _settings?.Handle
+            || window == _picker?.Handle
+            || window == _viewer?.Handle);
+
+    /// <summary>What the Behaviour section prints for "add the app in front".</summary>
+    private string ForegroundAppLabel() =>
+        string.IsNullOrWhiteSpace(_foregroundPath) ? "No app detected" : Path.GetFileName(_foregroundPath);
+
+    /// <summary>Adds the foreground executable's name to the hide list.</summary>
+    private void AddForegroundApp()
+    {
+        var name = Path.GetFileName(_foregroundPath ?? string.Empty);
+
+        if (name.Length == 0)
+        {
+            return;
+        }
+
+        if (!_config.HideApps.Exists(existing => string.Equals(existing, name, StringComparison.OrdinalIgnoreCase)))
+        {
+            _config.HideApps.Add(name);
+            _config.Save();
+        }
+
+        _settings?.RefreshIfOpen();
+        ForceRedraw();
+    }
+
+    /// <summary>Empties the hide list; the overlay follows the foreground again immediately.</summary>
+    private void ClearHideApps()
+    {
+        if (_config.HideApps.Count == 0)
+        {
+            return;
+        }
+
+        _config.HideApps.Clear();
+        _config.Save();
+        _settings?.RefreshIfOpen();
+        ForceRedraw();
+    }
+
     private void UpdatePlayerWarning(NowPlayingSnapshot snapshot, bool positionIsUsable)
     {
         if (!_config.WarnWhenPlayerDoesNotPublish)
@@ -1132,6 +1250,16 @@ internal sealed class AppHost
         var text = snapshot.HasTrack
             ? $"{header}\n{snapshot.SourceAppFriendly}: {snapshot.TrackDescription}"
             : header;
+
+        if (PresenceRules.IsHiddenForApp(_config.HideApps, _foregroundPath))
+        {
+            text += $"\nHidden for {Path.GetFileName(_foregroundPath)}";
+        }
+
+        if (_fullscreenNotice)
+        {
+            text += "\nThe game is in exclusive fullscreen - use Borderless";
+        }
 
         if (PlayerWarningTooltip() is { } warning)
         {
@@ -2831,6 +2959,9 @@ internal sealed class AppHost
                 () => OpenFolder(AppConfig.LyricsDirectory),
                 MonitorLabel,
                 CycleMonitor,
+                ForegroundAppLabel,
+                AddForegroundApp,
+                ClearHideApps,
                 typeof(AppHost).Assembly.GetName().Version?.ToString(3) ?? "0.1.0",
                 () => _watcher?.LiveSources ?? [],
                 new TimingCommands
@@ -3367,6 +3498,13 @@ internal sealed class AppHost
         if (warningItems.Count > 0)
         {
             items.InsertRange(1, warningItems);
+        }
+
+        if (_fullscreenNotice)
+        {
+            // Durable while the situation lasts, and worded as an action: the overlay cannot draw
+            // there, so switching the game to borderless is the only fix.
+            items.Insert(1, TrayMenuItem.Disabled("Game is in exclusive fullscreen - use Borderless"));
         }
 
         var selected = TrayIcon.ShowMenu(_messageWindow.Handle, items);

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>PresenceTests</AssemblyName>
+    <RootNamespace>Overlyric.PresenceTests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The hide-list match and the fullscreen heuristic are pure decisions: the Windows calls feed
+         them, and a probe can feed them without a game. -->
+    <Compile Include="..\..\src\Overlyric\Media\PresenceRules.cs" />
+  </ItemGroup>
+
+</Project>

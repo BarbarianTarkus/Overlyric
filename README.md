@@ -36,6 +36,10 @@ There is no per-player integration to install. Deep dives live in [`docs/`](docs
   text, and the unsung half of the current line left unlit.
 - **Says when something is wrong.** If audio is playing but no player publishes, or a player publishes
   no position, the tray says so instead of leaving you with a silent overlay.
+- **Fits the machine and the setup.** Follows the cursor, the primary display or a named monitor and
+  remembers placement per display; hides itself for chosen apps such as calls or screen shares; and
+  when a game is in exclusive fullscreen - which no normal window can cover - it says so once and
+  points at Borderless instead of pretending.
 - **Refreshes or previews on demand.** A wrong or missing record can be asked for again from the tray,
   and the demo track can be shown for fifteen seconds without a player.
 

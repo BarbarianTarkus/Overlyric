@@ -82,7 +82,7 @@ rendering over a running full-screen game:
 | Working set | **~65 MB**, flat over 3+ minutes |
 | Private commit | ~99 MB |
 | CPU | **~0.2 s per 150 s** of playback (≈0.15 % of one core) |
-| Executable | 9.8 MB, single file, no .NET runtime installed |
+| Executable | 9.9 MB, single file, no .NET runtime installed |
 | Handles / threads | ~1280 / ~25 |
 
 Getting there took fixing three things that are easy to get wrong, all found by measuring rather than
@@ -112,6 +112,7 @@ because they are the quickest way to re-check a platform assumption.
 | `VorticeAot` | Does the Vortice COM interop survive NativeAOT, and what does DirectWrite report? |
 | `NowPlaying` | What is playing right now, what does lrclib hold for it, and what does the pipeline resolve the track to — the reproduction harness for a lyric-matching failure |
 | `LyricsTests` | 34 checks over LRC parsing, caching (including matcher-version staleness, forget and clear) and a live LRCLIB round-trip |
+| `PresenceTests` | 24 checks over the Presence decisions: the per-app hide match (names, case, paths, protected processes), the exclusive-fullscreen conjunction, and the ten-second sustain with announce-once |
 | `LyricEditTests` | 37 checks over the timing editor: selection, set start/end, the refusal of an impossible edit, per-line and whole-sheet nudges, clamping at zero, stable sorting, and the bounded undo/redo history |
 | `LocalLyricsTests` | 51 checks over the local lyric library: BOM/UTF-8/UTF-16/Windows-1252 detection, the import preview, save/load/remove and corrupt files, the explicit selection file and its migration from `versions.json`, and the export round-trip |
 | `ResilienceTests` | 101 checks: transient-vs-definitive caching, the one-request outage, a validation error never being filed as "no lyrics", the tombstone lifetime, instrumental classification, metadata cleaning (title and album release suffixes, movement listings and duplicated artist prefixes), the manual free-text search, the album-suffix retry, candidate ranking, the synced-same-duration rule, the album-scoped supplement, the stored candidate list and version pinning |

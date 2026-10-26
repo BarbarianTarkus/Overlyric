@@ -34,6 +34,7 @@ Settings → Advanced has **Open** buttons for this folder and the lyric cache.
 | `HideWhenInstrumental` | `true` | Hide when the track is instrumental |
 | `WarnWhenPlayerDoesNotPublish` | `true` | Say so when audio is playing but no player publishes to Windows media controls, or when a player publishes a track without a playback position |
 | `StartWithWindows` | `false` | Write the executable into the current user's Run key |
+| `HideApps` | `[]` | Executable names that hide the overlay while they own the foreground window, e.g. `["Teams.exe", "zoom"]`. Names only, case-insensitive |
 | `Monitor` | `Cursor` | Which display the overlay prefers: `Cursor`, `Primary` or `Specific` |
 | `MonitorDevice` | `""` | GDI device name for `Specific`, e.g. `\\.\DISPLAY2`. Display numbers are reassigned, so the name is the key and the number is not |
 | `MonitorOffsets` | `{}` | Remembered placement per display device name (`X`, `Y`), so docking and undocking keeps the overlay where it was put |

@@ -182,7 +182,7 @@ sections down the left, in two groups. **ON SCREEN** holds **Lyrics** (mode, lin
 the karaoke sweep, and the track info and info pop-up that belong together), **Appearance** (the
 backdrop, what stays lit, and the burn-in preset and tools — see [OLED and burn-in](oled.md)),
 **Timing** (the current output and the track/output/global corrections), **Position** (which
-display, anchor, offsets, reset) and **Behaviour** (the hide rules, the
+display, anchor, offsets, reset) and **Behaviour** (the hide rules, the per-app hide list, the
 warnings, and start with Windows). **SETUP** holds **Players** (which music client to follow, and the
 order to prefer them in), **Shortcuts** (rebind the global hotkeys) and **Advanced** (the folders, the
 cache and its size, clearing it, the local lyric folder, and the version).
@@ -220,6 +220,15 @@ Changes apply live and are saved as they are made, so the overlay behind the win
 immediately. `Esc` or the close button hides the window; the process keeps running and the overlay
 stays up. Hiding is split into "hide when no lyrics" and "hide instrumentals", so a wordless track
 can either vanish or simply say so.
+
+**Behaviour → Hide for apps** keeps the overlay off the screen while a listed program owns the
+foreground window - a call, a recording, a screen share. **Add current app** adds whatever is in
+front of you without typing; **Clear** empties the list. Names are matched case-insensitively, and a
+process that cannot be inspected (a protected game) is never treated as a match.
+
+An exclusive-fullscreen game cannot be covered by any normal window. When Overlyric detects that
+situation sustained for ten seconds, it says so once through a tray notification and a tray-menu
+row, suggesting Borderless or Windowed Fullscreen; it never tries to draw over it.
 
 ## Karaoke
 

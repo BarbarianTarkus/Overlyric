@@ -626,4 +626,34 @@ internal static partial class NativeMethods
     [LibraryImport("user32.dll", EntryPoint = "EnumDisplayDevicesW")]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool EnumDisplayDevicesW(nint device, uint deviceNumber, ref DISPLAY_DEVICEW displayDevice, uint flags);
+
+    internal const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+
+    internal const int DWMWA_EXTENDED_FRAME_BOUNDS = 9;
+
+    [LibraryImport("user32.dll")]
+    internal static partial nint GetForegroundWindow();
+
+    [LibraryImport("user32.dll")]
+    internal static partial uint GetWindowThreadProcessId(nint hWnd, out uint processId);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    internal static unsafe partial int GetClassNameW(nint hWnd, char* className, int maxCount);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    internal static partial nint OpenProcess(uint desiredAccess, [MarshalAs(UnmanagedType.Bool)] bool inheritHandle, uint processId);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static unsafe partial bool QueryFullProcessImageNameW(nint process, uint flags, char* name, ref uint size);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool CloseHandle(nint handle);
+
+    [LibraryImport("shell32.dll")]
+    internal static partial int SHQueryUserNotificationState(out int state);
+
+    [LibraryImport("dwmapi.dll")]
+    internal static partial int DwmGetWindowAttribute(nint hWnd, int attribute, out RECT value, int size);
 }

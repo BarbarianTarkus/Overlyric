@@ -118,6 +118,12 @@ internal sealed class AppConfig
     /// </summary>
     public bool StartWithWindows { get; set; }
 
+    /// <summary>
+    /// Executable names that make the overlay hide while they own the foreground window. Names only,
+    /// not paths: updates move programs around, and the match is case-insensitive.
+    /// </summary>
+    public List<string> HideApps { get; set; } = [];
+
     /// <summary>Which display the overlay prefers at startup and after a display change.</summary>
     public MonitorChoice Monitor { get; set; } = MonitorChoice.Cursor;
 
@@ -294,6 +300,7 @@ internal sealed class AppConfig
         }
 
         MonitorOffsets = MonitorSettings.Normalise(MonitorOffsets);
+        HideApps = PresenceRules.NormaliseHideApps(HideApps);
 
         return this;
     }

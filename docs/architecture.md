@@ -182,6 +182,15 @@ stores the offsets under the display it landed on. On startup, a display change 
 or a settings click, the chosen monitor is resolved again and a specific monitor that is no longer
 connected falls back to the primary with one tray sentence rather than opening off-screen.
 
+The foreground process is polled on the same slow cadence. It powers two rules. A listed executable
+on the hide list makes the overlay invisible while it owns the foreground window; a process that
+cannot be inspected (protected or elevated) reads as unknown and never matches. The other is the
+exclusive-fullscreen notice: `SHQueryUserNotificationState` saying busy or D3D-fullscreen, a
+foreground window that is not ours or the shell, on the overlay's own display, with extended frame
+bounds covering that display's bounds - all four together, sustained for ten seconds, announced
+once through the tray. It is a heuristic, not a detector: borderless fullscreen usually reports
+"accepts notifications", and a game on another display is excluded by the monitor comparison.
+
 ## Choosing the words: automatic, pinned or local
 
 The automatic matcher is the default, but it is not the only answer the listener may want. Three

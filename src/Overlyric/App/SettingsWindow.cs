@@ -223,6 +223,12 @@ internal sealed class SettingsWindow : WindowBase
         /// <summary>Cycle the overlay's display: cursor, primary, each connected monitor.</summary>
         MonitorCycle = 114,
 
+        /// <summary>Add the foreground executable to the per-app hide list.</summary>
+        HideAppAdd = 115,
+
+        /// <summary>Empty the per-app hide list.</summary>
+        HideAppClear = 116,
+
         /// <summary>
         /// The four offset nudges and the scrollbar. Their values fill the gap between the shortcut
         /// chips and the OLED block, the only stretch of the id space left; the enum's order documents
@@ -304,7 +310,7 @@ internal sealed class SettingsWindow : WindowBase
     /// One past the last row index each section draws. The viewport needs the height before the section
     /// is drawn, so this is a table rather than something measured twice.
     /// </summary>
-    private static readonly int[] SectionRows = [10, 6, 8, 5, 6, 8, 8, 4];
+    private static readonly int[] SectionRows = [10, 6, 8, 5, 8, 8, 8, 4];
 
     private readonly AppConfig _config;
     private readonly Action<SettingsChange> _changed;
@@ -317,6 +323,9 @@ internal sealed class SettingsWindow : WindowBase
     private readonly Action _openLocalFolder;
     private readonly Func<string> _monitorLabel;
     private readonly Action _cycleMonitor;
+    private readonly Func<string> _foregroundApp;
+    private readonly Action _addHideApp;
+    private readonly Action _clearHideApps;
     private readonly Action _clearCache;
     private readonly string _version;
 
@@ -397,6 +406,9 @@ internal sealed class SettingsWindow : WindowBase
         Action openLocalFolder,
         Func<string> monitorLabel,
         Action cycleMonitor,
+        Func<string> foregroundApp,
+        Action addHideApp,
+        Action clearHideApps,
         string version,
         Func<IReadOnlyList<SourceCandidate>> liveSources,
         TimingCommands timing)
@@ -413,6 +425,9 @@ internal sealed class SettingsWindow : WindowBase
         _openLocalFolder = openLocalFolder;
         _monitorLabel = monitorLabel;
         _cycleMonitor = cycleMonitor;
+        _foregroundApp = foregroundApp;
+        _addHideApp = addHideApp;
+        _clearHideApps = clearHideApps;
         _version = version;
         _liveSources = liveSources;
         _timing = timing;
@@ -1319,6 +1334,16 @@ internal sealed class SettingsWindow : WindowBase
                 Apply(SettingsChange.Startup);
                 return;
 
+            case Control.HideAppAdd:
+                _addHideApp();
+                Render();
+                return;
+
+            case Control.HideAppClear:
+                _clearHideApps();
+                Render();
+                return;
+
             case Control.OledPreset:
                 ApplyOledPreset();
                 return;
@@ -1937,6 +1962,18 @@ internal sealed class SettingsWindow : WindowBase
 
         Row(context, 5, "Start with Windows");
         Toggle(context, Control.StartWithWindows, _config.StartWithWindows);
+
+        // The hide list is the one rule whose value is not a switch: the row shows what is on it and
+        // offers to add whatever owns the foreground window right now, without a text field.
+        var hideList = _config.HideApps.Count == 0
+            ? "none"
+            : LyricText.Fit(string.Join(", ", _config.HideApps), 56);
+
+        RowWithNote(context, 6, "Hide for apps", string.Concat(hideList, " \u00b7 ", _foregroundApp()));
+        Button(context, ContentRight - 160f, RowTop(6) + 8f, 160f, 30f, "Add current app", Control.HideAppAdd);
+
+        Row(context, 7, "Clear the hide list", enabled: _config.HideApps.Count > 0);
+        Button(context, ContentRight - 132f, RowTop(7) + 8f, 132f, 30f, "Clear", Control.HideAppClear, _config.HideApps.Count > 0);
     }
 
     private void DrawTimingSection(ID2D1DeviceContext context)
@@ -2541,6 +2578,8 @@ internal sealed class SettingsWindow : WindowBase
         Control.WarnPlayer => 3,
         Control.NotifyMissingLyrics => 4,
         Control.StartWithWindows => 5,
+        Control.HideAppAdd => 6,
+        Control.HideAppClear => 7,
 
         // Timing
         Control.OffsetDown or Control.OffsetUp => 1,
