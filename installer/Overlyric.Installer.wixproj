@@ -18,7 +18,7 @@
     <!-- Version: -p:OverlyricVersion=... (build-installer.ps1 -Version) or -p:ProductVersion=...
          Both work; OverlyricVersion wins when both are supplied. -->
     <OverlyricVersion Condition="'$(OverlyricVersion)' == '' and '$(ProductVersion)' != ''">$(ProductVersion)</OverlyricVersion>
-    <OverlyricVersion Condition="'$(OverlyricVersion)' == ''">0.3.1</OverlyricVersion>
+    <OverlyricVersion Condition="'$(OverlyricVersion)' == ''">0.3.3</OverlyricVersion>
 
     <Configuration Condition="'$(Configuration)' == ''">Release</Configuration>
     <PublishDir Condition="'$(PublishDir)' == ''">$(MSBuildThisFileDirectory)..\src\Overlyric\bin\$(Configuration)\net10.0-windows10.0.26100.0\win-x64\publish</PublishDir>

@@ -10,7 +10,7 @@ license: one long-lived branch (`master`), no pull-request decoration, no Sonar 
 dotnet tool install --global dotnet-sonarscanner --version 12.0.0   # once per machine
 $env:SONARQUBE_TOKEN = 'squ_...'                                    # My Account > Security, a user token
 
-dotnet-sonarscanner begin /k:overlyric /v:0.3.1 "/s:$PWD\SonarQube.Analysis.xml" /d:sonar.token=$env:SONARQUBE_TOKEN
+dotnet-sonarscanner begin /k:overlyric /v:0.3.3 "/s:$PWD\SonarQube.Analysis.xml" /d:sonar.token=$env:SONARQUBE_TOKEN
 dotnet build src\Overlyric\Overlyric.csproj -c Debug
 dotnet-sonarscanner end /d:sonar.token=$env:SONARQUBE_TOKEN
 ```
@@ -27,7 +27,7 @@ JavaScript or Python project is where the settings live and what counts as "scan
 - **The build is the analysis.** C# is not scanned as files: the scanner hooks MSBuild and gives the
   Roslyn analyzer the compilation it sees. A failed build aborts the run, and a partial compilation
   would report partial code.
-- **The version comes from the csproj** (`<Version>0.3.1</Version>`). Keeping `/v:` in step with it
+- **The version comes from the csproj** (`<Version>0.3.3</Version>`). Keeping `/v:` in step with it
   is what makes the dashboard history line up with the installers built from the same commit.
 
 `dotnet-sonarscanner` rather than `dotnet sonarscanner`: the global tool is the supported install
