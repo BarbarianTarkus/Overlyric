@@ -40,12 +40,25 @@ internal sealed class LyricViewerWindow : PanelWindow
     private const int SearchFieldControl = 5;
     private const int SearchScrollbarControl = 6;
     private const int ExportControl = 7;
+    private const int UndoControl = 8;
+    private const int RedoControl = 9;
+    private const int SetStartControl = 10;
+    private const int SetEndControl = 11;
+    private const int SaveControl = 12;
     private const int SearchResultBase = 100;
+
+    /// <summary>Nudge buttons are this base plus an index into <see cref="NudgeStepsMs"/>.</summary>
+    private const int NudgeBase = 20;
+
+    private static readonly int[] NudgeStepsMs = [-250, -50, -10, 10, 50, 250];
 
     private const float Pad = 28f;
     private const float HeaderHeight = 98f;
     private const float ListTop = 106f;
     private const float FooterHeight = 38f;
+
+    /// <summary>The timing-editing toolbar sits between the list and the footer.</summary>
+    private const float EditToolbarHeight = 40f;
     private const float TimestampLeft = 28f;
     private const float TimestampWidth = 62f;
     private const float TextLeft = 100f;
@@ -77,7 +90,7 @@ internal sealed class LyricViewerWindow : PanelWindow
     private static readonly uint ColorReader = 0xFFC9D0DC;
     private static readonly uint ColorReaderActive = 0xFFF5F7FA;
 
-    private sealed record DisplayLine(string Timestamp, string Text, bool Active);
+    private sealed record DisplayLine(string Timestamp, string Text, bool Active, bool Selected);
 
     private readonly List<DisplayLine> _lines = [];
     private readonly List<float> _prefix = [];
@@ -86,9 +99,14 @@ internal sealed class LyricViewerWindow : PanelWindow
 
     private readonly Action<string> _search;
     private readonly Action<long> _chooseRecord;
-    private readonly Action _export;
+    private readonly Action<IReadOnlyList<LyricLine>> _export;
+    private readonly Func<TimeSpan> _position;
+    private readonly Func<IReadOnlyList<LyricLine>, string?> _saveEdited;
 
     private LyricSheet? _sheet;
+    private LyricEditSession? _edit;
+    private string? _editMessage;
+    private bool _editSessionFresh;
     private bool _measured;
     private float _measuredWidth = -1f;
     private bool _scrollToActive;
@@ -105,15 +123,24 @@ internal sealed class LyricViewerWindow : PanelWindow
     private int _visibleSearchRows;
     private int _maxSearchRow;
 
-    public LyricViewerWindow(Action<string> search, Action<long> chooseRecord, Action export)
+    public LyricViewerWindow(
+        Action<string> search,
+        Action<long> chooseRecord,
+        Action<IReadOnlyList<LyricLine>> export,
+        Func<TimeSpan> position,
+        Func<IReadOnlyList<LyricLine>, string?> saveEdited)
     {
         ArgumentNullException.ThrowIfNull(search);
         ArgumentNullException.ThrowIfNull(chooseRecord);
         ArgumentNullException.ThrowIfNull(export);
+        ArgumentNullException.ThrowIfNull(position);
+        ArgumentNullException.ThrowIfNull(saveEdited);
 
         _search = search;
         _chooseRecord = chooseRecord;
         _export = export;
+        _position = position;
+        _saveEdited = saveEdited;
     }
 
     protected override float DefaultWidthDip => 900f;
@@ -126,7 +153,9 @@ internal sealed class LyricViewerWindow : PanelWindow
 
     protected override string Title => "Lyrics";
 
-    private float ListBottom => HeightDip - FooterHeight;
+    private float ListBottom => HeightDip - FooterHeight - EditToolbarHeight;
+
+    private float EditToolbarTop => HeightDip - FooterHeight - EditToolbarHeight + 4f;
 
     private float TextWidth => WidthDip - TextLeft - TextRightPadding;
 
@@ -143,6 +172,7 @@ internal sealed class LyricViewerWindow : PanelWindow
         ArgumentNullException.ThrowIfNull(sheet);
 
         _sheet = sheet;
+        RebuildEdit(sheet);
         _measured = false;
         _scrollToActive = true;
         _scroll = 0f;
@@ -173,6 +203,13 @@ internal sealed class LyricViewerWindow : PanelWindow
             ResetQuery(sheet);
         }
 
+        // Keep unsaved edits on screen while the same track is playing; a new track, or an answer
+        // that arrives when the sheet is not being edited, replaces the document as before.
+        if (newTrack || (_edit is null && sheet.Lines.Count > 0) || (changed && _edit is { IsDirty: false }))
+        {
+            RebuildEdit(sheet);
+        }
+
         if (changed)
         {
             _measured = false;
@@ -182,6 +219,197 @@ internal sealed class LyricViewerWindow : PanelWindow
         if (IsOpen)
         {
             Invalidate();
+        }
+    }
+
+    /// <summary>
+    /// Start editing from a sheet. The session keeps its own copy of the lines, so the cached answer
+    /// is never mutated; saving writes a local selection instead.
+    /// </summary>
+    private void RebuildEdit(LyricSheet sheet)
+    {
+        _edit = sheet.Lines.Count > 0 ? new LyricEditSession(sheet.Lines) : null;
+        _editSessionFresh = _edit is not null;
+        _editMessage = null;
+    }
+
+    private void DrawEditToolbar(ID2D1DeviceContext context)
+    {
+        Fill(context, R(Pad, EditToolbarTop - 5f, WidthDip - Pad, EditToolbarTop - 4f), ColorLine);
+
+        const float height = 26f;
+        var top = EditToolbarTop + 4f;
+        var line = _edit?.SelectedLine;
+        var info = _edit is null
+            ? "Timing editor"
+            : line is { } selected
+                ? $"Line {_edit.SelectedIndex + 1}/{_edit.Lines.Count} \u00b7 {LyricText.FormatTimestamp(selected.Start)}"
+                : "No line selected";
+
+        Label(context, info, Pad, top, 190f, height, 11.5f, FontWeight.SemiBold, ColorTextDim);
+
+        var enabled = _edit is not null;
+        var right = WidthDip - Pad;
+
+        right = EditButton(context, SaveControl, "Save", right, top, 52f, height, enabled && _edit!.IsDirty);
+        right = EditButton(context, RedoControl, "Redo", right, top, 48f, height, enabled && _edit!.CanRedo);
+        right = EditButton(context, UndoControl, "Undo", right, top, 48f, height, enabled && _edit!.CanUndo);
+        right = EditButton(context, SetEndControl, "Set end", right, top, 66f, height, enabled);
+        right = EditButton(context, SetStartControl, "Set start", right, top, 76f, height, enabled);
+
+        for (var i = NudgeStepsMs.Length - 1; i >= 0; i--)
+        {
+            var step = NudgeStepsMs[i];
+            var text = (step > 0 ? "+" : string.Empty) + step.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            right = EditButton(context, NudgeBase + i, text, right, top, 42f, height, enabled);
+        }
+    }
+
+    /// <summary>Places one toolbar button against its right edge and returns the next right edge.</summary>
+    private float EditButton(
+        ID2D1DeviceContext context,
+        int id,
+        string text,
+        float right,
+        float top,
+        float width,
+        float height,
+        bool enabled)
+    {
+        var left = right - width;
+        Button(context, id, text, R(left, top, left + width, top + height), enabled);
+        return left - 6f;
+    }
+
+    private void NudgeEdit(int deltaMs)
+    {
+        if (_edit is null)
+        {
+            return;
+        }
+
+        var everyLine = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+        var changed = everyLine ? _edit.ShiftAll(deltaMs) : _edit.NudgeSelected(deltaMs);
+
+        if (changed)
+        {
+            _measured = false;
+            EnsureSelectedVisible();
+        }
+
+        _editMessage = _edit.Message;
+        Invalidate();
+    }
+
+    private void SetStartToNow()
+    {
+        if (_edit is null)
+        {
+            return;
+        }
+
+        if (_edit.SetStart(_position()))
+        {
+            _measured = false;
+            EnsureSelectedVisible();
+        }
+
+        _editMessage = _edit.Message;
+        Invalidate();
+    }
+
+    private void SetEndToNow()
+    {
+        if (_edit is null)
+        {
+            return;
+        }
+
+        if (_edit.SetEnd(_position()))
+        {
+            _measured = false;
+            EnsureSelectedVisible();
+        }
+
+        _editMessage = _edit.Message;
+        Invalidate();
+    }
+
+    private void SaveEdits()
+    {
+        if (_edit is null || !_edit.IsDirty)
+        {
+            return;
+        }
+
+        var error = _saveEdited(_edit.Lines);
+
+        if (error is null)
+        {
+            _edit.MarkSaved();
+        }
+
+        _editMessage = error ?? _edit.Message;
+        Invalidate();
+    }
+
+    private void AfterHistoryMove()
+    {
+        if (_edit is null)
+        {
+            return;
+        }
+
+        _measured = false;
+        EnsureSelectedVisible();
+        _editMessage = _edit.Message;
+        Invalidate();
+    }
+
+    /// <summary>Scrolls just enough that the selected line is fully inside the list viewport.</summary>
+    private void EnsureSelectedVisible()
+    {
+        var index = _edit?.SelectedIndex ?? -1;
+
+        if (index < 0 || index >= _prefix.Count)
+        {
+            return;
+        }
+
+        var viewport = ListBottom - ListTop;
+        var top = ListTop + ContentPaddingY + _prefix[index] - _scroll;
+        var bottom = top + _heights[index];
+
+        if (top < ListTop)
+        {
+            _scroll = MathF.Max(0f, _prefix[index] + ContentPaddingY - 4f);
+        }
+        else if (bottom > ListBottom)
+        {
+            _scroll += bottom - ListBottom;
+        }
+
+        _scroll = Math.Clamp(_scroll, 0f, MathF.Max(0f, _contentHeight - viewport));
+    }
+
+    /// <summary>Maps a click in the list band onto a line; used to select the line being edited.</summary>
+    private void SelectLineAt(float y)
+    {
+        if (_edit is null || _prefix.Count == 0)
+        {
+            return;
+        }
+
+        var contentY = y - ListTop + _scroll - ContentPaddingY;
+
+        for (var i = 0; i < _prefix.Count; i++)
+        {
+            if (contentY >= _prefix[i] && contentY < _prefix[i] + _heights[i])
+            {
+                _edit.Select(i);
+                Invalidate();
+                return;
+            }
         }
     }
 
@@ -252,6 +480,7 @@ internal sealed class LyricViewerWindow : PanelWindow
             Hit(ScrollbarControl, R(WidthDip - 24f, ListTop, WidthDip - 10f, ListBottom));
         }
 
+        DrawEditToolbar(context);
         DrawFooter(context, sheet);
     }
 
@@ -389,13 +618,21 @@ internal sealed class LyricViewerWindow : PanelWindow
         _prefix.Clear();
         _heights.Clear();
 
-        _activeIndex = sheet.IsSynced ? LyricText.ActiveLine(sheet.Lines, sheet.Position) : -1;
+        var source = _edit?.Lines ?? sheet.Lines;
+        _activeIndex = sheet.IsSynced ? LyricText.ActiveLine(source, sheet.Position) : -1;
 
+        if (_editSessionFresh && _edit is not null)
+        {
+            _edit.Select(_activeIndex >= 0 && _activeIndex < source.Count ? _activeIndex : 0);
+            _editSessionFresh = false;
+        }
+
+        var selected = _edit?.SelectedIndex ?? -1;
         var total = 0f;
 
-        for (var i = 0; i < sheet.Lines.Count; i++)
+        for (var i = 0; i < source.Count; i++)
         {
-            var line = sheet.Lines[i];
+            var line = source[i];
             var active = i == _activeIndex;
             var size = active ? ActiveFontSize : InactiveFontSize;
             var weight = active ? FontWeight.SemiBold : FontWeight.Normal;
@@ -405,7 +642,8 @@ internal sealed class LyricViewerWindow : PanelWindow
             _lines.Add(new DisplayLine(
                 sheet.IsSynced ? LyricText.FormatTimestamp(line.Start) : "",
                 text,
-                active));
+                active,
+                i == selected));
 
             _prefix.Add(total);
             _heights.Add(height);
@@ -425,6 +663,14 @@ internal sealed class LyricViewerWindow : PanelWindow
 
     private void DrawLine(ID2D1DeviceContext context, DisplayLine line, float top, float height)
     {
+        // The selected row is the editing cursor: it stays marked while playback highlights another
+        // line, so "what I am changing" and "what is being sung" cannot be confused.
+        if (line.Selected)
+        {
+            FillRound(context, TextLeft - 12f, top + 2f, TextWidth + 18f, height - 4f, 8f, 0x2E2F4A66);
+            FillRound(context, TextLeft - 24f, top + 6f, 3f, height - 12f, 1.5f, ColorTextDim);
+        }
+
         if (line.Active)
         {
             FillRound(
@@ -586,11 +832,13 @@ internal sealed class LyricViewerWindow : PanelWindow
                 R(Pad + buttonWidth + 8f, ListBottom + 7f, Pad + buttonWidth + 8f + exportWidth, ListBottom + 31f),
                 sheet.IsSynced && !sheet.IsDemo);
 
-            var hint = sheet.IsDemo
-                ? "Demo mode: the canned track is not sent to lrclib."
-                : sheet.IsSynced
-                    ? "Ctrl+F searches lrclib with your own words."
-                    : "This sheet has no timings, so there is nothing to export yet.";
+            var hint = _edit is not null
+                ? _editMessage ?? "Up/Down selects a line; Shift+click a nudge shifts every line; Ctrl+Z/Y undo/redo."
+                : sheet.IsDemo
+                    ? "Demo mode: the canned track is not sent to lrclib."
+                    : sheet.IsSynced
+                        ? "Ctrl+F searches lrclib with your own words."
+                        : "This sheet has no timings, so there is nothing to export yet.";
 
             Label(
                 context,
@@ -1197,6 +1445,12 @@ internal sealed class LyricViewerWindow : PanelWindow
 
     protected override void OnActivate(int id)
     {
+        if (id >= NudgeBase && id < NudgeBase + NudgeStepsMs.Length)
+        {
+            NudgeEdit(NudgeStepsMs[id - NudgeBase]);
+            return;
+        }
+
         if (id >= SearchResultBase)
         {
             if (!_resultRecords.TryGetValue(id, out var recordId))
@@ -1227,7 +1481,29 @@ internal sealed class LyricViewerWindow : PanelWindow
                 return;
 
             case ExportControl:
-                _export();
+                _export(_edit?.Lines ?? (IReadOnlyList<LyricLine>)(_sheet?.Lines ?? []));
+                return;
+
+            case UndoControl:
+                _edit?.Undo();
+                AfterHistoryMove();
+                return;
+
+            case RedoControl:
+                _edit?.Redo();
+                AfterHistoryMove();
+                return;
+
+            case SetStartControl:
+                SetStartToNow();
+                return;
+
+            case SetEndControl:
+                SetEndToNow();
+                return;
+
+            case SaveControl:
+                SaveEdits();
                 return;
         }
     }
@@ -1249,6 +1525,11 @@ internal sealed class LyricViewerWindow : PanelWindow
             }
 
             return;
+        }
+
+        if (y >= ListTop && y <= ListBottom && x < WidthDip - 30f)
+        {
+            SelectLineAt(y);
         }
 
         if (IsDragging && DragControl == ScrollbarControl)
@@ -1380,6 +1661,28 @@ internal sealed class LyricViewerWindow : PanelWindow
             && _sheet is { IsDemo: false })
         {
             OpenSearch();
+            return true;
+        }
+
+        if (_edit is not null && virtualKey is 0x26 or 0x28)
+        {
+            _edit.SelectRelative(virtualKey == 0x26 ? -1 : 1);
+            EnsureSelectedVisible();
+            Invalidate();
+            return true;
+        }
+
+        if (virtualKey == 0x5A && (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0)
+        {
+            _edit?.Undo();
+            AfterHistoryMove();
+            return true;
+        }
+
+        if (virtualKey == 0x59 && (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0)
+        {
+            _edit?.Redo();
+            AfterHistoryMove();
             return true;
         }
 

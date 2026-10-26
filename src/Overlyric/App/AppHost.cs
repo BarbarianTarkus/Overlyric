@@ -2306,11 +2306,15 @@ internal sealed class AppHost
         }
     }
 
-    /// <summary>Write the timed sheet in force as an LRC through the save dialog.</summary>
-    private void ExportLyrics()
+    /// <summary>The position "now", which is what the timing editor stamps a line with.</summary>
+    private TimeSpan CurrentPosition() => _watcher?.Clock.Position ?? TimeSpan.Zero;
+
+    /// <summary>Writes the lines the editor currently shows, edited or not, as an LRC file.</summary>
+    private void ExportLyrics(IReadOnlyList<LyricLine> lines)
     {
         var snapshot = _snapshot;
-        if (!snapshot.HasTrack || _lyrics is null)
+
+        if (!snapshot.HasTrack || lines.Count == 0)
         {
             return;
         }
@@ -2324,20 +2328,50 @@ internal sealed class AppHost
             return;
         }
 
-        if (_lyrics.TryExport(
+        try
+        {
+            var text = LyricTextCodec.EncodeLrc(
                 snapshot.Artist,
                 snapshot.Title,
                 snapshot.Album,
                 snapshot.DurationSeconds,
-                path,
-                out var error))
-        {
+                lines);
+
+            File.WriteAllBytes(path, LyricTextCodec.EncodeUtf8(text));
             _tray?.Alert("Overlyric — lyrics exported", path);
         }
-        else
+        catch (Exception)
         {
-            _tray?.Alert("Overlyric — export failed", error ?? "The file could not be written.");
+            _tray?.Alert("Overlyric — export failed", "The file could not be written.");
         }
+    }
+
+    /// <summary>
+    /// Saves the timing editor's lines as this track's local sheet and re-resolves, so the overlay
+    /// follows the edit immediately. Returns null on success, or the sentence to show in the viewer.
+    /// </summary>
+    private string? SaveEditedLyrics(IReadOnlyList<LyricLine> lines)
+    {
+        var snapshot = _snapshot;
+
+        if (!snapshot.HasTrack || _lyrics is null)
+        {
+            return "There is no track to save against.";
+        }
+
+        if (!_lyrics.TrySaveEdited(
+                snapshot.Artist,
+                snapshot.Title,
+                snapshot.Album,
+                snapshot.DurationSeconds,
+                lines,
+                out var error))
+        {
+            return error ?? "The edited sheet could not be saved.";
+        }
+
+        StartLyricsFetch(snapshot);
+        return null;
     }
 
     private void SetImportMessage(string message, long revision)
@@ -2589,7 +2623,12 @@ internal sealed class AppHost
     /// <summary>Open the complete lyric sheet for the track that is playing.</summary>
     private void OpenLyricViewer()
     {
-        _viewer ??= new LyricViewerWindow(SearchLyrics, id => ChooseVersion(id), ExportLyrics);
+        _viewer ??= new LyricViewerWindow(
+            SearchLyrics,
+            id => ChooseVersion(id),
+            ExportLyrics,
+            CurrentPosition,
+            SaveEditedLyrics);
         _viewer.ShowSheet(BuildSheet());
     }
 

@@ -26,6 +26,9 @@ There is no per-player integration to install. Deep dives live in [`docs/`](docs
   `.lrc`/`.txt` (UTF-8, UTF-16 or ANSI), preview it against the track, and it is used instead of the
   network and marked **Local**; any timed sheet exports back to LRC. A deleted local file falls back
   with a sentence, not silence.
+- **Fixes timing line by line.** The lyric sheet is an editor: stamp a line's start or end from the
+  playing position, nudge by 10-250 ms (or hold Shift to shift the whole sheet), undo/redo, save it
+  as the track's local sheet and export LRC. The LRCLIB record itself is never modified.
 - **Single line, single line plus the next, or multi line**, with word- or line-timed karaoke sweep, a
   manual version selector, and a full lyric sheet with timestamps.
 - **Built for an OLED desktop**, with a one-click burn-in preset: no backdrop, pixel shift, outline

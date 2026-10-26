@@ -403,6 +403,36 @@ internal static class Program
             "pinned: clearing returns to automatic matching",
             !pinService.TryGetPinnedVersion("Artist", "Track", "Album", out _));
 
+        // ---- 9b. The timing editor's save writes a local sheet and selects it. ----
+        var editService = NewService(client, new LyricsCache(Path.Combine(cacheDirectory, "edited")), "edited-selections");
+        var editedLines = new[]
+        {
+            new LyricLine(TimeSpan.FromSeconds(1.5), "One"),
+            new LyricLine(TimeSpan.FromSeconds(4.25), "Two")
+        };
+
+        Check(
+            "edited: saving writes the local sheet",
+            editService.TrySaveEdited("Artist", "Track", "Album", 660, editedLines, out _));
+        Check(
+            "edited: the track now has a local selection",
+            LyricSelectionStore.Load(Path.Combine(cacheDirectory, "edited-selections.json"))
+                .TryGet(LyricsCache.MakeKey("Artist", "Track", "Album"), out var editedSelection)
+            && editedSelection.Kind == LyricSelectionKind.Local);
+
+        var editedStore = new LocalLyricsStore(Path.Combine(cacheDirectory, "lyrics"));
+        Check(
+            "edited: the stored sheet keeps its edited timings",
+            editedStore.TryLoad(LyricsCache.MakeKey("Artist", "Track", "Album"), out var editedDocument)
+            && editedDocument.Lines.Count == 2
+            && editedDocument.Lines[0].Start == TimeSpan.FromSeconds(1.5));
+
+        var editedResolved = await editService.GetLyricsAsync("Artist", "Track", "Album", 660, CancellationToken.None);
+        Check(
+            "edited: resolution serves the edited sheet, not lrclib",
+            editedResolved is { Source: LyricSource.Local, Lines.Count: 2 }
+            && editedResolved.Lines[1].Start == TimeSpan.FromSeconds(4.25));
+
         // ---- 10. Movement listings: some players report a multi-part work as one huge title. ----
         const string MovementTitle =
             "Song of Scheherazade / I. Fanfare - II. / The Betrayal / III. The Sultan / IV. Love Theme / "

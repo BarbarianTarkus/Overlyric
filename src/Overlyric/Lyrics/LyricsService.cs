@@ -329,18 +329,66 @@ public sealed class LyricsService
             Note = preview.IsSynced ? null : "plain lyrics: no timestamps, so it cannot follow the music"
         };
 
-        if (!_localLyrics.Save(key, preview.Text, metadata))
+        if (!StoreLocalSheet(key, preview.Text, metadata))
         {
             error = "The lyric file could not be saved.";
             return false;
         }
 
-        _selections.SetLocal(key, Path.GetFileName(sourcePath));
-        _selections.Save();
+        SelectLocal(key, Path.GetFileName(sourcePath));
+        return true;
+    }
 
-        // The automatic answer is not the current answer any more; ask again if the listener returns
-        // to Automatic, and drop the stored candidate list so the selector is honest.
-        _cache.Forget(key);
+    /// <summary>
+    /// Saves a timing-edited sheet as this track's local selection. The cached LRCLIB answer is left
+    /// untouched underneath, so choosing Automatic is still possible; the edit only wins while the
+    /// local selection is in force.
+    /// </summary>
+    public bool TrySaveEdited(
+        string artist,
+        string track,
+        string? album,
+        double? durationSeconds,
+        IReadOnlyList<LyricLine> lines,
+        out string? error)
+    {
+        error = null;
+
+        if (lines.Count == 0)
+        {
+            error = "There is nothing to save.";
+            return false;
+        }
+
+        var key = LyricsCache.MakeKey(artist, track, album);
+        var text = LyricTextCodec.EncodeLrc(artist, track, album, durationSeconds, lines);
+        var metadata = new LocalLyricsMetadata
+        {
+            Artist = artist,
+            Title = track,
+            Album = album,
+            SourcePath = "",
+            AddedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            Note = "timing edited in Overlyric"
+        };
+
+        if (!StoreLocalSheet(key, text, metadata))
+        {
+            error = "The edited lyric file could not be saved.";
+            return false;
+        }
+
+        SelectLocal(key, "edited in Overlyric");
+        return true;
+    }
+
+    /// <summary>Writes the sheet and makes it explicit; shared by import and by the timing editor.</summary>
+    private bool StoreLocalSheet(string key, string text, LocalLyricsMetadata metadata)
+    {
+        if (!_localLyrics.Save(key, text, metadata))
+        {
+            return false;
+        }
 
         lock (_candidateGate)
         {
@@ -349,6 +397,17 @@ public sealed class LyricsService
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Makes the stored file the track's choice and forgets the automatic answer behind it, so a
+    /// return to Automatic asks again rather than serving the record the listener edited away.
+    /// </summary>
+    private void SelectLocal(string key, string sourceLabel)
+    {
+        _selections.SetLocal(key, sourceLabel);
+        _selections.Save();
+        _cache.Forget(key);
     }
 
     /// <summary>

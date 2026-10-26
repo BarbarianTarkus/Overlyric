@@ -195,6 +195,29 @@ While the window is open it follows the track: a new lookup or a different chose
 document, and a new record scrolls back to the active line. A new *song* also resets the query, because
 the query belongs to the track it was asked about.
 
+## Editing the timing
+
+The complete sheet is also a timing editor. Selecting a line - click it, or press Up/Down - lets you
+fix the timing while the song keeps playing:
+
+- **Set start** stamps the selected line with the current playback position; **Set end** does the same
+  for its end, which matters across instrumental breaks.
+- The nudge buttons move the selected line by 10, 50 or 250 ms. Hold **Shift** while clicking one to
+  shift every line instead, for a sheet that is uniformly early or late.
+- **Undo** and **Redo** (also `Ctrl+Z` / `Ctrl+Y`) step through up to a hundred edits.
+- **Save** writes the edited sheet as this track's local lyric file and selects it, so the overlay
+  follows immediately and the timing survives a replay. **Export…** writes the same LRC without
+  saving it as the track's sheet.
+
+The cached LRCLIB answer is never modified: saving produces a local selection, and **Automatic** in
+the selector returns the track to LRCLIB while keeping the file. An impossible edit - a start at or
+after the line's own end, an end before the start - is refused with a sentence and leaves the sheet
+exactly as it was, so a slip never costs the previous timing.
+
+The selected line stays marked while playback highlights the line being sung, so "the line I am
+editing" and "the line I am hearing" cannot be confused. Choosing a different record replaces the
+editable sheet; unsaved edits on the same track are kept until they are saved or the track changes.
+
 ## Refreshing an answer
 
 The tray's **Refresh lyrics** forgets the cached result for the current track — including the copy

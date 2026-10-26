@@ -160,7 +160,11 @@ records, best first.*
 **Full lyrics** opens the complete sheet described under [The complete lyric sheet](lyrics.md#the-complete-lyric-sheet).
 Its **Search LRCLIB** button (or `Ctrl+F`) opens a query field when the automatic lookup cannot find the
 song, and a result picked there is pinned for the track and shown immediately; **Export…** writes the
-timed sheet in force as an LRC file. Both windows are
+timed sheet in force as an LRC file. The sheet is also a timing editor: Up/Down selects a line,
+**Set start**/**Set end** stamp it with the current playback position, the nudge buttons move it by
+10/50/250 ms (hold **Shift** to shift every line), and **Undo**/**Redo**/**Save** work as described
+under [Editing the timing](lyrics.md#editing-the-timing). Saving writes a local selection, so the
+edit survives a replay without changing the LRCLIB record. Both windows are
 dark, resize from any edge or corner, and close with **Esc**; they reuse the overlay's
 DirectComposition stack and the settings window's palette, so they add no new UI framework. The
 selector's title column takes the extra width, while its match, length and badge columns stay
