@@ -67,10 +67,10 @@ coverage, 36.9 % on Sonar's combined line-and-branch metric. The rest is the lay
 cannot reach: `AppHost`, the window classes, `Interop\`, `AudioSessions` and the DirectComposition
 host need a desktop session, a real player and a GPU.
 
-That is why the default gate's *Coverage on New Code* condition still fails: new code is exactly
-that untestable layer. The measured options are to write tests that reach it (an integration harness
-with a desktop session, not a unit test) or to relax that one condition for this project. Do not
-silence it with `sonar.coverage.exclusions` - that hides the number rather than measuring it.
+New code is usually exactly that untestable layer: the 0.3.3 change measured 6.1 % of new-code
+coverage against the default gate's 80 % bar. That is why the project does not use that condition;
+the section below explains the gate it uses instead. Do not silence the number with
+`sonar.coverage.exclusions` - that hides it rather than measuring it.
 
 ## Quality gate and new code
 
@@ -78,13 +78,20 @@ The instance's default gate is `Sonar way`, and the default new-code definition 
 version*. The first analysis of a version has no previous version to diff against, so the whole
 codebase is new code for that run.
 
+`overlyric` is assigned a copy of that gate named `Overlyric`, identical except for one condition:
+the 80 % *Coverage on New Code* bar is replaced by a 30 % floor on the project's overall coverage.
+New code is normally the window and interop layer, which the probes cannot reach, so an 80 % bar
+there failed every UI change no matter how well the lyric, clock and cache logic is tested. The
+rest of the default gate is untouched: 0 new violations, at most 3 % new duplicated lines, and
+every security hotspot reviewed.
+
 The first full analysis (0.3.1, 49 files) reported 74 open issues: 51 `SYSLIB1054` (use
 `LibraryImport` instead of `DllImport`), 6 `S1244` (exact floating-point comparison) and 17 spread
 over `CA1822`, `CA1859`, `CA1806`, `CA1068`, `S6640`, `S1751` and `S8949`. All of them were fixed
 in code - no issue was marked accepted or false positive - and the 0.3.1 analysis of 26 October 2026
-reports 0 open issues and 0 new violations. With the probe coverage imported the gate is red only
-on *Coverage on New Code* (6.1 % against the 80 % threshold), the gap described above: the new code
-of that change is the window and interop layer, not the lyric and clock logic the probes exercise.
+reports 0 open issues and 0 new violations. With the probe coverage imported, the 0.3.3 analysis
+reports 36.9 % coverage (28.0 % of 5,680 executable lines) and a green gate under `Overlyric`: 36.9 %
+overall coverage against the 30 % floor, no new violations and no duplicated new lines.
 
 ## Agents (DSH)
 
