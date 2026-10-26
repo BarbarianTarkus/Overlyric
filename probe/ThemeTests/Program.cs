@@ -94,6 +94,39 @@ internal static class Program
             && monitorDefaults.MonitorOffsets.Count == 0,
             monitorDefaults.Monitor);
 
+        // ---- Curated palettes: each preset moves the hues, defaults stay where they were. ----
+        var warm = new AppConfig { Theme = ThemePreset.Warm }.ToTheme();
+        var cool = new AppConfig { Theme = ThemePreset.Cool }.ToTheme();
+        var mono = new AppConfig { Theme = ThemePreset.Mono }.ToTheme();
+
+        Check("the default palette keeps the original text colour",
+            defaultTheme.ActiveTextColor == 0xFFF5F7FA && defaultTheme.ControlAccentColor == 0xFF7CC4FF,
+            $"{defaultTheme.ActiveTextColor:X8}/{defaultTheme.ControlAccentColor:X8}");
+        Check("the warm palette moves text and accent to warm hues",
+            warm.ActiveTextColor == 0xFFFFF1E0 && warm.ControlAccentColor == 0xFFFFB870,
+            $"{warm.ActiveTextColor:X8}/{warm.ControlAccentColor:X8}");
+        Check("the cool palette is a different colour family",
+            cool.ActiveTextColor == 0xFFEAF4FF && cool.ControlAccentColor == 0xFF8CCBFF,
+            $"{cool.ActiveTextColor:X8}/{cool.ControlAccentColor:X8}");
+        Check("the mono palette is neutral",
+            mono.ActiveTextColor == 0xFFF2F2F2 && mono.ControlAccentColor == 0xFFD8DEE9,
+            $"{mono.ActiveTextColor:X8}/{mono.ControlAccentColor:X8}");
+        Check("the palettes are all different", warm.ActiveTextColor != cool.ActiveTextColor
+            && cool.ActiveTextColor != mono.ActiveTextColor
+            && mono.ActiveTextColor != defaultTheme.ActiveTextColor, "");
+        Check("an unknown palette number degrades to the default",
+            new AppConfig { Theme = (ThemePreset)99 }.ToTheme().ActiveTextColor == defaultTheme.ActiveTextColor, "");
+
+        // ---- Active-line weight. ----
+        Check("the default active weight is semibold",
+            new AppConfig().ToTheme().ActiveFontWeight == Vortice.DirectWrite.FontWeight.SemiBold, "");
+        Check("the weight choice reaches the theme",
+            new AppConfig { ActiveLyricWeight = LyricWeight.Bold }.ToTheme().ActiveFontWeight == Vortice.DirectWrite.FontWeight.Bold
+            && new AppConfig { ActiveLyricWeight = LyricWeight.Normal }.ToTheme().ActiveFontWeight == Vortice.DirectWrite.FontWeight.Normal,
+            "");
+        Check("an unknown weight number degrades to semibold",
+            new AppConfig { ActiveLyricWeight = (LyricWeight)99 }.ToTheme().ActiveFontWeight == Vortice.DirectWrite.FontWeight.SemiBold, "");
+
         Console.WriteLine();
         Console.WriteLine(_failures == 0 ? "ALL CHECKS PASSED" : $"{_failures} CHECK(S) FAILED");
 

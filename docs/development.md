@@ -125,7 +125,7 @@ because they are the quickest way to re-check a platform assumption.
 | `ClockTests` | 19 checks over the playback clock: attaching mid-song, frozen vs live timelines, pause/resume, seeks, sentinel stamps |
 | `TimingTests` | 34 checks over timing-profile resolution: track -> output -> global overrides, a stored zero as an override, session-only nudges, clamping and cleanup of hand-edited maps, and the labels (`+0.25 s · this track`, `+0.15 s · Bluetooth headphones`) |
 | `SourcePreferenceTests` | 46 checks over the source selector: pin beating the list and Windows, list order respected, a listed player that is not running skipped, duplicate app ids resolved to the one actually playing, and a hand-edited list cleaned and capped without throwing |
-| `ThemeTests` | 18 checks over the OLED preset and the colours it produces: every preset value moved off its opposite, the unsung half turning pure black, the surrounding lines staying dim, and the transparent backdrop staying absent |
+| `ThemeTests` | 30 checks over the OLED preset and the colours it produces, the monitor preference's hand-edited map, and the four curated palettes with the active-line weights |
 | `LyricWindowsTests` | 62 checks over the wording the selector and viewer share: offset and length formatting, match deltas, timestamps, badge precedence, candidate labels, the sheet's manual-search state, finding the active line and the gap-progress rule |
 
 Helper scripts: `probe\screenshot.py` (capture the screen) and `probe\crop.py` (crop and upscale a

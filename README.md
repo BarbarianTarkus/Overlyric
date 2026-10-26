@@ -33,7 +33,8 @@ There is no per-player integration to install. Deep dives live in [`docs/`](docs
 - **Single line, single line plus the next, or multi line**, with word- or line-timed karaoke sweep, a
   manual version selector, and a full lyric sheet with timestamps.
 - **Built for an OLED desktop**, with a one-click burn-in preset: no backdrop, pixel shift, outline
-  text, and the unsung half of the current line left unlit.
+  text, and the unsung half of the current line left unlit. Four curated palettes (Default, Warm,
+  Cool, Mono) and a normal/semibold/bold active line sit beside it.
 - **Says when something is wrong.** If audio is playing but no player publishes, or a player publishes
   no position, the tray says so instead of leaving you with a silent overlay.
 - **Answers "why is it showing this?"** A diagnostics window shows the session, clock, lyric source,

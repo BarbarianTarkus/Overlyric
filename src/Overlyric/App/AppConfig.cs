@@ -5,6 +5,23 @@ using Overlyric.Overlay;
 
 namespace Overlyric.App;
 
+/// <summary>A curated colour palette for the overlay text and accents.</summary>
+public enum ThemePreset
+{
+    Default = 0,
+    Warm = 1,
+    Cool = 2,
+    Mono = 3
+}
+
+/// <summary>Weight of the line being sung.</summary>
+public enum LyricWeight
+{
+    Normal = 0,
+    SemiBold = 1,
+    Bold = 2
+}
+
 /// <summary>User settings, persisted as JSON under %LOCALAPPDATA%\Overlyric.</summary>
 internal sealed class AppConfig
 {
@@ -159,6 +176,12 @@ internal sealed class AppConfig
 
     public string FontFamily { get; set; } = "Segoe UI Variable Display";
 
+    /// <summary>The curated palette; the OLED preset still decides the backdrop and burn-in levers.</summary>
+    public ThemePreset Theme { get; set; } = ThemePreset.Default;
+
+    /// <summary>Weight of the active line. The surrounding lines stay normal.</summary>
+    public LyricWeight ActiveLyricWeight { get; set; } = LyricWeight.SemiBold;
+
     public float ActiveFontSize { get; set; } = 30f;
 
     public float InactiveFontSize { get; set; } = 21f;
@@ -254,6 +277,16 @@ internal sealed class AppConfig
         InfoPopupSeconds = Math.Clamp(InfoPopupSeconds, 0, 20);
         ActiveFontSize = Math.Clamp(ActiveFontSize, 12f, 72f);
         InactiveFontSize = Math.Clamp(InactiveFontSize, 10f, 72f);
+
+        if (Theme is not (ThemePreset.Default or ThemePreset.Warm or ThemePreset.Cool or ThemePreset.Mono))
+        {
+            Theme = ThemePreset.Default;
+        }
+
+        if (ActiveLyricWeight is not (LyricWeight.Normal or LyricWeight.SemiBold or LyricWeight.Bold))
+        {
+            ActiveLyricWeight = LyricWeight.SemiBold;
+        }
         OffsetY = Math.Clamp(OffsetY, -4000, 4000);
         OffsetX = Math.Clamp(OffsetX, -4000, 4000);
         LyricsOffsetMs = TimingProfiles.Clamp(LyricsOffsetMs);
@@ -327,18 +360,40 @@ internal sealed class AppConfig
 
     public OverlayTheme ToTheme()
     {
-        // The surrounding lines keep their hue and lose their alpha, so "dim" means dimmer rather
-        // than a different colour.
-        var inactive = ScaleAlpha(0xFFF5F7FA, InactiveLineOpacity);
+        // The palette moves the text and accent hues; the surrounding lines keep their hue and lose
+        // their alpha, so "dim" still means dimmer rather than a different colour.
+        var (activeText, accent) = Theme switch
+        {
+            ThemePreset.Warm => (0xFFFFF1E0, 0xFFFFB870),
+            ThemePreset.Cool => (0xFFEAF4FF, 0xFF8CCBFF),
+            ThemePreset.Mono => (0xFFF2F2F2, 0xFFD8DEE9),
+            _ => (0xFFF5F7FA, 0xFF7CC4FF)
+        };
+
+        var inactive = ScaleAlpha(activeText, InactiveLineOpacity);
 
         return new OverlayTheme
         {
             FontFamily = FontFamily,
             ActiveFontSize = ActiveFontSize,
             InactiveFontSize = InactiveFontSize,
+            ActiveFontWeight = ActiveLyricWeight switch
+            {
+                LyricWeight.Normal => Vortice.DirectWrite.FontWeight.Normal,
+                LyricWeight.Bold => Vortice.DirectWrite.FontWeight.Bold,
+                _ => Vortice.DirectWrite.FontWeight.SemiBold
+            },
             MultiLineCount = MultiLineCount,
             BackgroundColor = ScaleAlpha(0xB4101014, BackgroundOpacity),
+            ActiveTextColor = activeText,
             InactiveTextColor = inactive,
+            HeaderTextColor = ScaleAlpha(activeText, 0.6),
+            ProgressColor = ScaleAlpha(accent, 0.8),
+            NoticeTitleColor = activeText,
+            NoticeAccentColor = accent,
+            ControlTextColor = activeText,
+            ControlMutedColor = ScaleAlpha(activeText, 0.6),
+            ControlAccentColor = accent,
             // The unsung half of the swept line is normally as dim as the lines around it. The
             // OLED preset makes it pure black instead, so it is an unlit pixel on the panel rather
             // than a second, static piece of grey text waiting to be sung.

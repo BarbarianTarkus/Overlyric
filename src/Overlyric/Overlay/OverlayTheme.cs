@@ -1,3 +1,4 @@
+using Vortice.DirectWrite;
 using Vortice.Mathematics;
 
 namespace Overlyric.Overlay;
@@ -55,6 +56,9 @@ public sealed class OverlayTheme
     public float ActiveFontSize { get; init; } = 30f;
     public float InactiveFontSize { get; init; } = 21f;
     public float HeaderFontSize { get; init; } = 13f;
+
+    /// <summary>Weight of the line being sung; the surrounding lines stay normal.</summary>
+    public FontWeight ActiveFontWeight { get; init; } = FontWeight.SemiBold;
 
     public uint BackgroundColor { get; init; } = 0xB4101014;
     public uint ActiveTextColor { get; init; } = 0xFFF5F7FA;

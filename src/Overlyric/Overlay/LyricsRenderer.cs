@@ -195,7 +195,7 @@ internal sealed class LyricsRenderer : IDisposable
             return;
         }
 
-        var lineLayout = GetLayout(text, _theme.ActiveFontSize, FontWeight.SemiBold);
+        var lineLayout = GetLayout(text, _theme.ActiveFontSize, _theme.ActiveFontWeight);
 
         var hasHeader = visual.ShowHeader && !string.IsNullOrWhiteSpace(visual.Header);
         var headerLayout = hasHeader
@@ -303,7 +303,7 @@ internal sealed class LyricsRenderer : IDisposable
             var layout = GetLayout(
                 text,
                 isActive ? _theme.ActiveFontSize : _theme.InactiveFontSize,
-                isActive ? FontWeight.SemiBold : FontWeight.Normal);
+                isActive ? _theme.ActiveFontWeight : FontWeight.Normal);
 
             layouts[i] = layout;
             heights[i] = layout.Metrics.Height;

@@ -19,6 +19,7 @@
     <Compile Include="..\..\src\Overlyric\App\AppConfig.cs" />
     <Compile Include="..\..\src\Overlyric\App\MonitorSettings.cs" />
     <Compile Include="..\..\src\Overlyric\Media\AudioOutput.cs" />
+    <Compile Include="..\..\src\Overlyric\Media\PresenceRules.cs" />
     <Compile Include="..\..\src\Overlyric\Media\SourceSelector.cs" />
     <Compile Include="..\..\src\Overlyric\Media\TimingProfiles.cs" />
     <Compile Include="..\..\src\Overlyric\Overlay\OverlayAnchor.cs" />

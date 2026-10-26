@@ -220,7 +220,9 @@ the karaoke sweep, and the track info and info pop-up that belong together), **A
 backdrop, what stays lit, and the burn-in preset and tools — see [OLED and burn-in](oled.md)),
 **Timing** (the current output and the track/output/global corrections), **Position** (which
 display, anchor, offsets, reset) and **Behaviour** (the hide rules, the per-app hide list, the
-warnings, and start with Windows). **SETUP** holds **Players** (which music client to follow, and the
+warnings, and start with Windows). **Appearance** also carries the **Palette** (Default, Warm, Cool
+or Mono) and the **Active line weight** (Normal, Semibold or Bold); both move the text and accented
+controls together, and the OLED preset is still a separate bundle of levers. **SETUP** holds **Players** (which music client to follow, and the
 order to prefer them in), **Shortcuts** (rebind the global hotkeys) and **Advanced** (the folders, the
 cache and its size, clearing it, the local lyric folder, and the version).
 

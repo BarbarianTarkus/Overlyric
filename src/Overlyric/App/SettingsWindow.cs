@@ -229,6 +229,17 @@ internal sealed class SettingsWindow : WindowBase
         /// <summary>Empty the per-app hide list.</summary>
         HideAppClear = 116,
 
+        /// <summary>The curated palette presets.</summary>
+        ThemeDefault = 117,
+        ThemeWarm = 118,
+        ThemeCool = 119,
+        ThemeMono = 120,
+
+        /// <summary>Weight of the active lyric line.</summary>
+        WeightNormal = 121,
+        WeightSemiBold = 122,
+        WeightBold = 123,
+
         /// <summary>
         /// The four offset nudges and the scrollbar. Their values fill the gap between the shortcut
         /// chips and the OLED block, the only stretch of the id space left; the enum's order documents
@@ -310,7 +321,7 @@ internal sealed class SettingsWindow : WindowBase
     /// One past the last row index each section draws. The viewport needs the height before the section
     /// is drawn, so this is a table rather than something measured twice.
     /// </summary>
-    private static readonly int[] SectionRows = [10, 6, 8, 5, 8, 8, 8, 4];
+    private static readonly int[] SectionRows = [10, 8, 8, 5, 8, 8, 8, 4];
 
     private readonly AppConfig _config;
     private readonly Action<SettingsChange> _changed;
@@ -1344,6 +1355,32 @@ internal sealed class SettingsWindow : WindowBase
                 Render();
                 return;
 
+            case Control.ThemeDefault:
+            case Control.ThemeWarm:
+            case Control.ThemeCool:
+            case Control.ThemeMono:
+                _config.Theme = (Control)id switch
+                {
+                    Control.ThemeWarm => ThemePreset.Warm,
+                    Control.ThemeCool => ThemePreset.Cool,
+                    Control.ThemeMono => ThemePreset.Mono,
+                    _ => ThemePreset.Default
+                };
+                Apply(SettingsChange.Appearance);
+                return;
+
+            case Control.WeightNormal:
+            case Control.WeightSemiBold:
+            case Control.WeightBold:
+                _config.ActiveLyricWeight = (Control)id switch
+                {
+                    Control.WeightNormal => LyricWeight.Normal,
+                    Control.WeightBold => LyricWeight.Bold,
+                    _ => LyricWeight.SemiBold
+                };
+                Apply(SettingsChange.Appearance);
+                return;
+
             case Control.OledPreset:
                 ApplyOledPreset();
                 return;
@@ -1857,6 +1894,27 @@ internal sealed class SettingsWindow : WindowBase
 
         Row(context, 5, "Outline text");
         Toggle(context, Control.OledOutline, _config.TextOutline);
+
+        Group(context, 6, "PALETTE");
+
+        Row(context, 6, "Palette");
+        Segmented(
+            context,
+            [
+                ("Default", Control.ThemeDefault, _config.Theme == ThemePreset.Default),
+                ("Warm", Control.ThemeWarm, _config.Theme == ThemePreset.Warm),
+                ("Cool", Control.ThemeCool, _config.Theme == ThemePreset.Cool),
+                ("Mono", Control.ThemeMono, _config.Theme == ThemePreset.Mono)
+            ]);
+
+        Row(context, 7, "Active line weight");
+        Segmented(
+            context,
+            [
+                ("Normal", Control.WeightNormal, _config.ActiveLyricWeight == LyricWeight.Normal),
+                ("Semibold", Control.WeightSemiBold, _config.ActiveLyricWeight == LyricWeight.SemiBold),
+                ("Bold", Control.WeightBold, _config.ActiveLyricWeight == LyricWeight.Bold)
+            ]);
     }
 
     private void DrawShortcutsSection(ID2D1DeviceContext context)
@@ -2570,6 +2628,8 @@ internal sealed class SettingsWindow : WindowBase
         Control.OledDimDown or Control.OledDimUp => 3,
         Control.OledPixelShift => 4,
         Control.OledOutline => 5,
+        Control.ThemeDefault or Control.ThemeWarm or Control.ThemeCool or Control.ThemeMono => 6,
+        Control.WeightNormal or Control.WeightSemiBold or Control.WeightBold => 7,
 
         // Behaviour
         Control.HidePaused => 0,

@@ -42,6 +42,8 @@ Settings → Advanced has **Open** buttons for this folder and the lyric cache.
 | `TrackOffsets` | `{}` | Per-track corrections in milliseconds, keyed by a normalised artist/title key. An entry overrides the output profile and the global default |
 | `OutputOffsets` | `{}` | Per-output-device corrections, keyed by the CoreAudio endpoint id; each value carries `Name`, `OffsetMs` and `Bluetooth`. Used when the track has no override |
 | `RememberTrackOffset` | `true` | A timing nudge is saved for the current track. Off makes nudges session-only; holding Shift has the same effect per nudge |
+| `Theme` | `Default` | Curated palette: `Default`, `Warm`, `Cool` or `Mono` |
+| `ActiveLyricWeight` | `SemiBold` | Weight of the line being sung: `Normal`, `SemiBold` or `Bold` |
 | `FontFamily` | `Segoe UI Variable Display` | Typeface |
 | `ActiveFontSize` / `InactiveFontSize` | `30` / `21` | Font sizes in DIPs |
 | `Shortcuts` | `{}` | Action name → chord text, e.g. `"ToggleOverlay": "Ctrl+Alt+H"`. A missing entry uses the built-in default and an empty string means deliberately unbound, so a hand-edited file cannot silently lose a shortcut |
