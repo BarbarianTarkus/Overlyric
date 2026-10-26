@@ -140,6 +140,12 @@ internal static class Program
         session.Undo();
         Check("undoing a saved edit makes it dirty again", session.IsDirty, session.IsDirty);
 
+        var toOriginal = NewSession();
+        toOriginal.Select(0);
+        toOriginal.SetStart(TimeSpan.FromSeconds(2));
+        toOriginal.Undo();
+        Check("undoing back to the original sheet clears the dirty flag", !toOriginal.IsDirty, toOriginal.IsDirty);
+
         var bounded = NewSession();
         bounded.Select(0);
 

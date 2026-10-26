@@ -162,6 +162,9 @@ internal sealed class LyricViewerWindow : PanelWindow
 
     private float EditToolbarTop => HeightDip - FooterHeight - EditToolbarHeight + 4f;
 
+    /// <summary>Where the footer starts: below the timing toolbar, not below the list.</summary>
+    private float FooterTop => ListBottom + EditToolbarHeight;
+
     private float TextWidth => WidthDip - TextLeft - TextRightPadding;
 
     private float SearchDurationLeft =>
@@ -244,29 +247,44 @@ internal sealed class LyricViewerWindow : PanelWindow
 
         const float height = 26f;
         var top = EditToolbarTop + 4f;
-        var line = _edit?.SelectedLine;
-        var info = _edit is null
-            ? "Timing editor"
-            : line is { } selected
-                ? $"Line {_edit.SelectedIndex + 1}/{_edit.Lines.Count} \u00b7 {LyricText.FormatTimestamp(selected.Start)}"
-                : "No line selected";
-
-        Label(context, info, Pad, top, 190f, height, 11.5f, FontWeight.SemiBold, ColorTextDim);
-
         var enabled = _edit is not null;
+
+        // The full set of buttons is 608 DIP wide; below the default width they shrink so the
+        // toolbar fits inside the window padding, and the selection label moves to the footer.
+        var compact = WidthDip < 780f;
+        var nudgeWidth = compact ? 36f : 42f;
+        var buttonWidth = compact ? 44f : 48f;
+        var saveWidth = compact ? 48f : 52f;
+        var setStartWidth = compact ? 66f : 76f;
+        var setEndWidth = compact ? 56f : 66f;
+
         var right = WidthDip - Pad;
 
-        right = EditButton(context, SaveControl, "Save", right, top, 52f, height, enabled && _edit!.IsDirty);
-        right = EditButton(context, RedoControl, "Redo", right, top, 48f, height, enabled && _edit!.CanRedo);
-        right = EditButton(context, UndoControl, "Undo", right, top, 48f, height, enabled && _edit!.CanUndo);
-        right = EditButton(context, SetEndControl, "Set end", right, top, 66f, height, enabled);
-        right = EditButton(context, SetStartControl, "Set start", right, top, 76f, height, enabled);
+        right = EditButton(context, SaveControl, "Save", right, top, saveWidth, height, enabled && _edit!.IsDirty);
+        right = EditButton(context, RedoControl, "Redo", right, top, buttonWidth, height, enabled && _edit!.CanRedo);
+        right = EditButton(context, UndoControl, "Undo", right, top, buttonWidth, height, enabled && _edit!.CanUndo);
+        right = EditButton(context, SetEndControl, "Set end", right, top, setEndWidth, height, enabled);
+        right = EditButton(context, SetStartControl, "Set start", right, top, setStartWidth, height, enabled);
 
         for (var i = NudgeStepsMs.Length - 1; i >= 0; i--)
         {
             var step = NudgeStepsMs[i];
             var text = (step > 0 ? "+" : string.Empty) + step.ToString(System.Globalization.CultureInfo.InvariantCulture);
-            right = EditButton(context, NudgeBase + i, text, right, top, 42f, height, enabled);
+            right = EditButton(context, NudgeBase + i, text, right, top, nudgeWidth, height, enabled);
+        }
+
+        // The selection label is only drawn when it has room; the footer always carries it.
+        var infoWidth = right - Pad - 8f;
+
+        if (infoWidth >= 130f)
+        {
+            var info = _edit is null
+                ? "Timing editor"
+                : _edit.SelectedLine is { } selected
+                    ? $"Line {_edit.SelectedIndex + 1}/{_edit.Lines.Count} \u00b7 {LyricText.FormatTimestamp(selected.Start)}"
+                    : "No line selected";
+
+            Label(context, info, Pad, top, infoWidth, height, 11.5f, FontWeight.SemiBold, ColorTextDim);
         }
     }
 
@@ -785,7 +803,7 @@ internal sealed class LyricViewerWindow : PanelWindow
 
     private void DrawFooter(ID2D1DeviceContext context, LyricSheet? sheet)
     {
-        Fill(context, R(Pad, ListBottom, WidthDip - Pad, ListBottom + 1f), ColorLine);
+        Fill(context, R(Pad, FooterTop, WidthDip - Pad, FooterTop + 1f), ColorLine);
 
         if (_searchOpen)
         {
@@ -793,7 +811,7 @@ internal sealed class LyricViewerWindow : PanelWindow
                 context,
                 "Enter searches \u00b7 Esc returns to the sheet \u00b7 Click a record to use it.",
                 Pad,
-                ListBottom + 9f,
+                FooterTop + 9f,
                 WidthDip - (2 * Pad) - 200f,
                 20f,
                 11f,
@@ -807,7 +825,7 @@ internal sealed class LyricViewerWindow : PanelWindow
                 context,
                 right,
                 WidthDip - Pad - 180f,
-                ListBottom + 9f,
+                FooterTop + 9f,
                 180f,
                 20f,
                 11f,
@@ -829,41 +847,57 @@ internal sealed class LyricViewerWindow : PanelWindow
                 context,
                 OpenSearchControl,
                 "Search LRCLIB",
-                R(Pad, ListBottom + 7f, Pad + buttonWidth, ListBottom + 31f),
+                R(Pad, FooterTop + 7f, Pad + buttonWidth, FooterTop + 31f),
                 !sheet.IsDemo);
 
             Button(
                 context,
                 ExportControl,
                 "Export\u2026",
-                R(Pad + buttonWidth + 8f, ListBottom + 7f, Pad + buttonWidth + 8f + exportWidth, ListBottom + 31f),
+                R(Pad + buttonWidth + 8f, FooterTop + 7f, Pad + buttonWidth + 8f + exportWidth, FooterTop + 31f),
                 sheet.IsSynced && !sheet.IsDemo);
 
             Button(
                 context,
                 EditFileControl,
                 "Edit file\u2026",
-                R(editLeft, ListBottom + 7f, editLeft + editWidth, ListBottom + 31f),
+                R(editLeft, FooterTop + 7f, editLeft + editWidth, FooterTop + 31f),
                 !sheet.IsDemo);
 
-            var hint = _edit is not null
-                ? _editMessage ?? "Up/Down selects a line; Shift+click a nudge shifts every line; Ctrl+Z/Y undo/redo."
+            // Below the default width the selection prefix and the help sentence are dropped: there
+            // is room for one short sentence (usually the last operation's result) and no more, and
+            // the Label draws without wrapping, so an over-long hint would run under the line count.
+            var compact = WidthDip < 800f;
+            var selection = !compact && _edit?.SelectedLine is { } selected
+                ? $"Line {_edit.SelectedIndex + 1}/{_edit.Lines.Count} \u00b7 {LyricText.FormatTimestamp(selected.Start)} - "
+                : string.Empty;
+
+            var help = _edit is not null
+                ? selection + (_editMessage ?? "Up/Down selects a line; Shift+click a nudge shifts every line; Ctrl+Z/Y undo/redo.")
                 : sheet.IsDemo
                     ? "Demo mode: the canned track is not sent to lrclib."
                     : sheet.IsSynced
                         ? "Ctrl+F searches lrclib with your own words."
                         : "This sheet has no timings, so there is nothing to export yet.";
 
-            Label(
-                context,
-                hint,
-                editLeft + editWidth + 10f,
-                ListBottom + 9f,
-                WidthDip - (2 * Pad) - buttonWidth - exportWidth - editWidth - 258f,
-                20f,
-                11f,
-                FontWeight.Normal,
-                ColorTextFaint);
+            var hintLeft = editLeft + editWidth + 10f;
+            var hintWidth = MathF.Max(0f, WidthDip - Pad - 190f - hintLeft);
+            var maxChars = Math.Max(6, (int)(hintWidth / 5.6f));
+            var hint = help.Length <= maxChars ? help : help[..(maxChars - 1)] + "\u2026";
+
+            if (hintWidth > 20f)
+            {
+                Label(
+                    context,
+                    hint,
+                    hintLeft,
+                    FooterTop + 9f,
+                    hintWidth,
+                    20f,
+                    11f,
+                    FontWeight.Normal,
+                    ColorTextFaint);
+            }
         }
 
         // The empty state carries its own Search LRCLIB button, so the footer only has to say how
@@ -875,7 +909,7 @@ internal sealed class LyricViewerWindow : PanelWindow
             context,
             rightText,
             WidthDip - Pad - 180f,
-            ListBottom + 9f,
+            FooterTop + 9f,
             180f,
             20f,
             11f,

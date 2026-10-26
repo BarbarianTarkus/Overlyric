@@ -27,6 +27,7 @@ internal sealed class LyricEditSession
     private readonly Stack<EditState> _undo = new();
     private readonly Stack<EditState> _redo = new();
     private int _selected = -1;
+    private EditState _saved;
 
     public LyricEditSession(IReadOnlyList<LyricLine> lines)
     {
@@ -34,6 +35,7 @@ internal sealed class LyricEditSession
 
         _lines = [.. lines];
         _selected = _lines.Count > 0 ? 0 : -1;
+        _saved = Capture();
     }
 
     public IReadOnlyList<LyricLine> Lines => _lines;
@@ -207,6 +209,7 @@ internal sealed class LyricEditSession
     /// <summary>Called by the host once the edited sheet has been written; keeps the history.</summary>
     public void MarkSaved()
     {
+        _saved = Capture();
         IsDirty = false;
         Message = "Saved as this track's local sheet.";
     }
@@ -262,7 +265,9 @@ internal sealed class LyricEditSession
         _lines.Clear();
         _lines.AddRange(state.Lines);
         _selected = Math.Clamp(state.Selected, -1, Math.Max(-1, _lines.Count - 1));
-        IsDirty = true;
+
+        // Undoing back to the saved sheet is not a pending change; the Save button should go quiet.
+        IsDirty = !Capture().Lines.SequenceEqual(_saved.Lines);
     }
 
     private void ReplaceSelected(LyricLine line)
