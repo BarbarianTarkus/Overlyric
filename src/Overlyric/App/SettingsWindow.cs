@@ -249,6 +249,9 @@ internal sealed class SettingsWindow : WindowBase
         /// <summary>Use chroma-key green instead of black as the stage backdrop.</summary>
         StageChroma = 126,
 
+        /// <summary>Hide while an application captures from the microphone.</summary>
+        HideWhenMic = 127,
+
         /// <summary>
         /// The four offset nudges and the scrollbar. Their values fill the gap between the shortcut
         /// chips and the OLED block, the only stretch of the id space left; the enum's order documents
@@ -330,7 +333,7 @@ internal sealed class SettingsWindow : WindowBase
     /// One past the last row index each section draws. The viewport needs the height before the section
     /// is drawn, so this is a table rather than something measured twice.
     /// </summary>
-    private static readonly int[] SectionRows = [11, 10, 8, 5, 8, 8, ShortcutActions.All.Length + 1, 4];
+    private static readonly int[] SectionRows = [11, 10, 8, 5, 9, 8, ShortcutActions.All.Length + 1, 4];
 
     private readonly AppConfig _config;
     private readonly Action<SettingsChange> _changed;
@@ -1369,6 +1372,11 @@ internal sealed class SettingsWindow : WindowBase
                 Render();
                 return;
 
+            case Control.HideWhenMic:
+                _config.HideWhenMicrophoneInUse = !_config.HideWhenMicrophoneInUse;
+                Apply(SettingsChange.Visibility);
+                return;
+
             case Control.ThemeDefault:
             case Control.ThemeWarm:
             case Control.ThemeCool:
@@ -2067,6 +2075,9 @@ internal sealed class SettingsWindow : WindowBase
 
         Row(context, 7, "Clear the hide list", enabled: _config.HideApps.Count > 0);
         Button(context, ContentRight - 132f, RowTop(7) + 8f, 132f, 30f, "Clear", Control.HideAppClear, _config.HideApps.Count > 0);
+
+        Row(context, 8, "Hide while the microphone is in use");
+        Toggle(context, Control.HideWhenMic, _config.HideWhenMicrophoneInUse);
     }
 
     private void DrawTimingSection(ID2D1DeviceContext context)
@@ -2678,6 +2689,7 @@ internal sealed class SettingsWindow : WindowBase
         Control.StartWithWindows => 5,
         Control.HideAppAdd => 6,
         Control.HideAppClear => 7,
+        Control.HideWhenMic => 8,
 
         // Timing
         Control.OffsetDown or Control.OffsetUp => 1,

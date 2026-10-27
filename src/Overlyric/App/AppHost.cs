@@ -216,6 +216,9 @@ internal sealed class AppHost
     /// <summary>True while the fullscreen heuristic is sustained, for the tray menu row.</summary>
     private bool _fullscreenNotice;
 
+    /// <summary>True while an application is capturing from the default microphone.</summary>
+    private bool _microphoneInUse;
+
     /// <summary>The rolling decision log behind the diagnostics window; bounded in memory and on disk.</summary>
     private readonly DiagnosticLog _diagnosticLog = new(Path.Combine(AppConfig.DataDirectory, "diagnostics.log"));
 
@@ -1126,6 +1129,11 @@ internal sealed class AppHost
             return false;
         }
 
+        if (_config.HideWhenMicrophoneInUse && _microphoneInUse)
+        {
+            return false;
+        }
+
         lock (_gate)
         {
             if (_fetchCompleted && _lines.Length == 0)
@@ -1165,6 +1173,8 @@ internal sealed class AppHost
         _nextPresenceCheckAt = now + 2000;
         _foregroundWindow = Foreground.Handle();
         _foregroundPath = Foreground.ProcessPath();
+
+        _microphoneInUse = _config.HideWhenMicrophoneInUse && AudioSessions.IsMicrophoneCapturing();
 
         var overlayMonitor = _overlay is { IsVisible: true }
             ? MonitorFromWindow(_overlay.Handle, MONITOR_DEFAULTTONEAREST)
@@ -1383,6 +1393,11 @@ internal sealed class AppHost
         if (PresenceRules.IsHiddenForApp(_config.HideApps, _foregroundPath))
         {
             text += $"\nHidden for {Path.GetFileName(_foregroundPath)}";
+        }
+
+        if (_config.HideWhenMicrophoneInUse && _microphoneInUse)
+        {
+            text += "\nHidden while the microphone is in use";
         }
 
         if (_fullscreenNotice)
@@ -3464,6 +3479,7 @@ internal sealed class AppHost
             ForegroundApp = string.IsNullOrWhiteSpace(_foregroundPath) ? null : Path.GetFileName(_foregroundPath),
             HiddenForApp = PresenceRules.IsHiddenForApp(_config.HideApps, _foregroundPath),
             FullscreenNotice = _fullscreenNotice,
+            MicrophoneInUse = _microphoneInUse,
             Log = _diagnosticLog.Recent(24)
         };
     }

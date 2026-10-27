@@ -51,7 +51,8 @@ There is no per-player integration to install. Deep dives live in [`docs/`](docs
   timing in force, output and display, Presence rules and the last events; one button copies it as
   JSON for a bug report.
 - **Fits the machine and the setup.** Follows the cursor, the primary display or a named monitor and
-  remembers placement per display; hides itself for chosen apps such as calls or screen shares; and
+  remembers placement per display; hides itself for chosen apps such as calls or screen shares (and,
+  opt-in, while the microphone is actually in use); and
   when a game is in exclusive fullscreen - which no normal window can cover - it says so once and
   points at Borderless instead of pretending.
 - **Refreshes or previews on demand.** A wrong or missing record can be asked for again from the tray,

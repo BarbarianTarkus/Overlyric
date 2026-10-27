@@ -153,6 +153,12 @@ internal sealed class AppConfig
     /// </summary>
     public List<string> HideApps { get; set; } = [];
 
+    /// <summary>
+    /// Hide while an application is capturing from the default microphone. Opt-in: many games hold a
+    /// microphone stream, and silently hiding the lyrics would be confusing.
+    /// </summary>
+    public bool HideWhenMicrophoneInUse { get; set; }
+
     /// <summary>Which display the overlay prefers at startup and after a display change.</summary>
     public MonitorChoice Monitor { get; set; } = MonitorChoice.Cursor;
 

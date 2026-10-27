@@ -48,7 +48,24 @@ internal static class AudioSessions
     /// True when at least one application is audibly playing to the default output device. Fails
     /// soft: any COM failure answers false, because a missing warning is better than a wrong one.
     /// </summary>
-    public static bool IsAnythingAudible()
+    /// <summary>The default render endpoint, eRender/eMultimedia.</summary>
+    private const int ERender = 0;
+    private const int EMultimedia = 1;
+
+    /// <summary>The default capture endpoint used for calls, eCapture/eCommunications.</summary>
+    private const int ECapture = 1;
+    private const int ECommunications = 2;
+
+    public static bool IsAnythingAudible() => AnyActive(ERender, EMultimedia);
+
+    /// <summary>
+    /// True when an application is actually capturing audio from the default communications
+    /// microphone: an active non-system session with a non-zero capture peak. A call that is joined
+    /// and muted holds a session but captures nothing, so the peak is what separates the two.
+    /// </summary>
+    public static bool IsMicrophoneCapturing() => AnyActive(ECapture, ECommunications);
+
+    private static bool AnyActive(int dataFlow, int role)
     {
         if (CoCreateInstance(ClsidMMDeviceEnumerator, IntPtr.Zero, CLSCTX_ALL, IidIMMDeviceEnumerator, out var enumerator) < 0)
         {
@@ -57,7 +74,7 @@ internal static class AudioSessions
 
         try
         {
-            return AnySessionAudible(enumerator);
+            return AnySessionAudible(enumerator, dataFlow, role);
         }
         catch (Exception)
         {
@@ -70,12 +87,11 @@ internal static class AudioSessions
         }
     }
 
-    private static bool AnySessionAudible(nint enumerator)
+    private static bool AnySessionAudible(nint enumerator, int dataFlow, int role)
     {
         var getDefaultEndpoint = ComVtable.Slot<GetDefaultEndpointDelegate>(enumerator, GetDefaultEndpointSlot);
 
-        // eRender, eMultimedia: the device Windows itself treats as "what you hear".
-        if (getDefaultEndpoint(enumerator, 0, 1, out var device) < 0)
+        if (getDefaultEndpoint(enumerator, dataFlow, role, out var device) < 0)
         {
             return false;
         }

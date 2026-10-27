@@ -80,6 +80,8 @@ internal sealed class DiagnosticsSnapshot
 
     public bool FullscreenNotice { get; init; }
 
+    public bool MicrophoneInUse { get; init; }
+
     public IReadOnlyList<string> Log { get; init; } = [];
 
     /// <summary>Pretty JSON, because the point is a pasteable artifact rather than a wire format.</summary>

@@ -289,7 +289,10 @@ can either vanish or simply say so.
 **Behaviour → Hide for apps** keeps the overlay off the screen while a listed program owns the
 foreground window - a call, a recording, a screen share. **Add current app** adds whatever is in
 front of you without typing; **Clear** empties the list. Names are matched case-insensitively, and a
-process that cannot be inspected (a protected game) is never treated as a match.
+process that cannot be inspected (a protected game) is never treated as a match. **Hide while the
+microphone is in use** is a separate, opt-in rule: it asks CoreAudio whether an application has a
+non-zero capture peak on the default communications microphone, so a joined-and-muted call does not
+count. It is off by default because some games hold a microphone stream.
 
 An exclusive-fullscreen game cannot be covered by any normal window. When Overlyric detects that
 situation sustained for ten seconds, it says so once through a tray notification and a tray-menu

@@ -161,6 +161,7 @@ internal sealed class DiagnosticsWindow : PanelWindow
         Row("Foreground", snapshot.ForegroundApp ?? "unknown");
         Row("Hidden for app", snapshot.HiddenForApp ? "yes" : "no");
         Row("Fullscreen notice", snapshot.FullscreenNotice ? "active" : "no");
+        Row("Microphone in use", snapshot.MicrophoneInUse ? "yes" : "no");
 
         Section("Storage");
         Row("Lyric cache", $"{snapshot.CacheEntries} entries · {FormatBytes(snapshot.CacheBytes)}");
