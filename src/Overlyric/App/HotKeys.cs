@@ -112,6 +112,13 @@ internal static class Commands
     /// <summary>Open the diagnostics window: what is being shown, and why.</summary>
     public const int OpenDiagnostics = 179;
 
+    /// <summary>Toggle the full-monitor audience surface.</summary>
+    public const int ToggleStage = 181;
+
+    public const int StageBlack = 182;
+
+    public const int StageChromaGreen = 183;
+
     // The source menu is tray-only - no hotkey is bound to a player - but its ids live here with the
     // rest, because this class is the one id namespace: the tray and the hotkey table are dispatched
     // by the same switch, and a second place to look for "what is 200" is how collisions happen.

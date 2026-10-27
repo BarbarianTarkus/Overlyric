@@ -21,6 +21,11 @@ internal enum HostCommand
     Settings,
     Diagnostics,
     RefreshLyrics,
+    StageToggle,
+    StageOn,
+    StageOff,
+    StageGreen,
+    StageBlack,
     Exit
 }
 
@@ -88,6 +93,15 @@ internal static class CommandLine
                     _ => HostCommand.None
                 },
                 "offset" => ParseOffset(value, out var offsetCommand) ? offsetCommand : HostCommand.None,
+                "stage" => value.ToLowerInvariant() switch
+                {
+                    "" or "toggle" => HostCommand.StageToggle,
+                    "on" => HostCommand.StageOn,
+                    "off" => HostCommand.StageOff,
+                    "green" or "chroma" => HostCommand.StageGreen,
+                    "black" => HostCommand.StageBlack,
+                    _ => HostCommand.None
+                },
                 "demo" => HostCommand.None,
                 _ => HostCommand.None
             };

@@ -57,6 +57,7 @@ internal sealed class OverlayWindow : WindowBase
     private nint _monitor;
     private float _dpi = 96f;
     private bool _locked = true;
+    private bool _stage;
     private bool _visible;
     private bool _showControls;
     private OverlayControl? _hoverControl;
@@ -104,6 +105,9 @@ internal sealed class OverlayWindow : WindowBase
     public bool IsVisible => _visible;
 
     public bool IsLocked => _locked;
+
+    /// <summary>True while the window covers a whole monitor as an audience display.</summary>
+    public bool IsStage => _stage;
 
     /// <summary>True while the hover bar is on screen; exposed for probes and for the host's tooltip.</summary>
     public bool IsShowingControls => _showControls;
@@ -209,6 +213,24 @@ internal sealed class OverlayWindow : WindowBase
 
         // Extended style changes only take effect once the frame is recomputed.
         SetWindowPos(Handle, IntPtr.Zero, 0, 0, 0, 0, SwpFramechanged | SWP_NOMOVE | SWP_NOSIZE | SwpNoZOrder | SWP_NOACTIVATE);
+    }
+
+    /// <summary>
+    /// Switch between the anchored lyric pill and a full-monitor audience surface. The stage window
+    /// covers its monitor's full bounds and the renderer paints the opaque (or chroma) backdrop
+    /// across it, so the lyric block is centred on a clean field instead of on the desktop.
+    /// </summary>
+    public void SetStage(bool stage)
+    {
+        if (_stage == stage)
+        {
+            return;
+        }
+
+        _stage = stage;
+        ApplyBounds();
+        RecreateHost();
+        Render();
     }
 
     public void SetVisible(bool visible)
@@ -766,13 +788,22 @@ internal sealed class OverlayWindow : WindowBase
     private void EnsureHost()
     {
         var (dipWidth, dipHeight) = DipSizeFor(_mode);
-        _host = CompositionHost.Create(Handle, ToPixels(dipWidth), ToPixels(dipHeight), _dpi);
+        var monitor = _monitor != IntPtr.Zero ? _monitor : MonitorFromWindow(Handle, MONITOR_DEFAULTTONEAREST);
+        var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+        var stageSize = _stage && GetMonitorInfoW(monitor, ref info);
+
+        _host = CompositionHost.Create(
+            Handle,
+            stageSize ? info.rcMonitor.Width : ToPixels(dipWidth),
+            stageSize ? info.rcMonitor.Height : ToPixels(dipHeight),
+            _dpi);
         _renderer = new LyricsRenderer(_host.WriteFactory!, _theme);
     }
 
     private void RecreateHost()
     {
         var wasVisible = _visible;
+        _ = wasVisible;
 
         _renderer?.Dispose();
         _renderer = null;
@@ -798,8 +829,6 @@ internal sealed class OverlayWindow : WindowBase
     private void ApplyBounds()
     {
         var (dipWidth, dipHeight) = DipSizeFor(_mode);
-        var pixelWidth = ToPixels(dipWidth);
-        var pixelHeight = ToPixels(dipHeight);
 
         var monitor = _monitor != IntPtr.Zero ? _monitor : MonitorFromWindow(Handle, MONITOR_DEFAULTTONEAREST);
         var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
@@ -808,14 +837,34 @@ internal sealed class OverlayWindow : WindowBase
             return;
         }
 
-        var work = info.rcWork;
-        var x = work.Left + ((work.Width - pixelWidth) / 2) + _offsetX;
-        var y = _anchor switch
+        int pixelWidth;
+        int pixelHeight;
+        int x;
+        int y;
+
+        if (_stage)
         {
-            OverlayAnchor.TopCenter => work.Top + _offsetY,
-            OverlayAnchor.BottomCenter => work.Bottom - pixelHeight - _offsetY,
-            _ => work.Top + ((work.Height - pixelHeight) / 2) + _offsetY
-        };
+            // The stage owns the whole display, including the area the taskbar usually occupies:
+            // covering only the work area would show a strip of desktop under it on a stream.
+            pixelWidth = info.rcMonitor.Width;
+            pixelHeight = info.rcMonitor.Height;
+            x = info.rcMonitor.Left;
+            y = info.rcMonitor.Top;
+        }
+        else
+        {
+            pixelWidth = ToPixels(dipWidth);
+            pixelHeight = ToPixels(dipHeight);
+
+            var work = info.rcWork;
+            x = work.Left + ((work.Width - pixelWidth) / 2) + _offsetX;
+            y = _anchor switch
+            {
+                OverlayAnchor.TopCenter => work.Top + _offsetY,
+                OverlayAnchor.BottomCenter => work.Bottom - pixelHeight - _offsetY,
+                _ => work.Top + ((work.Height - pixelHeight) / 2) + _offsetY
+            };
+        }
 
         SetWindowPos(
             Handle,

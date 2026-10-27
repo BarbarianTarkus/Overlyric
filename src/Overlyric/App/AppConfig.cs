@@ -88,6 +88,15 @@ internal sealed class AppConfig
     public bool ShowTranslation { get; set; } = true;
 
     /// <summary>
+    /// Full-monitor audience display for parties and streams: opaque backdrop, large centred
+    /// lyrics, no header or progress bar. Off by default; it is a different surface, not a theme.
+    /// </summary>
+    public bool StageMode { get; set; }
+
+    /// <summary>Stage backdrop as chroma-key green instead of black, for stream compositing.</summary>
+    public bool StageChroma { get; set; }
+
+    /// <summary>
     /// Sweep the active line as it is sung. Follows word-level timings when the sheet has them and
     /// shares the line's span out over its syllables when it does not.
     /// </summary>
@@ -374,20 +383,24 @@ internal sealed class AppConfig
         };
 
         var inactive = ScaleAlpha(activeText, InactiveLineOpacity);
+        var stage = StageMode;
 
         return new OverlayTheme
         {
+            StageMode = stage,
             FontFamily = FontFamily,
-            ActiveFontSize = ActiveFontSize,
-            InactiveFontSize = InactiveFontSize,
+            ActiveFontSize = stage ? MathF.Max(ActiveFontSize * 1.7f, 56f) : ActiveFontSize,
+            InactiveFontSize = stage ? MathF.Max(InactiveFontSize * 1.5f, 36f) : InactiveFontSize,
             ActiveFontWeight = ActiveLyricWeight switch
             {
                 LyricWeight.Normal => Vortice.DirectWrite.FontWeight.Normal,
                 LyricWeight.Bold => Vortice.DirectWrite.FontWeight.Bold,
                 _ => Vortice.DirectWrite.FontWeight.SemiBold
             },
-            MultiLineCount = MultiLineCount,
-            BackgroundColor = ScaleAlpha(0xB4101014, BackgroundOpacity),
+            MultiLineCount = stage ? 7 : MultiLineCount,
+            BackgroundColor = stage
+                ? StageChroma ? 0xFF00FF00u : 0xFF000000u
+                : ScaleAlpha(0xB4101014, BackgroundOpacity),
             ActiveTextColor = activeText,
             InactiveTextColor = inactive,
             HeaderTextColor = ScaleAlpha(activeText, 0.6),
@@ -401,8 +414,8 @@ internal sealed class AppConfig
             // OLED preset makes it pure black instead, so it is an unlit pixel on the panel rather
             // than a second, static piece of grey text waiting to be sung.
             KaraokeUnlitColor = KaraokeBlackout ? 0xFF000000 : inactive,
-            ShowActiveLineHighlight = ShowActiveLineHighlight,
-            TextOutline = TextOutline
+            ShowActiveLineHighlight = stage ? false : ShowActiveLineHighlight,
+            TextOutline = stage || TextOutline
         };
     }
 

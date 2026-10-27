@@ -344,6 +344,12 @@ internal sealed class AppHost
         // loaded before the window is created, so it never appears on the wrong screen first.
         var monitor = ApplyMonitorPreference(out var monitorWarning);
         _overlay.Create(_config.Mode, _config.Anchor, _config.OffsetX, _config.OffsetY, monitor);
+
+        if (_config.StageMode)
+        {
+            _overlay.SetStage(true);
+        }
+
         RepairLegacyPlacement();
 
         if (monitorWarning is not null)
@@ -676,6 +682,18 @@ internal sealed class AppHost
         CheckExternalEditReload();
 
         var visual = BuildVisual(snapshot, position, positionIsUsable);
+
+        if (_config.StageMode)
+        {
+            visual = visual with
+            {
+                Mode = OverlayMode.MultiLine,
+                StageMode = true,
+                ShowHeader = false,
+                ShowProgressBar = false
+            };
+        }
+
         visual = WithTranslation(visual, position);
         visual = WithInfoPopup(visual, snapshot, positionIsUsable);
 
@@ -738,7 +756,7 @@ internal sealed class AppHost
             completed = _fetchCompleted;
         }
 
-        var header = _config.ShowHeader && HeaderVisible() ? BuildHeader(snapshot) : null;
+        var header = !_config.StageMode && _config.ShowHeader && HeaderVisible() ? BuildHeader(snapshot) : null;
 
         var trackProgress = Quantise(ResolveTrackProgress(position, snapshot.DurationSeconds));
         var lineProgress = -1f;
@@ -770,12 +788,14 @@ internal sealed class AppHost
             };
         }
 
-        var count = _config.Mode switch
-        {
-            OverlayMode.SingleLine => 1,
-            OverlayMode.SingleLineWithNext => 2,
-            _ => Math.Clamp(_config.MultiLineCount, 1, lines.Length)
-        };
+        var count = _config.StageMode
+            ? Math.Clamp(7, 1, lines.Length)
+            : _config.Mode switch
+            {
+                OverlayMode.SingleLine => 1,
+                OverlayMode.SingleLineWithNext => 2,
+                _ => Math.Clamp(_config.MultiLineCount, 1, lines.Length)
+            };
 
         if (!positionIsUsable && snapshot.IsPlaying)
         {
@@ -1801,6 +1821,33 @@ internal sealed class AppHost
         return MonitorUnderCursor();
     }
 
+    /// <summary>
+    /// Switch between the anchored lyric overlay and the full-monitor audience surface. Stage mode
+    /// is display-only, so it locks the overlay; the backdrop and the larger centred text come from
+    /// the staged theme, and the choice is persisted.
+    /// </summary>
+    private void SetStage(bool enabled)
+    {
+        if (_config.StageMode == enabled)
+        {
+            return;
+        }
+
+        _config.StageMode = enabled;
+
+        if (enabled)
+        {
+            SetLocked(true);
+        }
+
+        _overlay?.SetStage(enabled);
+        ApplyTheme();
+        ForceRedraw();
+        _config.Save();
+        _settings?.RefreshIfOpen();
+        _diagnosticLog.Add("stage", enabled ? (_config.StageChroma ? "on (chroma)" : "on (black)") : "off");
+    }
+
     /// <summary>Runs a command from the command line, a second instance or the startup arguments.</summary>
     private void DispatchHostCommand(HostCommand command)
     {
@@ -1893,6 +1940,28 @@ internal sealed class AppHost
 
             case HostCommand.RefreshLyrics:
                 RefreshCurrentLyrics();
+                break;
+
+            case HostCommand.StageToggle:
+                SetStage(!_config.StageMode);
+                break;
+
+            case HostCommand.StageOn:
+                SetStage(true);
+                break;
+
+            case HostCommand.StageOff:
+                SetStage(false);
+                break;
+
+            case HostCommand.StageGreen:
+                _config.StageChroma = true;
+                SetStage(true);
+                break;
+
+            case HostCommand.StageBlack:
+                _config.StageChroma = false;
+                SetStage(true);
                 break;
 
             case HostCommand.Exit:
@@ -2218,6 +2287,20 @@ internal sealed class AppHost
 
             case Commands.ToggleLock:
                 SetLocked(!_locked);
+                break;
+
+            case Commands.ToggleStage:
+                SetStage(!_config.StageMode);
+                break;
+
+            case Commands.StageBlack:
+                _config.StageChroma = false;
+                SetStage(true);
+                break;
+
+            case Commands.StageChromaGreen:
+                _config.StageChroma = true;
+                SetStage(true);
                 break;
 
             case Commands.ToggleHeader:
@@ -3746,6 +3829,7 @@ internal sealed class AppHost
         {
             case SettingsChange.Appearance:
                 ApplyTheme();
+                _overlay?.SetStage(_config.StageMode);
                 break;
 
             case SettingsChange.Layout:
@@ -3806,6 +3890,7 @@ internal sealed class AppHost
             new(Commands.ToggleOverlay, "Show overlay", _overlayEnabled),
             TrayMenuItem.Submenu("Layout", LayoutMenuItems()),
             new(Commands.ToggleLock, "Locked (click-through)", _locked),
+            new(Commands.ToggleStage, "Stage mode", _config.StageMode),
             TrayMenuItem.Separator,
             new(Commands.OpenSettings, "Settings\u2026"),
             TrayMenuItem.Separator,

@@ -127,6 +127,21 @@ internal static class Program
         Check("an unknown weight number degrades to semibold",
             new AppConfig { ActiveLyricWeight = (LyricWeight)99 }.ToTheme().ActiveFontWeight == Vortice.DirectWrite.FontWeight.SemiBold, "");
 
+        // ---- Stage mode: a full-monitor audience surface, not a theme. ----
+        var stageBlack = new AppConfig { StageMode = true }.ToTheme();
+        var stageGreen = new AppConfig { StageMode = true, StageChroma = true }.ToTheme();
+
+        Check("the stage backdrop is opaque black by default",
+            stageBlack.BackgroundColor == 0xFF000000 && stageBlack.StageMode, stageBlack.BackgroundColor.ToString("X8"));
+        Check("the chroma stage backdrop is pure green",
+            stageGreen.BackgroundColor == 0xFF00FF00, stageGreen.BackgroundColor.ToString("X8"));
+        Check("the stage uses seven large lines",
+            stageBlack.MultiLineCount == 7 && stageBlack.ActiveFontSize >= 56f && stageBlack.InactiveFontSize >= 36f,
+            $"{stageBlack.MultiLineCount}/{stageBlack.ActiveFontSize}/{stageBlack.InactiveFontSize}");
+        Check("the stage drops the highlight and forces the outline",
+            !stageBlack.ShowActiveLineHighlight && stageBlack.TextOutline, "");
+        Check("stage mode is off by default", !new AppConfig().StageMode, new AppConfig().StageMode);
+
         Console.WriteLine();
         Console.WriteLine(_failures == 0 ? "ALL CHECKS PASSED" : $"{_failures} CHECK(S) FAILED");
 

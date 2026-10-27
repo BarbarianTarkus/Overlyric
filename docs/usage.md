@@ -176,6 +176,15 @@ anchored to the right; the sheet re-wraps its lines at the new width.
 
 *The sheet in demo mode. A real track also carries the LRCLIB record it came from; demo tracks do not.*
 
+## Stage mode
+
+**Tray → Stage mode** (or `--stage`, or **Settings → Appearance → Stage mode**) turns the overlay
+into a full-monitor audience display for a party or a stream: the window covers the whole display,
+the backdrop is opaque black (or chroma-key green with **Chroma-key green**), the lyrics are large
+and centred, and the header, progress bar and control bar are gone. It is display-only, so turning
+it on locks the overlay. Turn it off from the tray or with `--stage=off`; the normal overlay comes
+back exactly as it was.
+
 ## Command line and scripting
 
 A second launch does not start a second overlay: it forwards its arguments to the instance that is
@@ -192,6 +201,8 @@ Overlyric.exe --preview           # show the canned demo track for fifteen secon
 Overlyric.exe --settings          # open the settings window
 Overlyric.exe --diagnostics       # open the diagnostics window
 Overlyric.exe --refresh           # ask LRCLIB again for the current track
+Overlyric.exe --stage             # toggle the full-monitor audience surface
+Overlyric.exe --stage=green       # stage on, chroma-key green (or black / off)
 Overlyric.exe --exit              # quit, tray and all
 ```
 

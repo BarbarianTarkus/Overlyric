@@ -43,6 +43,11 @@ internal static class Program
         Check("--refresh parses", Parse("--refresh") == HostCommand.RefreshLyrics, Parse("--refresh"));
         Check("--lock and --unlock parse", Parse("--lock") == HostCommand.Lock && Parse("--unlock") == HostCommand.Unlock, "");
         Check("--exit parses", Parse("--exit") == HostCommand.Exit, Parse("--exit"));
+        Check("--stage toggles the audience surface", Parse("--stage") == HostCommand.StageToggle, Parse("--stage"));
+        Check("--stage=green and --stage=black parse",
+            Parse("--stage=green") == HostCommand.StageGreen && Parse("--stage=black") == HostCommand.StageBlack, "");
+        Check("--stage=off turns it off", Parse("--stage=off") == HostCommand.StageOff, Parse("--stage=off"));
+        Check("an unknown stage value is refused", !CommandLine.TryParse(["--stage=disco"], out _, out var stageError) && stageError is not null, stageError);
 
         Check("the switch is case-insensitive", Parse("--TOGGLE") == HostCommand.Toggle, Parse("--TOGGLE"));
         Check("no arguments is a no-op", Parse() == HostCommand.None, Parse());

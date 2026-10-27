@@ -243,6 +243,12 @@ internal sealed class SettingsWindow : WindowBase
         /// <summary>Show the optional second-language sidecar under the active line.</summary>
         ShowTranslation = 124,
 
+        /// <summary>Toggle the full-monitor audience surface.</summary>
+        StageMode = 125,
+
+        /// <summary>Use chroma-key green instead of black as the stage backdrop.</summary>
+        StageChroma = 126,
+
         /// <summary>
         /// The four offset nudges and the scrollbar. Their values fill the gap between the shortcut
         /// chips and the OLED block, the only stretch of the id space left; the enum's order documents
@@ -324,7 +330,7 @@ internal sealed class SettingsWindow : WindowBase
     /// One past the last row index each section draws. The viewport needs the height before the section
     /// is drawn, so this is a table rather than something measured twice.
     /// </summary>
-    private static readonly int[] SectionRows = [11, 8, 8, 5, 8, 8, ShortcutActions.All.Length + 1, 4];
+    private static readonly int[] SectionRows = [11, 10, 8, 5, 8, 8, ShortcutActions.All.Length + 1, 4];
 
     private readonly AppConfig _config;
     private readonly Action<SettingsChange> _changed;
@@ -1389,6 +1395,16 @@ internal sealed class SettingsWindow : WindowBase
                 Apply(SettingsChange.Appearance);
                 return;
 
+            case Control.StageMode:
+                _config.StageMode = !_config.StageMode;
+                Apply(SettingsChange.Appearance);
+                return;
+
+            case Control.StageChroma:
+                _config.StageChroma = !_config.StageChroma;
+                Apply(SettingsChange.Appearance);
+                return;
+
             case Control.OledPreset:
                 ApplyOledPreset();
                 return;
@@ -1926,6 +1942,14 @@ internal sealed class SettingsWindow : WindowBase
                 ("Semibold", Control.WeightSemiBold, _config.ActiveLyricWeight == LyricWeight.SemiBold),
                 ("Bold", Control.WeightBold, _config.ActiveLyricWeight == LyricWeight.Bold)
             ]);
+
+        Group(context, 8, "STAGE");
+
+        RowWithNote(context, 8, "Stage mode", "full monitor, large centred lyrics, no bar");
+        Toggle(context, Control.StageMode, _config.StageMode);
+
+        Row(context, 9, "Chroma-key green", child: true, enabled: _config.StageMode);
+        Toggle(context, Control.StageChroma, _config.StageChroma && _config.StageMode, enabled: _config.StageMode);
     }
 
     private void DrawShortcutsSection(ID2D1DeviceContext context)
@@ -2642,6 +2666,8 @@ internal sealed class SettingsWindow : WindowBase
         Control.OledOutline => 5,
         Control.ThemeDefault or Control.ThemeWarm or Control.ThemeCool or Control.ThemeMono => 6,
         Control.WeightNormal or Control.WeightSemiBold or Control.WeightBold => 7,
+        Control.StageMode => 8,
+        Control.StageChroma => 9,
 
         // Behaviour
         Control.HidePaused => 0,

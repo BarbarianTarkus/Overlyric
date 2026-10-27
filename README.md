@@ -35,6 +35,8 @@ There is no per-player integration to install. Deep dives live in [`docs/`](docs
   The LRCLIB record itself is never modified.
 - **Single line, single line plus the next, or multi line**, with word- or line-timed karaoke sweep, a
   manual version selector, and a full lyric sheet with timestamps.
+- **A stage mode for parties and streams.** One toggle turns the overlay into an opaque
+  full-monitor audience display with large centred lyrics, on black or chroma-key green.
 - **Built for an OLED desktop**, with a one-click burn-in preset: no backdrop, pixel shift, outline
   text, and the unsung half of the current line left unlit. Four curated palettes (Default, Warm,
   Cool, Mono) and a normal/semibold/bold active line sit beside it.

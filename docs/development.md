@@ -112,7 +112,7 @@ because they are the quickest way to re-check a platform assumption.
 | `VorticeAot` | Does the Vortice COM interop survive NativeAOT, and what does DirectWrite report? |
 | `NowPlaying` | What is playing right now, what does lrclib hold for it, and what does the pipeline resolve the track to — the reproduction harness for a lyric-matching failure |
 | `LyricsTests` | 34 checks over LRC parsing, caching (including matcher-version staleness, forget and clear) and a live LRCLIB round-trip |
-| `CommandLineTests` | 27 checks over the scripting grammar and the named-pipe round trip: every switch, unknown values refused, last-command-wins, and a send with nothing listening failing instead of hanging |
+| `CommandLineTests` | 31 checks over the scripting grammar and stage switches and the named-pipe round trip: every switch, unknown values refused, last-command-wins, and a send with nothing listening failing instead of hanging |
 | `DiagnosticsTests` | 19 checks over the rolling log (ring bound, file rotation, format) and the diagnostics snapshot's JSON, including a title with quotes and a newline |
 | `PresenceTests` | 24 checks over the Presence decisions: the per-app hide match (names, case, paths, protected processes), the exclusive-fullscreen conjunction, and the ten-second sustain with announce-once |
 | `LyricEditTests` | 38 checks over the timing editor: selection, set start/end, the refusal of an impossible edit, per-line and whole-sheet nudges, clamping at zero, stable sorting, and the bounded undo/redo history |
@@ -126,7 +126,7 @@ because they are the quickest way to re-check a platform assumption.
 | `ClockTests` | 19 checks over the playback clock: attaching mid-song, frozen vs live timelines, pause/resume, seeks, sentinel stamps |
 | `TimingTests` | 34 checks over timing-profile resolution: track -> output -> global overrides, a stored zero as an override, session-only nudges, clamping and cleanup of hand-edited maps, and the labels (`+0.25 s · this track`, `+0.15 s · Bluetooth headphones`) |
 | `SourcePreferenceTests` | 46 checks over the source selector: pin beating the list and Windows, list order respected, a listed player that is not running skipped, duplicate app ids resolved to the one actually playing, and a hand-edited list cleaned and capped without throwing |
-| `ThemeTests` | 30 checks over the OLED preset and the colours it produces, the monitor preference's hand-edited map, and the four curated palettes with the active-line weights |
+| `ThemeTests` | 35 checks over the OLED preset, palettes, stage theme and monitor preference and the colours it produces, the monitor preference's hand-edited map, and the four curated palettes with the active-line weights |
 
 Helper scripts: `probe\screenshot.py` (capture the screen) and `probe\crop.py` (crop and upscale a
 region for close inspection). Together they give a way to confirm visually that the overlay is on

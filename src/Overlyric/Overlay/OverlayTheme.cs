@@ -60,6 +60,12 @@ public sealed class OverlayTheme
     /// <summary>Weight of the line being sung; the surrounding lines stay normal.</summary>
     public FontWeight ActiveFontWeight { get; init; } = FontWeight.SemiBold;
 
+    /// <summary>
+    /// Full-monitor audience mode: the renderer fills the whole window with the backdrop and centres
+    /// the lyric block, instead of drawing a pill over the desktop.
+    /// </summary>
+    public bool StageMode { get; init; }
+
     public uint BackgroundColor { get; init; } = 0xB4101014;
     public uint ActiveTextColor { get; init; } = 0xFFF5F7FA;
     public uint InactiveTextColor { get; init; } = 0x8AF5F7FA;
@@ -160,6 +166,9 @@ public sealed record OverlayVisual
     /// the track has none or the option is off.
     /// </summary>
     public string? Translation { get; init; }
+
+    /// <summary>True for the full-monitor audience surface; the renderer then paints the whole window.</summary>
+    public bool StageMode { get; init; }
 
     /// <summary>Status text shown instead of lyrics, for example "No lyrics found".</summary>
     public string? Status { get; init; }

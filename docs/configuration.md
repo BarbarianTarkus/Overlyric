@@ -44,6 +44,8 @@ Settings → Advanced has **Open** buttons for this folder and the lyric cache.
 | `OutputOffsets` | `{}` | Per-output-device corrections, keyed by the CoreAudio endpoint id; each value carries `Name`, `OffsetMs` and `Bluetooth`. Used when the track has no override |
 | `RememberTrackOffset` | `true` | A timing nudge is saved for the current track. Off makes nudges session-only; holding Shift has the same effect per nudge |
 | `Theme` | `Default` | Curated palette: `Default`, `Warm`, `Cool` or `Mono` |
+| `StageMode` | `false` | Full-monitor audience display with large centred lyrics and an opaque backdrop |
+| `StageChroma` | `false` | Stage backdrop as chroma-key green instead of black |
 | `ActiveLyricWeight` | `SemiBold` | Weight of the line being sung: `Normal`, `SemiBold` or `Bold` |
 | `FontFamily` | `Segoe UI Variable Display` | Typeface |
 | `ActiveFontSize` / `InactiveFontSize` | `30` / `21` | Font sizes in DIPs |

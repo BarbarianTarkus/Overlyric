@@ -116,6 +116,13 @@ internal sealed class LyricsRenderer : IDisposable
             _layoutWidth = available;
         }
 
+        // The stage owns the whole window: fill it before the (shifted) content so the lyric block
+        // sits on one clean field, chroma green or black.
+        if (visual.StageMode && HasBackdrop)
+        {
+            context.FillRectangle(new Rect(0f, 0f, width, height), GetBrush(context, _theme.BackgroundColor));
+        }
+
         DrawWithShift(context, visual, () =>
         {
             if (visual.Mode == OverlayMode.SingleLine)

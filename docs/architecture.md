@@ -239,6 +239,15 @@ and the tray menu has the same toggle.
 This is deliberately diagnostic rather than clever: there is no attempt to guess a position for a
 player that refuses to give one, because a wrong lyric is worse than an honest sentence.
 
+## Stage mode
+
+The audience surface is the same renderer and window, sized differently: the window is placed over
+its monitor's full bounds rather than a pill over the desktop, the theme carries an opaque black or
+chroma-green backdrop, and the renderer fills the whole window before drawing the centred seven-line
+block. It shows no header, no progress bar and no control bar, and turning it on locks the overlay,
+because a stage is something the audience watches rather than something the player drags. The
+settings and config keep it opt-in; the normal overlay is one toggle away.
+
 ## Scripting and the second instance
 
 The app has one overlay and one tray by design, so a second launch cannot be allowed to create a
