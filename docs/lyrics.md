@@ -233,6 +233,22 @@ The selected line stays marked while playback highlights the line being sung, so
 editing" and "the line I am hearing" cannot be confused. Choosing a different record replaces the
 editable sheet; unsaved edits on the same track are kept until they are saved or the track changes.
 
+## Publishing to LRCLIB
+
+A local sheet - imported or edited - can be published back. **Publish…** appears in the sheet's
+footer only when the current sheet is local, because republishing a record the catalogue already
+holds would create a duplicate rather than a correction. It opens a confirmation panel with the exact
+track fields, the sheet's line count and span, a statement that LRCLIB records are public, and a
+reminder that the site's terms and rate limits still apply. Nothing is sent until **Publish** is
+pressed; **Cancel** (or Esc) leaves everything untouched.
+
+On confirmation the client asks LRCLIB for a proof-of-work challenge, solves it on every available
+core (a few seconds at the normal difficulty, with the attempt count shown in the footer), and sends
+exactly one publish request with the single-use token. It never retries with a used token and it never
+publishes in the background. A 201 says the record was created; 400, 429 and 503 become sentences
+about the token, the rate limit and the server being busy, and a network failure is reported as one.
+An existing record is not overwritten: use the duplicate report on LRCLIB instead.
+
 ## Refreshing an answer
 
 The tray's **Refresh lyrics** forgets the cached result for the current track — including the copy

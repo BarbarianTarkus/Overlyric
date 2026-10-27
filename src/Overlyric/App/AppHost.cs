@@ -219,6 +219,13 @@ internal sealed class AppHost
     /// <summary>The rolling decision log behind the diagnostics window; bounded in memory and on disk.</summary>
     private readonly DiagnosticLog _diagnosticLog = new(Path.Combine(AppConfig.DataDirectory, "diagnostics.log"));
 
+    /// <summary>The explicit-publish client, created once; the UI never publishes without confirmation.</summary>
+    private LrclibPublisher? _publisher;
+    private CancellationTokenSource? _publishCts;
+    private bool _publishing;
+    private bool _publishCompleted;
+    private (PublishOutcome Outcome, string Message) _publishResult;
+
     private DiagnosticsWindow? _diagnostics;
 
     /// <summary>The default output device as last read; null until CoreAudio answers once.</summary>
@@ -405,6 +412,7 @@ internal sealed class AppHost
                 Path.Combine(AppConfig.DataDirectory, "versions.json"));
 
             _localLyrics = new LocalLyricsStore(AppConfig.LyricsDirectory);
+            _publisher = new LrclibPublisher();
 
             _lyrics = new LyricsService(
                 new LrclibClient(LrclibClient.DefaultUserAgent),
@@ -570,6 +578,9 @@ internal sealed class AppHost
             case WM_DESTROY:
                 _commandCts.Cancel();
                 _commandCts.Dispose();
+                _publishCts?.Cancel();
+                _publishCts?.Dispose();
+                _publisher?.Dispose();
                 PostQuitMessage(0);
                 break;
 
@@ -680,6 +691,7 @@ internal sealed class AppHost
         UpdateLyricsAlert(snapshot);
         UpdateLocalFileAlert();
         CheckExternalEditReload();
+        UpdatePublishResult();
 
         var visual = BuildVisual(snapshot, position, positionIsUsable);
 
@@ -3015,6 +3027,77 @@ internal sealed class AppHost
         }
     }
 
+    /// <summary>
+    /// Sends one confirmed sheet to LRCLIB. The validation runs again here even though the viewer
+    /// disabled the button, because a guard that only exists in the UI is not a guard. Solving and
+    /// sending happen on a task; the result is picked up by the tick, on the thread that owns the
+    /// windows and the tray.
+    /// </summary>
+    private void PublishLyrics(IReadOnlyList<LyricLine> lines)
+    {
+        var snapshot = _snapshot;
+
+        if (!snapshot.HasTrack
+            || snapshot.DurationSeconds is not { } duration
+            || _publisher is null
+            || _publishing)
+        {
+            return;
+        }
+
+        var errors = PublishValidation.Validate(snapshot.Title, snapshot.Artist, snapshot.DurationSeconds, lines);
+
+        if (errors.Count > 0)
+        {
+            _viewer?.SetTransientStatus(string.Join(" ", errors));
+            return;
+        }
+
+        var request = PublishValidation.BuildRequest(
+            snapshot.Title,
+            snapshot.Artist,
+            snapshot.Album,
+            duration,
+            lines);
+
+        _publishCts?.Dispose();
+        _publishCts = new CancellationTokenSource();
+        var token = _publishCts.Token;
+        _publishing = true;
+        _viewer?.SetTransientStatus("Contacting LRCLIB…");
+
+        var progress = new Progress<long>(attempts =>
+            _viewer?.SetTransientStatus($"Solving the publish challenge… {attempts / 1_000_000.0:0.0} M tries"));
+
+        _ = Task.Run(
+            async () =>
+            {
+                var result = await _publisher.PublishAsync(request, progress, token).ConfigureAwait(false);
+                _publishResult = result;
+                _publishCompleted = true;
+            },
+            token);
+    }
+
+    /// <summary>Shows the background publish's result on the UI thread, once.</summary>
+    private void UpdatePublishResult()
+    {
+        if (!_publishCompleted)
+        {
+            return;
+        }
+
+        _publishCompleted = false;
+        _publishing = false;
+        var (outcome, message) = _publishResult;
+
+        _viewer?.SetTransientStatus(message);
+        _diagnosticLog.Add("publish", string.Concat(outcome.ToString(), ": ", message));
+        _tray?.Alert(
+            outcome == PublishOutcome.Published ? "Overlyric \u2014 lyrics published" : "Overlyric \u2014 publish failed",
+            message);
+    }
+
     /// <summary>The position "now", which is what the timing editor stamps a line with.</summary>
     private TimeSpan CurrentPosition() => IsDemoActive
         ? DemoPosition()
@@ -3423,6 +3506,7 @@ internal sealed class AppHost
             id => ChooseVersion(id),
             ExportLyrics,
             OpenInExternalEditor,
+            PublishLyrics,
             CurrentPosition,
             SaveEditedLyrics);
         _viewer.ShowSheet(BuildSheet());

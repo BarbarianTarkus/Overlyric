@@ -47,6 +47,9 @@ internal sealed class LyricViewerWindow : PanelWindow
     private const int SetEndControl = 11;
     private const int SaveControl = 12;
     private const int EditFileControl = 13;
+    private const int PublishControl = 14;
+    private const int PublishConfirmControl = 15;
+    private const int PublishCancelControl = 16;
     private const int SearchResultBase = 100;
 
     /// <summary>Nudge buttons are this base plus an index into <see cref="NudgeStepsMs"/>.</summary>
@@ -103,12 +106,14 @@ internal sealed class LyricViewerWindow : PanelWindow
     private readonly Action<long> _chooseRecord;
     private readonly Action<IReadOnlyList<LyricLine>> _export;
     private readonly Action<IReadOnlyList<LyricLine>> _openExternal;
+    private readonly Action<IReadOnlyList<LyricLine>> _publish;
     private readonly Func<TimeSpan> _position;
     private readonly Func<IReadOnlyList<LyricLine>, string?> _saveEdited;
 
     private LyricSheet? _sheet;
     private LyricEditSession? _edit;
     private string? _editMessage;
+    private bool _publishPrompt;
     private bool _editSessionFresh;
     private bool _measured;
     private float _measuredWidth = -1f;
@@ -131,6 +136,7 @@ internal sealed class LyricViewerWindow : PanelWindow
         Action<long> chooseRecord,
         Action<IReadOnlyList<LyricLine>> export,
         Action<IReadOnlyList<LyricLine>> openExternal,
+        Action<IReadOnlyList<LyricLine>> publish,
         Func<TimeSpan> position,
         Func<IReadOnlyList<LyricLine>, string?> saveEdited)
     {
@@ -138,6 +144,7 @@ internal sealed class LyricViewerWindow : PanelWindow
         ArgumentNullException.ThrowIfNull(chooseRecord);
         ArgumentNullException.ThrowIfNull(export);
         ArgumentNullException.ThrowIfNull(openExternal);
+        ArgumentNullException.ThrowIfNull(publish);
         ArgumentNullException.ThrowIfNull(position);
         ArgumentNullException.ThrowIfNull(saveEdited);
 
@@ -145,8 +152,16 @@ internal sealed class LyricViewerWindow : PanelWindow
         _chooseRecord = chooseRecord;
         _export = export;
         _openExternal = openExternal;
+        _publish = publish;
         _position = position;
         _saveEdited = saveEdited;
+    }
+
+    /// <summary>A short status line from the host, e.g. publish progress or an error.</summary>
+    public void SetTransientStatus(string? message)
+    {
+        _editMessage = message;
+        Invalidate();
     }
 
     protected override float DefaultWidthDip => 900f;
@@ -504,6 +519,13 @@ internal sealed class LyricViewerWindow : PanelWindow
             return;
         }
 
+        if (_publishPrompt)
+        {
+            DrawPublishPrompt(context, sheet);
+            DrawFooter(context, sheet);
+            return;
+        }
+
         MeasureIfNeeded(sheet);
 
         var viewport = ListBottom - ListTop;
@@ -849,6 +871,58 @@ internal sealed class LyricViewerWindow : PanelWindow
         }
     }
 
+    /// <summary>
+    /// The confirmation step before a publish. It shows the exact track fields and sheet span, states
+    /// that the record is public, and refuses to offer Publish when the local validation found a
+    /// problem. Nothing is sent until the listener confirms this panel.
+    /// </summary>
+    private void DrawPublishPrompt(ID2D1DeviceContext context, LyricSheet sheet)
+    {
+        var lines = _edit?.Lines ?? sheet.Lines;
+        var errors = PublishValidation.Validate(sheet.Title, sheet.Artist, sheet.DurationSeconds, lines);
+        var top = ListTop;
+        var bottom = ListBottom - 6f;
+        var left = Pad + 18f;
+        var width = WidthDip - (2 * Pad) - 36f;
+
+        FillRound(context, Pad, top, WidthDip - (2 * Pad), bottom - top, 10f, ColorControl);
+        Label(context, "Publish this sheet to LRCLIB", left, top + 14f, width, 28f, 17f, FontWeight.SemiBold, ColorText);
+
+        var track = string.Concat(sheet.Artist, sheet.Artist.Length > 0 && sheet.Title.Length > 0 ? " - " : string.Empty, sheet.Title);
+        Label(context, $"Track   {LyricText.Fit(track, 64)}", left, top + 48f, width, 20f, 12.5f, FontWeight.Normal, ColorTextDim);
+        Label(context, $"Album   {(string.IsNullOrWhiteSpace(sheet.Album) ? "(none)" : LyricText.Fit(sheet.Album, 60))}", left, top + 70f, width, 20f, 12.5f, FontWeight.Normal, ColorTextDim);
+        Label(context, $"Length  {LyricText.FormatDuration(sheet.DurationSeconds)}", left, top + 92f, width, 20f, 12.5f, FontWeight.Normal, ColorTextDim);
+
+        var span = lines.Count > 0
+            ? $"{lines.Count} lines, {LyricText.FormatTimestamp(lines[0].Start)} to {LyricText.FormatTimestamp(lines[^1].Start)}"
+            : "no lines";
+        Label(context, $"Sheet   {span}", left, top + 114f, width, 20f, 12.5f, FontWeight.Normal, ColorTextDim);
+
+        Label(
+            context,
+            "LRCLIB records are public. Publish only words you have the right to share; its terms and rate limits still apply.",
+            left,
+            top + 146f,
+            width,
+            40f,
+            12f,
+            FontWeight.Normal,
+            ColorTextFaint,
+            TextAlignment.Leading,
+            ParagraphAlignment.Near,
+            WordWrapping.Wrap);
+
+        var verdict = errors.Count == 0
+            ? "This creates a new public record; it will not overwrite an existing one."
+            : string.Join(" ", errors.Take(2));
+
+        Label(context, verdict, left, top + 196f, width, 40f, 12f, FontWeight.Normal, errors.Count == 0 ? ColorGood : ColorWarning);
+
+        var buttonTop = bottom - 46f;
+        Button(context, PublishConfirmControl, "Publish", R(WidthDip - Pad - 224f, buttonTop, WidthDip - Pad - 124f, buttonTop + 30f), errors.Count == 0);
+        Button(context, PublishCancelControl, "Cancel", R(WidthDip - Pad - 116f, buttonTop, WidthDip - Pad - 16f, buttonTop + 30f), true);
+    }
+
     private void DrawFooter(ID2D1DeviceContext context, LyricSheet? sheet)
     {
         Fill(context, R(Pad, FooterTop, WidthDip - Pad, FooterTop + 1f), ColorLine);
@@ -912,6 +986,16 @@ internal sealed class LyricViewerWindow : PanelWindow
                 R(editLeft, FooterTop + 7f, editLeft + editWidth, FooterTop + 31f),
                 !sheet.IsDemo);
 
+            const float publishWidth = 84f;
+            var publishLeft = editLeft + editWidth + 8f;
+
+            Button(
+                context,
+                PublishControl,
+                "Publish\u2026",
+                R(publishLeft, FooterTop + 7f, publishLeft + publishWidth, FooterTop + 31f),
+                sheet.Source == LyricSource.Local && !sheet.IsDemo);
+
             // Below the default width the selection prefix and the help sentence are dropped: there
             // is room for one short sentence (usually the last operation's result) and no more, and
             // the Label draws without wrapping, so an over-long hint would run under the line count.
@@ -928,7 +1012,7 @@ internal sealed class LyricViewerWindow : PanelWindow
                         ? "Ctrl+F searches lrclib with your own words."
                         : "This sheet has no timings, so there is nothing to export yet.";
 
-            var hintLeft = editLeft + editWidth + 10f;
+            var hintLeft = publishLeft + publishWidth + 10f;
             var hintWidth = MathF.Max(0f, WidthDip - Pad - 190f - hintLeft);
             var maxChars = Math.Max(6, (int)(hintWidth / 5.6f));
             var hint = help.Length <= maxChars ? help : help[..(maxChars - 1)] + "\u2026";
@@ -951,19 +1035,23 @@ internal sealed class LyricViewerWindow : PanelWindow
         // The empty state carries its own Search LRCLIB button, so the footer only has to say how
         // to leave the window.
 
-        var rightText = sheet is { LineCount: > 0 } ? $"{sheet.LineCount} lines" : "Esc closes";
+        // Keep the line count only where the footer buttons leave room for it.
+        if (WidthDip >= 700f)
+        {
+            var rightText = sheet is { LineCount: > 0 } ? $"{sheet.LineCount} lines" : "Esc closes";
 
-        Label(
-            context,
-            rightText,
-            WidthDip - Pad - 180f,
-            FooterTop + 9f,
-            180f,
-            20f,
-            11f,
-            FontWeight.Normal,
-            ColorTextFaint,
-            TextAlignment.Trailing);
+            Label(
+                context,
+                rightText,
+                WidthDip - Pad - 180f,
+                FooterTop + 9f,
+                180f,
+                20f,
+                11f,
+                FontWeight.Normal,
+                ColorTextFaint,
+                TextAlignment.Trailing);
+        }
     }
 
     // ---- manual search --------------------------------------------------------------------
@@ -1580,6 +1668,22 @@ internal sealed class LyricViewerWindow : PanelWindow
                 _export(_edit?.Lines ?? (IReadOnlyList<LyricLine>)(_sheet?.Lines ?? []));
                 return;
 
+            case PublishControl:
+                _publishPrompt = true;
+                Invalidate();
+                return;
+
+            case PublishConfirmControl:
+                _publishPrompt = false;
+                _publish(_edit?.Lines ?? (IReadOnlyList<LyricLine>)(_sheet?.Lines ?? []));
+                Invalidate();
+                return;
+
+            case PublishCancelControl:
+                _publishPrompt = false;
+                Invalidate();
+                return;
+
             case EditFileControl:
                 _openExternal(_edit?.Lines ?? (IReadOnlyList<LyricLine>)(_sheet?.Lines ?? []));
                 return;
@@ -1751,6 +1855,13 @@ internal sealed class LyricViewerWindow : PanelWindow
 
     protected override bool OnBodyKey(int virtualKey)
     {
+        if (_publishPrompt && virtualKey == 0x1B)
+        {
+            _publishPrompt = false;
+            Invalidate();
+            return true;
+        }
+
         if (_searchOpen)
         {
             return SearchKey(virtualKey);

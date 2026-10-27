@@ -51,6 +51,7 @@ $defaultProbes = @(
     'LocalLyricsTests',
     'LyricEditTests',
     'PresenceTests',
+    'PublishingTests',
     'LyricWindowsTests',
     'LyricsTests',
     'ResilienceTests',

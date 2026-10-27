@@ -166,7 +166,8 @@ timed sheet in force as an LRC file. The sheet is also a timing editor: Up/Down 
 10/50/250 ms (hold **Shift** to shift every line), and **Undo**/**Redo**/**Save** work as described
 under [Editing the timing](lyrics.md#editing-the-timing). **Edit file…** opens the local `.lrc` in
 Notepad and reloads the sheet when it is saved. Saving writes a local selection, so the edit survives
-a replay without changing the LRCLIB record. Both windows are
+a replay without changing the LRCLIB record. **Publish…**, shown for local sheets only, sends the
+confirmed sheet to LRCLIB as a new public record (see [Publishing to LRCLIB](lyrics.md#publishing-to-lrclib)). Both windows are
 dark, resize from any edge or corner, and close with **Esc**; they reuse the overlay's
 DirectComposition stack and the settings window's palette, so they add no new UI framework. The
 selector's title column takes the extra width, while its match, length and badge columns stay

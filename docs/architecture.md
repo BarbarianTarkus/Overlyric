@@ -239,6 +239,17 @@ and the tray menu has the same toggle.
 This is deliberately diagnostic rather than clever: there is no attempt to guess a position for a
 player that refuses to give one, because a wrong lyric is worse than an honest sentence.
 
+## Publishing
+
+Publishing is the one outbound path that creates data on someone else's service, so it is the most
+guarded: only a local sheet can be published (an LRCLIB record would be duplicated, not corrected),
+the viewer shows the exact fields and span and requires an explicit confirmation, and the host
+re-runs the validation even though the button was disabled - a guard that only exists in the UI is
+not a guard. The client then requests a proof-of-work challenge, solves it on all cores
+(`SHA-256(prefix + decimal nonce)` at or below the target), and sends one request with the
+single-use token. There is no retry with a used token and no background publish; 400/429/503 are
+turned into sentences, and the local sheet stays the listener's copy either way.
+
 ## Stage mode
 
 The audience surface is the same renderer and window, sized differently: the window is placed over

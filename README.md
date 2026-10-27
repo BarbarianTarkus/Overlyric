@@ -26,6 +26,9 @@ There is no per-player integration to install. Deep dives live in [`docs/`](docs
   `.lrc`/`.txt` (UTF-8, UTF-16 or ANSI), preview it against the track, and it is used instead of the
   network and marked **Local**; any timed sheet exports back to LRC. A deleted local file falls back
   with a sentence, not silence.
+- **Publishes a corrected sheet, explicitly.** A local sheet can be sent back to LRCLIB after a
+  confirmation panel that shows the exact payload; the proof-of-work is solved locally, one request
+  is sent, and nothing is ever published silently.
 - **Shows a translation when the listener supplies one.** A `.trans.lrc` beside an imported sheet
   draws its active line under the lyric in a smaller, dimmer style; no machine translation, no
   network call, and a switch to turn it off.
