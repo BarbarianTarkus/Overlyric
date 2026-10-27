@@ -239,6 +239,16 @@ and the tray menu has the same toggle.
 This is deliberately diagnostic rather than clever: there is no attempt to guess a position for a
 player that refuses to give one, because a wrong lyric is worse than an honest sentence.
 
+## Album art
+
+The thumbnail comes from the same SMTC media properties call the title and artist come from. It is
+decoded with `Windows.Graphics.Imaging.BitmapDecoder` to premultiplied BGRA8 at up to 160 px, once per
+track (not on the five-second property refresh, because the art cannot change within a track), and
+carried in the immutable snapshot. The renderer turns it into a device bitmap lazily and rebuilds it
+only when the decoded pixels change; the viewer keeps one bitmap in its header and the overlay keeps
+one for the info pop-up. The WinRT imaging projection is proven under NativeAOT by `probe/SmtcAot`,
+which decodes a real PNG in the published binary instead of trusting a Debug run.
+
 ## Publishing
 
 Publishing is the one outbound path that creates data on someone else's service, so it is the most

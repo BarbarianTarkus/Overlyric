@@ -1,5 +1,7 @@
 using System.Drawing;
 using System.Numerics;
+using System.Runtime.InteropServices;
+using Vortice;
 using Vortice.Direct2D1;
 using Vortice.DirectWrite;
 using Vortice.Mathematics;
@@ -28,6 +30,9 @@ internal sealed class LyricsRenderer : IDisposable
     private const float NoticeContentGap = 4f;
 
     private const float ControlButtonHeight = 32f;
+
+    /// <summary>Album art shown inside the info pop-up, before the text.</summary>
+    private const float NoticeArtworkSize = 28f;
     private const float ControlButtonGap = 4f;
     private const float ControlGroupGap = 10f;
     private const float ControlBarPadding = 5f;
@@ -44,6 +49,8 @@ internal sealed class LyricsRenderer : IDisposable
     private float _layoutWidth = -1f;
     private float _layoutHeight = 200f;
     private bool _disposed;
+    private ID2D1Bitmap? _noticeArtworkBitmap;
+    private byte[]? _noticeArtworkSource;
 
     public LyricsRenderer(IDWriteFactory writeFactory, OverlayTheme theme)
     {
@@ -471,14 +478,23 @@ internal sealed class LyricsRenderer : IDisposable
 
         var titleLayout = GetLayout(notice.Title, _theme.NoticeTitleFontSize, FontWeight.SemiBold);
         var detailLayout = GetLayout(notice.Detail, _theme.NoticeDetailFontSize, FontWeight.Normal);
+        var artwork = NoticeArtwork(context, visual);
+        var artworkExtra = artwork is null ? 0f : NoticeArtworkSize + 4f;
 
         // The pill hugs its text but can never be wider than the area between the margins; a
         // notice that is too long simply wraps inside the layout, which already measures height.
+        var contentWidth = Math.Max(titleLayout.Metrics.Width, detailLayout.Metrics.Width);
+
+        if (artwork is not null)
+        {
+            contentWidth = Math.Max(contentWidth, NoticeArtworkSize);
+        }
+
         var pillWidth = Math.Min(
-            Math.Max(titleLayout.Metrics.Width, detailLayout.Metrics.Width) + (2 * _theme.NoticePaddingX),
+            contentWidth + (2 * _theme.NoticePaddingX),
             Math.Max(0f, width - (2 * margin)));
         var pillHeight = titleLayout.Metrics.Height + 2f + detailLayout.Metrics.Height
-                         + (2 * _theme.NoticePaddingY);
+                         + (2 * _theme.NoticePaddingY) + artworkExtra;
         if (pillWidth <= 0f || pillHeight <= 0f)
         {
             return;
@@ -509,7 +525,21 @@ internal sealed class LyricsRenderer : IDisposable
         // Drawn from `margin`, not from the pill edge: the layouts centre text inside the window
         // wide box and the pill is centred too, so `margin` is the origin the metrics were
         // measured against - the same reasoning as the header.
-        var titleY = top + _theme.NoticePaddingY;
+        var titleY = top + _theme.NoticePaddingY + artworkExtra;
+
+        if (artwork is not null)
+        {
+            var artLeft = left + ((pillWidth - NoticeArtworkSize) / 2f);
+
+            context.DrawBitmap(
+                artwork,
+                new RawRectF(artLeft, top + _theme.NoticePaddingY, artLeft + NoticeArtworkSize, top + _theme.NoticePaddingY + NoticeArtworkSize),
+                1f,
+                InterpolationMode.Linear,
+                null,
+                null);
+        }
+
         context.DrawTextLayout(
             new Vector2(margin, titleY),
             titleLayout,
@@ -545,6 +575,53 @@ internal sealed class LyricsRenderer : IDisposable
     /// the hotkey had just set, and a lock, which only existed as a remembered chord. The word "Reset"
     /// is gone - one glyph says the same thing in a quarter of the width.
     /// </remarks>
+    /// <summary>
+    /// The pop-up's album art as a device bitmap, rebuilt only when the decoded pixels change; null
+    /// when the player publishes none or the copy failed.
+    /// </summary>
+    private ID2D1Bitmap? NoticeArtwork(ID2D1DeviceContext context, OverlayVisual visual)
+    {
+        if (visual.Artwork is null || visual.ArtworkWidth <= 0 || visual.ArtworkHeight <= 0)
+        {
+            return null;
+        }
+
+        if (ReferenceEquals(visual.Artwork, _noticeArtworkSource))
+        {
+            return _noticeArtworkBitmap;
+        }
+
+        _noticeArtworkBitmap?.Dispose();
+        _noticeArtworkBitmap = null;
+        _noticeArtworkSource = visual.Artwork;
+
+        var handle = GCHandle.Alloc(visual.Artwork, GCHandleType.Pinned);
+
+        try
+        {
+            var properties = new BitmapProperties1(
+                new Vortice.DCommon.PixelFormat(Vortice.DXGI.Format.B8G8R8A8_UNorm, Vortice.DCommon.AlphaMode.Premultiplied),
+                96f,
+                96f);
+
+            _noticeArtworkBitmap = context.CreateBitmap(
+                new SizeI(visual.ArtworkWidth, visual.ArtworkHeight),
+                handle.AddrOfPinnedObject(),
+                (uint)(visual.ArtworkWidth * 4),
+                properties);
+        }
+        catch (Exception)
+        {
+            _noticeArtworkBitmap = null;
+        }
+        finally
+        {
+            handle.Free();
+        }
+
+        return _noticeArtworkBitmap;
+    }
+
     private void DrawControls(
         ID2D1DeviceContext context,
         OverlayVisual visual,
@@ -1070,6 +1147,10 @@ internal sealed class LyricsRenderer : IDisposable
         }
 
         _disposed = true;
+
+        _noticeArtworkBitmap?.Dispose();
+        _noticeArtworkBitmap = null;
+        _noticeArtworkSource = null;
 
         ClearLayouts();
 

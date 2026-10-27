@@ -115,6 +115,10 @@ internal sealed class LyricViewerWindow : PanelWindow
     private string? _editMessage;
     private bool _publishPrompt;
     private bool _editSessionFresh;
+
+    /// <summary>The header album art, rebuilt only when the track's decoded pixels change.</summary>
+    private ID2D1Bitmap? _artworkBitmap;
+    private byte[]? _artworkSource;
     private bool _measured;
     private float _measuredWidth = -1f;
     private bool _scrollToActive;
@@ -596,11 +600,30 @@ internal sealed class LyricViewerWindow : PanelWindow
             return;
         }
 
+        var artwork = ArtworkBitmap(context, sheet);
+        var artworkSize = 38f;
+        var contentLeft = Pad;
+        var contentWidth = WidthDip - (2 * Pad);
+
+        if (artwork is not null)
+        {
+            context.DrawBitmap(
+                artwork,
+                new Vortice.RawRectF(Pad, 10f, Pad + artworkSize, 10f + artworkSize),
+                1f,
+                InterpolationMode.Linear,
+                null,
+                null);
+
+            contentLeft = Pad + artworkSize + 12f;
+            contentWidth = WidthDip - Pad - contentLeft;
+        }
+
         var title = LyricText.Fit(sheet.Title.Length > 0 ? sheet.Title : sheet.Artist, 72);
-        Label(context, title, Pad, 10f, WidthDip - (2 * Pad), 32f, 22f, FontWeight.SemiBold, ColorText);
+        Label(context, title, contentLeft, 10f, contentWidth, 32f, 22f, FontWeight.SemiBold, ColorText);
 
         var meta = BuildMeta(sheet);
-        Label(context, meta, Pad, 42f, WidthDip - (2 * Pad), 20f, 12.5f, FontWeight.Normal, ColorTextDim);
+        Label(context, meta, contentLeft, 42f, contentWidth, 20f, 12.5f, FontWeight.Normal, ColorTextDim);
 
         var badge = LyricBadges.ForSheet(
             sheet.IsComplete,
@@ -662,6 +685,60 @@ internal sealed class LyricViewerWindow : PanelWindow
         }
 
         Fill(context, R(Pad, HeaderHeight - 1f, WidthDip - Pad, HeaderHeight), ColorLine);
+    }
+
+    /// <summary>
+    /// The album art as a device bitmap, rebuilt only when the decoded pixels change. The bytes are
+    /// pinned for the duration of the copy; Direct2D owns its own copy afterwards.
+    /// </summary>
+    private ID2D1Bitmap? ArtworkBitmap(ID2D1DeviceContext context, LyricSheet sheet)
+    {
+        if (sheet.Artwork is null || sheet.ArtworkWidth <= 0 || sheet.ArtworkHeight <= 0)
+        {
+            return null;
+        }
+
+        if (ReferenceEquals(sheet.Artwork, _artworkSource))
+        {
+            return _artworkBitmap;
+        }
+
+        _artworkBitmap?.Dispose();
+        _artworkBitmap = null;
+        _artworkSource = sheet.Artwork;
+
+        var handle = GCHandle.Alloc(sheet.Artwork, GCHandleType.Pinned);
+
+        try
+        {
+            var properties = new BitmapProperties1(
+                new Vortice.DCommon.PixelFormat(Vortice.DXGI.Format.B8G8R8A8_UNorm, Vortice.DCommon.AlphaMode.Premultiplied),
+                96f,
+                96f);
+
+            _artworkBitmap = context.CreateBitmap(
+                new SizeI(sheet.ArtworkWidth, sheet.ArtworkHeight),
+                handle.AddrOfPinnedObject(),
+                (uint)(sheet.ArtworkWidth * 4),
+                properties);
+        }
+        catch (Exception)
+        {
+            _artworkBitmap = null;
+        }
+        finally
+        {
+            handle.Free();
+        }
+
+        return _artworkBitmap;
+    }
+
+    public override void Dispose()
+    {
+        _artworkBitmap?.Dispose();
+        _artworkBitmap = null;
+        base.Dispose();
     }
 
     private static string BuildMeta(LyricSheet sheet)

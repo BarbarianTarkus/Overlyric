@@ -27,6 +27,16 @@ public sealed record NowPlayingSnapshot
     /// <summary>Increments once per track change, so consumers can detect transitions cheaply.</summary>
     public long Revision { get; init; }
 
+    /// <summary>
+    /// The album art decoded from the session's thumbnail, as premultiplied BGRA8, or null when the
+    /// player publishes none. It is decoded once per track and shared by the sheet and the pop-up.
+    /// </summary>
+    public byte[]? Artwork { get; init; }
+
+    public int ArtworkWidth { get; init; }
+
+    public int ArtworkHeight { get; init; }
+
     public bool HasTrack => HasSession && (!string.IsNullOrWhiteSpace(Title) || !string.IsNullOrWhiteSpace(Artist));
 
     /// <summary>Human-readable player name derived from the app user model id.</summary>

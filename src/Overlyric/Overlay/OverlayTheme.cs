@@ -170,6 +170,13 @@ public sealed record OverlayVisual
     /// <summary>True for the full-monitor audience surface; the renderer then paints the whole window.</summary>
     public bool StageMode { get; init; }
 
+    /// <summary>Album art for the info pop-up, premultiplied BGRA8; null when the player has none.</summary>
+    public byte[]? Artwork { get; init; }
+
+    public int ArtworkWidth { get; init; }
+
+    public int ArtworkHeight { get; init; }
+
     /// <summary>Status text shown instead of lyrics, for example "No lyrics found".</summary>
     public string? Status { get; init; }
 

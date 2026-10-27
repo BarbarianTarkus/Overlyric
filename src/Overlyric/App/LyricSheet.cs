@@ -45,6 +45,13 @@ internal sealed record LyricSheet
 
     public long? RecordId { get; init; }
 
+    /// <summary>Album art from the session thumbnail, premultiplied BGRA8; null when none.</summary>
+    public byte[]? Artwork { get; init; }
+
+    public int ArtworkWidth { get; init; }
+
+    public int ArtworkHeight { get; init; }
+
     /// <summary>Where the sheet came from; a local sheet is labelled and badged differently.</summary>
     public LyricSource Source { get; init; } = LyricSource.Lrclib;
 

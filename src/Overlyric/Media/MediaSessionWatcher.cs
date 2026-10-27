@@ -1,4 +1,6 @@
+using Windows.Graphics.Imaging;
 using Windows.Media.Control;
+using Windows.Storage.Streams;
 
 namespace Overlyric.Media;
 
@@ -61,6 +63,12 @@ internal sealed class MediaSessionWatcher : IAsyncDisposable
     private string _lastArtist = "";
     private string _lastSource = "";
     private string? _lastAlbum;
+
+    /// <summary>Decoded album art for the current track, and the key it was decoded for.</summary>
+    private byte[]? _artwork;
+    private int _artworkWidth;
+    private int _artworkHeight;
+    private string _artworkKey = "";
 
     private TimeSpan _lastReportedPosition = TimeSpan.MinValue;
     private TimeSpan _lastEndTime = TimeSpan.MinValue;
@@ -262,6 +270,19 @@ internal sealed class MediaSessionWatcher : IAsyncDisposable
             _haveProperties = true;
             _lastPropertyRefresh = now;
             Interlocked.Increment(ref _propertyRefreshes);
+
+            // The thumbnail is read once per track/source, not on every property refresh: decoding
+            // an image is expensive and the art cannot change within one track.
+            var artworkKey = string.Concat(source, "\n", title, "\n", artist);
+
+            if (!string.Equals(artworkKey, _artworkKey, StringComparison.Ordinal))
+            {
+                _artworkKey = artworkKey;
+                var artwork = await LoadArtworkAsync(properties?.Thumbnail).ConfigureAwait(false);
+                _artwork = artwork?.Data;
+                _artworkWidth = artwork?.Width ?? 0;
+                _artworkHeight = artwork?.Height ?? 0;
+            }
         }
 
         if (trackChanged || !string.Equals(source, _lastSource, StringComparison.Ordinal))
@@ -298,8 +319,55 @@ internal sealed class MediaSessionWatcher : IAsyncDisposable
             DurationSeconds = duration,
             IsPlaying = isPlaying,
             TimelineIsLive = _clock.TimelineIsLive,
-            Revision = _revision
+            Revision = _revision,
+            Artwork = _artwork,
+            ArtworkWidth = _artworkWidth,
+            ArtworkHeight = _artworkHeight
         });
+    }
+
+    /// <summary>
+    /// Decodes the session thumbnail to premultiplied BGRA8, scaled to fit 160 px. A null answer is
+    /// normal - many sources publish no art - and any failure is a null answer rather than an error.
+    /// </summary>
+    private static async Task<(byte[] Data, int Width, int Height)?> LoadArtworkAsync(
+        IRandomAccessStreamReference? reference)
+    {
+        if (reference is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            using var stream = await reference.OpenReadAsync();
+
+            if (stream.Size == 0)
+            {
+                return null;
+            }
+
+            var decoder = await BitmapDecoder.CreateAsync(stream);
+            var largest = Math.Max((double)decoder.PixelWidth, decoder.PixelHeight);
+            var scale = largest > 160 ? 160 / largest : 1.0;
+            var width = Math.Max(1, (int)Math.Round(decoder.PixelWidth * scale));
+            var height = Math.Max(1, (int)Math.Round(decoder.PixelHeight * scale));
+
+            var pixelData = await decoder.GetPixelDataAsync(
+                BitmapPixelFormat.Bgra8,
+                BitmapAlphaMode.Premultiplied,
+                new BitmapTransform { ScaledWidth = (uint)width, ScaledHeight = (uint)height },
+                ExifOrientationMode.IgnoreExifOrientation,
+                ColorManagementMode.DoNotColorManage);
+
+            var data = pixelData.DetachPixelData();
+
+            return data.Length == width * height * 4 ? (data, width, height) : null;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
     }
 
     /// <summary>

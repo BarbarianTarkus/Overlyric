@@ -177,6 +177,13 @@ anchored to the right; the sheet re-wraps its lines at the new width.
 
 *The sheet in demo mode. A real track also carries the LRCLIB record it came from; demo tracks do not.*
 
+## Album art
+
+When the player publishes a thumbnail, it appears as a small square in the lyric sheet's header and
+inside the start-of-track info pop-up. It is decoded once per track at up to 160 px and cached as a
+gpu bitmap; a player that publishes none simply gets the text-only layout, and a failed decode never
+affects the lyrics.
+
 ## Stage mode
 
 **Tray → Stage mode** (or `--stage`, or **Settings → Appearance → Stage mode**) turns the overlay

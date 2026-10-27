@@ -716,6 +716,9 @@ internal sealed class AppHost
         {
             OffsetX = shiftX,
             OffsetY = shiftY,
+            Artwork = _snapshot.Artwork,
+            ArtworkWidth = _snapshot.ArtworkWidth,
+            ArtworkHeight = _snapshot.ArtworkHeight,
             OffsetLabel = TimingProfiles.Describe(TimingForVisual, _audioOutput),
             OffsetIsDefault = TimingForVisual.OffsetMs == 0
         };
@@ -1717,6 +1720,9 @@ internal sealed class AppHost
             || !string.Equals(a.OffsetLabel, b.OffsetLabel, StringComparison.Ordinal)
             || !string.Equals(a.Header, b.Header, StringComparison.Ordinal)
             || !string.Equals(a.Translation, b.Translation, StringComparison.Ordinal)
+            || !ReferenceEquals(a.Artwork, b.Artwork)
+            || a.ArtworkWidth != b.ArtworkWidth
+            || a.ArtworkHeight != b.ArtworkHeight
             || !string.Equals(a.Status, b.Status, StringComparison.Ordinal)
             || !Equals(a.Notice, b.Notice)
             || a.Lines.Count != b.Lines.Count)
@@ -3685,6 +3691,9 @@ internal sealed class AppHost
             Status = status,
             RecordId = recordId,
             Source = _lyricsSource,
+            Artwork = snapshot.Artwork,
+            ArtworkWidth = snapshot.ArtworkWidth,
+            ArtworkHeight = snapshot.ArtworkHeight,
             Position = position,
             Revision = snapshot.Revision,
             IsDemo = IsDemoActive,

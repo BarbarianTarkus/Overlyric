@@ -108,7 +108,7 @@ because they are the quickest way to re-check a platform assumption.
 | Project | Question it answers |
 | --- | --- |
 | `SmtcProbe` | What does GSMTC actually report, and does the player update its timeline? `--sessions` lists every session at once, marks the one Windows calls current, and reports each change while several are alive |
-| `SmtcAot` | Does the Windows SDK WinRT projection survive NativeAOT? |
+| `SmtcAot` | Does the Windows SDK WinRT projection survive NativeAOT? Since album art it also decodes a real 1x1 PNG through `Windows.Graphics.Imaging`, so the thumbnail path is proven in the published binary (`AOT_ART_OK`), not only in Debug |
 | `VorticeAot` | Does the Vortice COM interop survive NativeAOT, and what does DirectWrite report? |
 | `NowPlaying` | What is playing right now, what does lrclib hold for it, and what does the pipeline resolve the track to — the reproduction harness for a lyric-matching failure |
 | `LyricsTests` | 34 checks over LRC parsing, caching (including matcher-version staleness, forget and clear) and a live LRCLIB round-trip |
