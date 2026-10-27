@@ -39,7 +39,7 @@ For CI, add `/d:sonar.qualitygate.wait=true` to `begin` so a failing gate fails 
 
 ## What is in scope
 
-Only what the solution compiles: `src/Overlyric`, 68 source files, ~17.9k non-comment lines. The
+Only what the solution compiles: `src/Overlyric`, 70 source files, ~18.9k non-comment lines. The
 exclusions in `SonarQube.Analysis.xml` cover everything else — `probe/` (the experiments, not in
 `Overlyric.slnx`), `docs/`, `installer/`, `tools/`, `dist/`, `.dsh-tmp/`, `bin/` and `obj/`.
 Without them the project would list those files as "not analyzed" and their lines would count
@@ -63,11 +63,11 @@ it collected. `SonarQube.Analysis.xml` points the analysis at `coverage/probes.x
 (`sonar.cs.cobertura.reportsPaths`); run the script before `begin`, or the analysis imports nothing.
 `coverage/` is git-ignored.
 
-Measured on 27 October 2026 (analysis 0.4.0-dev9): the sixteen probes compile 2,938 source lines and
-cover 2,449 of them (83.4 %), and Sonar reports 38.0 % on its combined line-and-branch metric over
-the whole project. The rest is the layer the probes cannot reach: `AppHost`, the window classes,
-`Interop\`, `AudioSessions` and the DirectComposition host need a desktop session, a real player and
-a GPU.
+Measured on 27 October 2026 (analysis 0.4.0-dev12): the seventeen probes compile 3,161 source lines
+and cover 2,595 of them (82.1 %), and Sonar reports 37.9 % on its combined line-and-branch metric
+over the whole project. The rest is the layer the probes cannot reach: `AppHost`, the window
+classes, `Interop\`, `AudioSessions` and the DirectComposition host need a desktop session, a real
+player and a GPU.
 
 New code is usually exactly that untestable layer: the 0.3.3 change measured 6.1 % of new-code
 coverage against the default gate's 80 % bar. That is why the project does not use that condition;
@@ -91,9 +91,9 @@ The first full analysis (0.3.1, 49 files) reported 74 open issues: 51 `SYSLIB105
 `LibraryImport` instead of `DllImport`), 6 `S1244` (exact floating-point comparison) and 17 spread
 over `CA1822`, `CA1859`, `CA1806`, `CA1068`, `S6640`, `S1751` and `S8949`. All of them were fixed
 in code - no issue was marked accepted or false positive - and every analysis since then has
-reported 0 open issues and 0 new violations. The 0.4.0-dev9 analysis (27 October 2026) reports
-38.0 % overall coverage against the 30 % floor, no new violations, 4,408 cyclomatic and 2,625
-cognitive complexity over 17,882 non-comment lines, and 0.5 % duplicated lines: a green gate under
+reported 0 open issues and 0 new violations. The 0.4.0-dev12 analysis (27 October 2026) reports
+37.9 % overall coverage against the 30 % floor, no new violations, 4,688 cyclomatic and 2,782
+cognitive complexity over 18,902 non-comment lines, and 0.5 % duplicated lines: a green gate under
 `Overlyric`.
 
 ## Agents (DSH)

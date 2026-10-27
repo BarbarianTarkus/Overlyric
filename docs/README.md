@@ -59,6 +59,11 @@ backdrop, so the black is the capture background rather than a theme.
 | ![The Timing settings section](images/settings-timing.png) | ![The Advanced settings section](images/settings-advanced.png) |
 | The current output, the offset in force, and which override layer supplied it. | The folders, the cache size and clearing it, and the version in the footer. |
 
+| Stage mode | Album art |
+| --- | --- |
+| ![The stage mode display](images/stage-mode.png) | ![The info pop-up with album art](images/overlay-info-art.png) |
+| A full-monitor audience field, black or chroma-key green. | The player's thumbnail in the start-of-track pop-up. |
+
 ![The Behaviour settings section](images/settings-behaviour.png)
 
 **Behaviour** is where the overlay gets out of the way: pause / no-lyrics / instrumental hides, the

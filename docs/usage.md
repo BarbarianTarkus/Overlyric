@@ -185,6 +185,10 @@ inside the start-of-track info pop-up. It is decoded once per track at up to 160
 gpu bitmap; a player that publishes none simply gets the text-only layout, and a failed decode never
 affects the lyrics.
 
+![The start-of-track pop-up with album art](images/overlay-info-art.png)
+
+*A real track's thumbnail in the info pop-up: the art, the track line and what the lookup found.*
+
 ## Stage mode
 
 **Tray → Stage mode** (or `--stage`, or **Settings → Appearance → Stage mode**) turns the overlay
@@ -193,6 +197,11 @@ the backdrop is opaque black (or chroma-key green with **Chroma-key green**), th
 and centred, and the header, progress bar and control bar are gone. It is display-only, so turning
 it on locks the overlay. Turn it off from the tray or with `--stage=off`; the normal overlay comes
 back exactly as it was.
+
+![Stage mode](images/stage-mode.png)
+
+*The stage: a full-monitor black field, large centred lyrics, no bar or header. `--stage=green` uses
+chroma-key green for stream compositing instead.*
 
 ## Command line and scripting
 
