@@ -165,7 +165,9 @@ internal sealed class LrclibPublisher : IDisposable
     {
         var client = new HttpClient { Timeout = TimeSpan.FromSeconds(90) };
         client.DefaultRequestHeaders.UserAgent.ParseAdd(
-            string.Create(CultureInfo.InvariantCulture, $"Overlyric/{typeof(LrclibPublisher).Assembly.GetName().Version?.ToString(3) ?? "0.3.3"} (+https://github.com/overlyric/overlyric)"));
+            // The assembly version is the single copy of the product identity; the fallback only
+            // exists so a metadata-less host cannot throw, and must never become a second version.
+            string.Create(CultureInfo.InvariantCulture, $"Overlyric/{typeof(LrclibPublisher).Assembly.GetName().Version?.ToString(3) ?? "0.0.0"} (+https://github.com/overlyric/overlyric)"));
         return client;
     }
 }

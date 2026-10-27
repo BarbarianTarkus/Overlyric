@@ -99,7 +99,7 @@ internal static class Program
         var snapshot = new DiagnosticsSnapshot
         {
             CapturedAt = DateTimeOffset.Parse("2026-10-27T00:00:00+01:00"),
-            Version = "0.3.3",
+            Version = "0.4.0",
             HasSession = true,
             SourceApp = "TIDAL",
             Title = "A \"quoted\" title\nwith a newline",
