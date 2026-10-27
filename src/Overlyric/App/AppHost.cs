@@ -2029,7 +2029,8 @@ internal sealed class AppHost
                 {
                     _ = await _watcher.TogglePlayPauseAsync().ConfigureAwait(false);
                 }
-            });
+            },
+            CancellationToken.None);
     }
 
     /// <summary>Skip to the next track through the same session.</summary>
@@ -2044,7 +2045,8 @@ internal sealed class AppHost
                 {
                     _ = await _watcher.SkipNextAsync().ConfigureAwait(false);
                 }
-            });
+            },
+            CancellationToken.None);
     }
 
     private void ToggleOverlay() => Execute(Commands.ToggleOverlay);
