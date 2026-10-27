@@ -80,6 +80,9 @@ internal sealed class MediaSessionWatcher : IAsyncDisposable
     private DateTimeOffset _lastPropertyRefresh = DateTimeOffset.MinValue;
     private volatile bool _resetBaseline;
 
+    /// <summary>The session the selector last chose, for play/pause and skip; null when none.</summary>
+    private GlobalSystemMediaTransportControlsSession? _followedSession;
+
     private MediaSessionWatcher(
         GlobalSystemMediaTransportControlsSessionManager manager,
         Func<SourceSettings> readSettings)
@@ -106,6 +109,51 @@ internal sealed class MediaSessionWatcher : IAsyncDisposable
 
     /// <summary>The adaptive position source that synced lyrics are timed against.</summary>
     public PlaybackClock Clock => _clock;
+
+    /// <summary>
+    /// Play or pause the session being followed, via the Windows media controls the player already
+    /// implements. Controls act on the followed session, not blindly on Windows' current one, so a
+    /// pinned player keeps answering after another tab becomes current. Failures are silent: a
+    /// player that refuses the transport command is not a reason for a dialog.
+    /// </summary>
+    public async Task<bool> TogglePlayPauseAsync()
+    {
+        var session = _followedSession ?? _manager.GetCurrentSession();
+
+        if (session is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            return await session.TryTogglePlayPauseAsync();
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Skip to the next track through the followed session.</summary>
+    public async Task<bool> SkipNextAsync()
+    {
+        var session = _followedSession ?? _manager.GetCurrentSession();
+
+        if (session is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            return await session.TrySkipNextAsync();
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
 
     /// <summary>Latest snapshot. Cheap to read from the UI thread; safe to call often.</summary>
     public NowPlayingSnapshot Snapshot => Volatile.Read(ref _snapshot);
@@ -206,6 +254,7 @@ internal sealed class MediaSessionWatcher : IAsyncDisposable
 
         var settings = _readSettings();
         var session = SelectSession(candidates, sessionsByKey, settings, current);
+        _followedSession = session;
 
         if (session is null)
         {

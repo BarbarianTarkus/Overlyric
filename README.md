@@ -26,6 +26,8 @@ There is no per-player integration to install. Deep dives live in [`docs/`](docs
   `.lrc`/`.txt` (UTF-8, UTF-16 or ANSI), preview it against the track, and it is used instead of the
   network and marked **Local**; any timed sheet exports back to LRC. A deleted local file falls back
   with a sentence, not silence.
+- **Keeps the transport one click away.** The control bar has play/pause and next, and the tray and
+  CLI expose the same actions through Windows media controls.
 - **Shows the album art it was given.** When the player publishes a thumbnail, the lyric sheet's
   header and the start-of-track pop-up show it; a player that publishes none gets the text layout.
 - **Publishes a corrected sheet, explicitly.** A local sheet can be sent back to LRCLIB after a

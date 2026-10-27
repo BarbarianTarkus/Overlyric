@@ -48,6 +48,9 @@ internal static class Program
             Parse("--stage=green") == HostCommand.StageGreen && Parse("--stage=black") == HostCommand.StageBlack, "");
         Check("--stage=off turns it off", Parse("--stage=off") == HostCommand.StageOff, Parse("--stage=off"));
         Check("an unknown stage value is refused", !CommandLine.TryParse(["--stage=disco"], out _, out var stageError) && stageError is not null, stageError);
+        Check("--playpause parses", Parse("--playpause") == HostCommand.PlayPause, Parse("--playpause"));
+        Check("--pause parses as play/pause", Parse("--pause") == HostCommand.PlayPause, Parse("--pause"));
+        Check("--next parses", Parse("--next") == HostCommand.NextTrack, Parse("--next"));
 
         Check("the switch is case-insensitive", Parse("--TOGGLE") == HostCommand.Toggle, Parse("--TOGGLE"));
         Check("no arguments is a no-op", Parse() == HostCommand.None, Parse());

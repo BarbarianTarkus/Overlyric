@@ -119,6 +119,12 @@ internal static class Commands
 
     public const int StageChromaGreen = 183;
 
+    /// <summary>Play or pause the followed session through Windows media controls.</summary>
+    public const int PlayPause = 184;
+
+    /// <summary>Skip to the next track through Windows media controls.</summary>
+    public const int NextTrack = 185;
+
     // The source menu is tray-only - no hotkey is bound to a player - but its ids live here with the
     // rest, because this class is the one id namespace: the tray and the hotkey table are dispatched
     // by the same switch, and a second place to look for "what is 200" is how collisions happen.

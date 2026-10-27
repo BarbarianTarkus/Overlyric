@@ -102,6 +102,12 @@ internal sealed class OverlayWindow : WindowBase
     /// <summary>Raised when the user locks the overlay from the bar.</summary>
     public event Action? LockRequested;
 
+    /// <summary>Raised when the user asks Windows to play or pause; the host owns the session.</summary>
+    public event Action? PlayPauseRequested;
+
+    /// <summary>Raised when the user asks Windows to skip to the next track.</summary>
+    public event Action? NextRequested;
+
     public bool IsVisible => _visible;
 
     public bool IsLocked => _locked;
@@ -599,6 +605,14 @@ internal sealed class OverlayWindow : WindowBase
 
             case OverlayControl.Layout:
                 LayoutRequested?.Invoke();
+                return;
+
+            case OverlayControl.PlayPause:
+                PlayPauseRequested?.Invoke();
+                return;
+
+            case OverlayControl.Next:
+                NextRequested?.Invoke();
                 return;
 
             case OverlayControl.Lock:

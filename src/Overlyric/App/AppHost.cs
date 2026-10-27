@@ -382,6 +382,8 @@ internal sealed class AppHost
         // implementation of "cycle the mode" and one of "lock", not a second pair behind a click.
         _overlay.LayoutRequested += () => Execute(Commands.ToggleMode);
         _overlay.LockRequested += () => Execute(Commands.ToggleLock);
+        _overlay.PlayPauseRequested += TogglePlayback;
+        _overlay.NextRequested += SkipNextTrack;
 
         if (_demo)
         {
@@ -722,6 +724,7 @@ internal sealed class AppHost
             Artwork = _snapshot.Artwork,
             ArtworkWidth = _snapshot.ArtworkWidth,
             ArtworkHeight = _snapshot.ArtworkHeight,
+            IsPlaying = _snapshot.IsPlaying,
             OffsetLabel = TimingProfiles.Describe(TimingForVisual, _audioOutput),
             OffsetIsDefault = TimingForVisual.OffsetMs == 0
         };
@@ -1738,6 +1741,7 @@ internal sealed class AppHost
             || !ReferenceEquals(a.Artwork, b.Artwork)
             || a.ArtworkWidth != b.ArtworkWidth
             || a.ArtworkHeight != b.ArtworkHeight
+            || a.IsPlaying != b.IsPlaying
             || !string.Equals(a.Status, b.Status, StringComparison.Ordinal)
             || !Equals(a.Notice, b.Notice)
             || a.Lines.Count != b.Lines.Count)
@@ -1997,12 +2001,50 @@ internal sealed class AppHost
                 SetStage(true);
                 break;
 
+            case HostCommand.PlayPause:
+                TogglePlayback();
+                break;
+
+            case HostCommand.NextTrack:
+                SkipNextTrack();
+                break;
+
             case HostCommand.Exit:
                 Execute(Commands.Exit);
                 break;
         }
 
         _diagnosticLog.Add("command", command.ToString());
+    }
+
+    /// <summary>Play/pause through the session Windows is following; the next poll repaints the bar.</summary>
+    private void TogglePlayback()
+    {
+        _diagnosticLog.Add("transport", "play/pause");
+
+        _ = Task.Run(
+            async () =>
+            {
+                if (_watcher is not null)
+                {
+                    _ = await _watcher.TogglePlayPauseAsync().ConfigureAwait(false);
+                }
+            });
+    }
+
+    /// <summary>Skip to the next track through the same session.</summary>
+    private void SkipNextTrack()
+    {
+        _diagnosticLog.Add("transport", "next");
+
+        _ = Task.Run(
+            async () =>
+            {
+                if (_watcher is not null)
+                {
+                    _ = await _watcher.SkipNextAsync().ConfigureAwait(false);
+                }
+            });
     }
 
     private void ToggleOverlay() => Execute(Commands.ToggleOverlay);
@@ -2324,6 +2366,14 @@ internal sealed class AppHost
 
             case Commands.ToggleStage:
                 SetStage(!_config.StageMode);
+                break;
+
+            case Commands.PlayPause:
+                TogglePlayback();
+                break;
+
+            case Commands.NextTrack:
+                SkipNextTrack();
                 break;
 
             case Commands.StageBlack:
@@ -3993,6 +4043,8 @@ internal sealed class AppHost
             new(Commands.OpenLyricPicker, "Versions\u2026"),
             new(Commands.RefreshLyrics, "Refresh lyrics"),
             new(Commands.PreviewOverlay, "Preview overlay"),
+            new(Commands.PlayPause, "Play / Pause"),
+            new(Commands.NextTrack, "Next track"),
             new(Commands.OpenDiagnostics, "Diagnostics\u2026"),
             TrayMenuItem.Submenu("Players", SourceMenuItems()),
             TrayMenuItem.Separator,

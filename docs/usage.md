@@ -66,6 +66,7 @@ the overlay is locked — locked is click-through, which means no surface to hov
 
 | Control | What it does |
 | --- | --- |
+| **Play / Pause**, **Next** | Drive the followed player through Windows media controls, without leaving the game |
 | **Single / Single +1 / Multi 2** | The layout in force. Click it to cycle, exactly as `Ctrl+Alt+M` does — it is a readout before it is an action |
 | **− / +** | Nudge the lyric timing by 0.25 s. The value shows the resulting total and its source, e.g. `+0.25 s · this track`; the nudge is saved for the track unless Shift is held |
 | **↺** | Reset the timing for the track and output on screen: clears the track override, this output's profile and the global default. Dimmed when they are all already zero |
@@ -209,6 +210,8 @@ Overlyric.exe --preview           # show the canned demo track for fifteen secon
 Overlyric.exe --settings          # open the settings window
 Overlyric.exe --diagnostics       # open the diagnostics window
 Overlyric.exe --refresh           # ask LRCLIB again for the current track
+Overlyric.exe --playpause         # play/pause the followed player
+Overlyric.exe --next              # skip to the next track
 Overlyric.exe --stage             # toggle the full-monitor audience surface
 Overlyric.exe --stage=green       # stage on, chroma-key green (or black / off)
 Overlyric.exe --exit              # quit, tray and all

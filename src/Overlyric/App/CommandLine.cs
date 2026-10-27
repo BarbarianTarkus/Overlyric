@@ -26,6 +26,8 @@ internal enum HostCommand
     StageOff,
     StageGreen,
     StageBlack,
+    PlayPause,
+    NextTrack,
     Exit
 }
 
@@ -102,6 +104,8 @@ internal static class CommandLine
                     "black" => HostCommand.StageBlack,
                     _ => HostCommand.None
                 },
+                "play" or "playpause" or "pause" => HostCommand.PlayPause,
+                "next" => HostCommand.NextTrack,
                 "demo" => HostCommand.None,
                 _ => HostCommand.None
             };

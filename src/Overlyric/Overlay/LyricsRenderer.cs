@@ -647,10 +647,17 @@ internal sealed class LyricsRenderer : IDisposable
         var versionsWidth = MathF.Max(84f, MeasureWidth("Versions", labelSize) + 26f);
         var settingsWidth = MathF.Max(76f, MeasureWidth("Settings", labelSize) + 26f);
         var lockWidth = MathF.Max(56f, MeasureWidth("Lock", labelSize) + 26f);
+        var playLabel = visual.IsPlaying ? "Pause" : "Play";
+        var playWidth = MathF.Max(58f, MeasureWidth(playLabel, labelSize) + 26f);
+        var nextWidth = MathF.Max(50f, MeasureWidth("Next", labelSize) + 26f);
 
         var timingWidth = backWidth + valueWidth + forwardWidth + resetWidth + (ControlButtonGap * 3f);
 
         var totalWidth = (ControlBarPadding * 2f)
+                         + playWidth
+                         + ControlButtonGap
+                         + nextWidth
+                         + ControlGroupGap
                          + modeWidth
                          + ControlGroupGap
                          + timingWidth
@@ -680,6 +687,14 @@ internal sealed class LyricsRenderer : IDisposable
 
         var x = left + ControlBarPadding;
         var y = top + ControlBarPadding;
+
+        DrawControlButton(context, visual, OverlayControl.PlayPause, playLabel, x, y, playWidth);
+        x += playWidth + ControlButtonGap;
+
+        DrawControlButton(context, visual, OverlayControl.Next, "Next", x, y, nextWidth);
+        x += nextWidth + ControlGroupGap;
+
+        DrawControlDivider(context, x - (ControlGroupGap / 2f), y, ControlButtonHeight);
 
         DrawModeChip(context, visual, modeLabel, x, y, modeWidth);
         x += modeWidth + ControlGroupGap;

@@ -32,7 +32,13 @@ public enum OverlayControl
     ChooseLyrics,
 
     /// <summary>Lock the overlay. It only exists here because the bar only exists unlocked.</summary>
-    Lock
+    Lock,
+
+    /// <summary>Play or pause the current session through Windows media controls.</summary>
+    PlayPause,
+
+    /// <summary>Skip to the next track through Windows media controls.</summary>
+    Next
 }
 
 /// <summary>One live region of the control bar, in device-independent window coordinates.</summary>
@@ -231,4 +237,7 @@ public sealed record OverlayVisual
 
     /// <summary>Which bar button the mouse is over, if any.</summary>
     public OverlayControl? HoveredControl { get; init; }
+
+    /// <summary>The session is playing, so the transport button offers Pause rather than Play.</summary>
+    public bool IsPlaying { get; init; }
 }
