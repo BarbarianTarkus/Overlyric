@@ -226,9 +226,7 @@ internal sealed class AppConfig
     public string SourcePinned { get; set; } = "";
 
     [JsonIgnore]
-    public static string DataDirectory { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "Overlyric");
+    public static string DataDirectory { get; } = InstanceScope.Current.DataDirectory;
 
     [JsonIgnore]
     public static string ConfigPath { get; } = Path.Combine(DataDirectory, "config.json");

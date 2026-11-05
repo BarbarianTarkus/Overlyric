@@ -571,7 +571,7 @@ internal sealed class SettingsWindow : WindowBase
     private float ResolveDpi()
     {
         var dpi = GetDpiForWindow(Handle);
-        return dpi > 0 ? dpi : 96f;
+        return DpiOverride.For(dpi > 0 ? dpi : 96f);
     }
 
     /// <summary>

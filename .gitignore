@@ -10,3 +10,6 @@ installer/Payload.wxs
 coverage/
 .env
 .agents/
+
+# Local agent scratch and UI test artifacts (see tools/uitest/README.md)
+.dsh-tmp/

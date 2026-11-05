@@ -128,6 +128,7 @@ because they are the quickest way to re-check a platform assumption.
 | `TimingTests` | 34 checks over timing-profile resolution: track -> output -> global overrides, a stored zero as an override, session-only nudges, clamping and cleanup of hand-edited maps, and the labels (`+0.25 s · this track`, `+0.15 s · Bluetooth headphones`) |
 | `SourcePreferenceTests` | 46 checks over the source selector: pin beating the list and Windows, list order respected, a listed player that is not running skipped, duplicate app ids resolved to the one actually playing, and a hand-edited list cleaned and capped without throwing |
 | `ThemeTests` | 35 checks over the OLED preset, palettes, stage theme and monitor preference and the colours it produces, the monitor preference's hand-edited map, and the four curated palettes with the active-line weights |
+| `UiSeamsTests` | 41 checks over the two seams the UI tests need: the test-instance namespace (production names kept, what a test name becomes, which values are refused) and the fixed test DPI (the accepted range, what counts as unset, and a production launch keeping the real DPI) |
 
 Helper scripts: `probe\screenshot.py` (capture the screen) and `probe\crop.py` (crop and upscale a
 region for close inspection). Together they give a way to confirm visually that the overlay is on
@@ -139,6 +140,43 @@ python probe\screenshot.py shot.png
 python probe\crop.py shot.png shot_zoom.png 1480 1700 2400 2010 1.4
 ```
 
+### Test instance
+
+Three environment variables move a launch out of the user's namespace, which is how the UI tests run
+beside the installed application. A production launch ignores all three even when they are set, so a
+stray value can never change what the user sees.
+
+| Variable | Effect |
+| --- | --- |
+| `OVERLYRIC_TEST_INSTANCE` | Moves the single-instance mutex and the command pipe behind a `.<name>` suffix and the data folder to `%LOCALAPPDATA%\Overlyric-Test\<name>`. Letters, digits, hyphens and underscores, at most 32 characters; an invalid name makes the app exit with code 2 instead of falling back to the production namespace. |
+| `OVERLYRIC_TEST_DATA_ROOT` | Replaces `%LOCALAPPDATA%` as the parent of the test folder, so a test keeps its config, cache and logs inside the repository. Only read when `OVERLYRIC_TEST_INSTANCE` is set. |
+| `OVERLYRIC_TEST_DPI` | Pins the DPI every window lays out at, so a capture does not depend on the host's monitor scaling. Accepts an integer from 96 to 480; anything else counts as unset. Only read in a test instance. |
+
+`probe\UiSeamsTests` covers the first and the third: which values are accepted, what they produce,
+and that a production launch keeps the real names and the real DPI.
+
+## UI tests
+
+`tools\uitest\Overlyric.UiTests` drives the real executable the way a user would - clicking custom
+controls, pressing keys - and compares what it draws against committed baselines. It runs on a
+private Windows desktop that it creates for the run, so it never sends input to the desktop you are
+using, never moves the cursor and never steals focus. The application under test gets its own
+instance namespace and data folder and the fixed 96 DPI, so a run cannot see or disturb your copy of
+Overlyric and a capture does not depend on your monitor scaling.
+
+```powershell
+dotnet build src\Overlyric\Overlyric.csproj -c Debug
+dotnet run --project tools/uitest/Overlyric.UiTests -c Release -- run [--exe <path>] [--filter <text>] [--update] [--list] [--visible]
+```
+
+`run` launches the Debug build (`--exe` points it at another build), captures each step and fails
+when a capture differs from `tools\uitest\baselines\<scenario>\<step>.png`; `--update` rewrites those
+baselines instead of comparing, `--filter` and `--list` select scenarios, and `--visible` runs them
+on your own desktop so a failing step can be watched. Regions that legitimately change between
+machines - the audio device name, data paths, cache sizes, the version footer - are masked per step,
+so only a real visual change fails. Captures, diffs and the per-scenario summary land in
+`.dsh-tmp\uitest\<run>\`; `tools\uitest\README.md` has the layout and the baseline rules.
+
 ## Project layout
 
 ```
@@ -148,6 +186,8 @@ src\Overlyric\
     AppConfig.cs             settings + source-generated JSON (AOT-safe)
     AppHost.cs               message loop, tick, lyric-to-overlay pipeline
     StartupRegistration.cs   per-user Run key for "start with Windows"
+    InstanceScope.cs         the names a test instance owns: mutex, command pipe, data folder
+    DpiOverride.cs           the test-only fixed render DPI
     PanelWindow.cs           shared frameless Direct2D window for the lyric panels
     LyricPickerWindow.cs     the selector: track details, records and badges
     LyricViewerWindow.cs     the complete sheet, with its own LRCLIB search

@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Overlyric.UiTests</AssemblyName>
+    <RootNamespace>Overlyric.UiTests</RootNamespace>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <!-- The suite is a tool, not a product surface: it is never published with the app and never
+         needs Native AOT. The WindowsDesktop framework supplies System.Drawing for the captures. -->
+    <PublishAot>false</PublishAot>
+    <IsAotCompatible>false</IsAotCompatible>
+    <EnableTrimAnalyzer>false</EnableTrimAnalyzer>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The checked-in fixture and baselines live beside the project, not inside its output folder,
+         so an update run rewrites what git tracks rather than what the build wrote. -->
+    <None Include="..\fixtures\**\*.json" LinkBase="fixtures" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

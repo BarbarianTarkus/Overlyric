@@ -1,4 +1,5 @@
 using System.IO.Pipes;
+using Overlyric.App;
 
 namespace Overlyric.Interop;
 
@@ -13,7 +14,7 @@ namespace Overlyric.Interop;
 /// </remarks>
 internal static class CommandPipe
 {
-    public const string Name = "Overlyric.Commands.v1";
+    public static string Name => InstanceScope.Current.PipeName;
 
     /// <summary>Sends one line to a running instance; false when nothing is listening in time.</summary>
     public static bool TrySend(string line, int timeoutMs = 1000)

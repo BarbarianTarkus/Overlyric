@@ -252,7 +252,7 @@ internal abstract class PanelWindow : WindowBase
     private float ResolveDpi()
     {
         var dpi = GetDpiForWindow(Handle);
-        return dpi > 0 ? dpi : 96f;
+        return DpiOverride.For(dpi > 0 ? dpi : 96f);
     }
 
     private int ToPixels(float dip) => (int)MathF.Round(dip * _dpi / 96f);

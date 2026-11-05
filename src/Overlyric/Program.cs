@@ -6,13 +6,21 @@ namespace Overlyric;
 
 internal static class Program
 {
-    private const string MutexName = "Overlyric.SingleInstance.v1";
     private const int DpiAwarenessPerMonitorV2 = -4;
 
     private static int Main(string[] args)
     {
         // Also declared in app.manifest; repeated here so an unpackaged run behaves identically.
         SetProcessDpiAwarenessContext(new nint(DpiAwarenessPerMonitorV2));
+
+        // A test instance gets its own names and folder, or it refuses to start. Never fall through
+        // to the user's instance: a test that silently shared it would forward commands to it.
+        if (InstanceScope.Error is { } scopeError)
+        {
+            new DiagnosticLog(Path.Combine(AppConfig.DataDirectory, "diagnostics.log"))
+                .Add("instance", scopeError);
+            return 2;
+        }
 
         if (!CommandLine.TryParse(args, out var startupCommand, out var argumentError))
         {
@@ -22,7 +30,7 @@ internal static class Program
             return 2;
         }
 
-        using var instance = new Mutex(initiallyOwned: true, MutexName, out var isFirstInstance);
+        using var instance = new Mutex(initiallyOwned: true, InstanceScope.Current.MutexName, out var isFirstInstance);
         if (!isFirstInstance)
         {
             // The running instance owns the overlay and the tray: hand it the command instead of

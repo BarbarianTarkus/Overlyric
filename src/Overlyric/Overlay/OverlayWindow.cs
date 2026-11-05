@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Overlyric.App;
 using Overlyric.Interop;
 using static Overlyric.Interop.NativeMethods;
 
@@ -374,7 +375,8 @@ internal sealed class OverlayWindow : WindowBase
                 return IntPtr.Zero;
 
             case WM_DPICHANGED:
-                _dpi = (wParam.ToInt64() & 0xFFFF);
+                // A test instance pins the DPI, so the value Windows reports is overridden too.
+                _dpi = DpiOverride.For((float)(wParam.ToInt64() & 0xFFFF));
                 if (_dpi <= 0)
                 {
                     _dpi = 96f;
@@ -895,7 +897,7 @@ internal sealed class OverlayWindow : WindowBase
     private float ResolveDpi()
     {
         var dpi = GetDpiForWindow(Handle);
-        return dpi > 0 ? dpi : 96f;
+        return DpiOverride.For(dpi > 0 ? dpi : 96f);
     }
 
     private int ToPixels(float dip) => (int)MathF.Round(dip * _dpi / 96f);
