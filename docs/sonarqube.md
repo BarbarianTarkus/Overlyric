@@ -12,7 +12,7 @@ dotnet tool install --global dotnet-sonarscanner --version 12.0.0   # once per m
 $env:SONARQUBE_TOKEN = 'squ_...'                                    # My Account > Security, a user token
 
 dotnet-sonarscanner begin /k:overlyric /v:0.4.0 "/s:$PWD\SonarQube.Analysis.xml" /d:sonar.token=$env:SONARQUBE_TOKEN
-dotnet build src\Overlyric\Overlyric.csproj -c Debug
+dotnet build src\Overlyric.csproj -c Debug
 dotnet-sonarscanner end /d:sonar.token=$env:SONARQUBE_TOKEN
 ```
 
@@ -132,7 +132,7 @@ Enterprise/Data Center subscription, and this instance is Community Build.
 ### Running a scan from a session
 
 The three commands above need a build, so the session needs write access to
-`src\Overlyric\bin` and `obj`; under the default `workspace-write` file policy the sandbox denies
+`src\bin` and `obj`; under the default `workspace-write` file policy the sandbox denies
 both (the directories' ACL grants the interactive user, not the restricted token) and .NET cannot
 acquire TLS credentials (`SEC_E_NO_CREDENTIALS`), so the scan has to run from a normal terminal.
 With `danger-full-access` it runs from a session unchanged. The MCP tools are unaffected either

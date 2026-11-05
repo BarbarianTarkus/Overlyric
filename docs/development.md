@@ -13,18 +13,18 @@ the design rests on. All of this is for working on the app, not for using it.
 ## Build
 
 ```powershell
-dotnet publish src\Overlyric\Overlyric.csproj -c Release
+dotnet publish src\Overlyric.csproj -c Release
 ```
 
 The executable lands in:
 
 ```
-src\Overlyric\bin\Release\net10.0-windows10.0.26100.0\win-x64\publish\Overlyric.exe
+src\bin\Release\net10.0-windows10.0.26100.0\win-x64\publish\Overlyric.exe
 ```
 
 ## Icon
 
-`src\Overlyric\Assets\Overlyric.svg` is the artwork; `Overlyric.ico` beside it is the rendered set
+`src\Assets\Overlyric.svg` is the artwork; `Overlyric.ico` beside it is the rendered set
 that ships — 16, 20, 24, 32, 40, 48, 64, 128 and 256 px, small frames as 32-bit DIBs and the two
 largest as PNG. One file feeds every Windows surface, so they cannot drift apart:
 
@@ -32,7 +32,7 @@ largest as PNG. One file feeds every Windows surface, so they cannot drift apart
   Alt+Tab and the MSI's Add/Remove Programs entry;
 - the notification-area icon and the window class icons, read back out of the executable's own
   resources by `AppIcon`;
-- both installer shortcuts (`installer\Overlyric.wxs`).
+- both installer shortcuts (`installer\Overlyric.wxs` for the MSI, `installer\Overlyric.nsi` for the NSIS setup).
 
 Re-render it after editing the SVG:
 
@@ -42,7 +42,7 @@ python tools\make-icon.py
 
 That needs Python with Pillow and Chrome or Edge to rasterise each size at 4× before downsampling
 (`--svg`, `--out` and `--chrome` override the defaults). It rewrites
-`src\Overlyric\Assets\Overlyric.ico` in place; rebuild and restart the app to see the change,
+`src\Assets\Overlyric.ico` in place; rebuild and restart the app to see the change,
 because Windows caches shell icons per file.
 
 ## Installer
@@ -54,12 +54,47 @@ just produced:
 pwsh installer\build-installer.ps1
 ```
 
-It reads the version from `src\Overlyric\Overlyric.csproj` (or accepts `-Version`), refuses to ship a
+It reads the version from `src\Overlyric.csproj` (or accepts `-Version`), refuses to ship a
 `.pdb`, regenerates its file list from the actual publish directory, and writes
 `dist\Overlyric-<version>-x64.msi`. `-SkipPublish` reuses an existing publish output; `-CertificatePath`
 signs the MSI when a PFX is supplied. The script fails loudly if a prerequisite is missing, and prints
 the SHA256 plus the exact install and uninstall command lines. The installer is per-user: no elevation,
 no machine-wide registry writes, and it never touches another user's profile.
+
+### NSIS installer
+
+The same publish output can also be wrapped in a per-user NSIS setup:
+
+```powershell
+pwsh installer\build-nsis.ps1
+```
+
+It needs NSIS 3.x on the machine (`winget install --id NSIS.NSIS -e`); `-MakensisPath` points at a
+`makensis.exe` elsewhere. The artifact is `dist\Overlyric-<version>-x64-setup.exe`, and the contract is the
+same as the MSI: per-user, no elevation, `%LOCALAPPDATA%\Programs\Overlyric`, `*.pdb` excluded, and
+`%LOCALAPPDATA%\Overlyric` (settings, lyric cache, versions) kept on uninstall unless the uninstaller is
+run with `/REMOVEDATA` or the prompt is answered Yes. `-SkipPublish`, `-Version`, `-OutputDir`,
+`-CertificatePath` and `-NoSign` mean what they mean in the MSI script.
+
+Silent use:
+
+```powershell
+& .\dist\Overlyric-0.4.0-x64-setup.exe /S                     # default per-user folder
+& .\dist\Overlyric-0.4.0-x64-setup.exe /S /D=C:\Tools\Overlyric
+& "$env:LOCALAPPDATA\Programs\Overlyric\Uninstall.exe" /S
+& "$env:LOCALAPPDATA\Programs\Overlyric\Uninstall.exe" /S /REMOVEDATA
+```
+
+Run the setup from a local NTFS folder (Downloads, or a copy of the file in `%TEMP%`): an NSIS
+stub cannot start from a ReFS volume, where it exits with code 2 before the first page. The build
+and the artifact are unaffected.
+
+Running the setup starts the installed app from the finish page, and installing over a running
+instance closes it first (a polite close, then termination) rather than failing on files in use.
+
+The one deliberate difference from the MSI: the NSIS installer does not write the "start with Windows"
+Run value. That switch is the application's own setting (Settings → Behaviour), which writes and
+removes the same value, so a second owner in the installer would only make the two disagree.
 
 ## Resource budget
 
@@ -165,7 +200,7 @@ instance namespace and data folder and the fixed 96 DPI, so a run cannot see or 
 Overlyric and a capture does not depend on your monitor scaling.
 
 ```powershell
-dotnet build src\Overlyric\Overlyric.csproj -c Debug
+dotnet build src\Overlyric.csproj -c Debug
 dotnet run --project tools/uitest/Overlyric.UiTests -c Release -- run [--exe <path>] [--filter <text>] [--update] [--list] [--visible]
 ```
 
@@ -180,7 +215,7 @@ so only a real visual change fails. Captures, diffs and the per-scenario summary
 ## Project layout
 
 ```
-src\Overlyric\
+src\
   Program.cs                 entry point, single-instance guard, DPI awareness
   App\
     AppConfig.cs             settings + source-generated JSON (AOT-safe)
@@ -190,7 +225,7 @@ src\Overlyric\
     DpiOverride.cs           the test-only fixed render DPI
     PanelWindow.cs           shared frameless Direct2D window for the lyric panels
     LyricPickerWindow.cs     the selector: track details, records and badges
-    LyricViewerWindow.cs     the complete sheet, with its own LRCLIB search
+    LyricViewerWindow.cs     the complete sheet; searching hands off to the selector
     LyricSheet.cs            the document the selector and viewer share
     LyricBadges.cs           word-synced / synced / plain / instrumental verdicts
     LyricText.cs             shared offsets, lengths, timestamps, active line and gap progress

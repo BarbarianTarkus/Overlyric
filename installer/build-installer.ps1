@@ -64,7 +64,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $RepoRoot      = Split-Path -Parent $PSScriptRoot
-$AppProject    = Join-Path $RepoRoot 'src\Overlyric\Overlyric.csproj'
+$AppProject    = Join-Path $RepoRoot 'src\Overlyric.csproj'
 $WixProject    = Join-Path $PSScriptRoot 'Overlyric.Installer.wixproj'
 $WxsFile       = Join-Path $PSScriptRoot 'Overlyric.wxs'
 $PayloadWxs    = Join-Path $PSScriptRoot 'Payload.wxs'

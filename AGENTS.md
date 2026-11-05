@@ -16,7 +16,7 @@ The MCP tools come through the Docker MCP Toolkit gateway and are named `mcp__do
 
 A full analysis is the standard three commands — `dotnet-sonarscanner begin /k:overlyric /v:<version>
 "/s:<repo>\SonarQube.Analysis.xml" /d:sonar.token=$env:SONARQUBE_TOKEN`, `dotnet build
-src\Overlyric\Overlyric.csproj`, `dotnet-sonarscanner end /d:sonar.token=$env:SONARQUBE_TOKEN`.
+src\Overlyric.csproj`, `dotnet-sonarscanner end /d:sonar.token=$env:SONARQUBE_TOKEN`.
 There is no `sonar-project.properties`: the .NET scanner ignores it. Under the default
 `workspace-write` file policy the sandbox blocks `bin`/`obj` writes and .NET TLS, so a scan has to
 run from a normal terminal; `danger-full-access` runs it from a session unchanged.

@@ -89,8 +89,9 @@ window.
 ## Quick start
 
 Overlyric is a single self-contained executable; there is no .NET runtime to install. Build it with
-the command under [How it's built](#how-its-built), or install the MSI produced by
-`installer\build-installer.ps1`, then start `Overlyric.exe`. It lives in the notification area —
+the command under [How it's built](#how-its-built), or install it with `installer\build-installer.ps1`
+(the per-user MSI) or `installer\build-nsis.ps1` (the per-user NSIS setup), then start
+`Overlyric.exe`. It lives in the notification area —
 there is no main window. Play something and the overlay appears.
 
 | Shortcut | Action |
