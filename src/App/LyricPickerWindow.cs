@@ -31,6 +31,8 @@ internal sealed class LyricPickerWindow : PanelWindow
     private const int ClipboardControl = 7;
     private const int ImportAcceptControl = 8;
     private const int ImportCancelControl = 9;
+    private const int QueryFieldControl = 10;
+    private const int SearchControl = 11;
     private const int RowBase = 100;
 
     private const float Pad = 28f;
@@ -62,6 +64,12 @@ internal sealed class LyricPickerWindow : PanelWindow
     private readonly Action _pinClipboard;
     private readonly Action _acceptImport;
     private readonly Action _cancelImport;
+    private readonly Action<string> _search;
+
+    private string _query = "";
+    private long _queryRevision = long.MinValue;
+    private bool _queryFocused;
+    private bool _searchMode;
 
     private int _scrollRow;
     private int _maxScrollRow;
@@ -79,7 +87,8 @@ internal sealed class LyricPickerWindow : PanelWindow
         Action openWeb,
         Action pinClipboard,
         Action acceptImport,
-        Action cancelImport)
+        Action cancelImport,
+        Action<string> search)
     {
         _model = model;
         _select = select;
@@ -90,6 +99,7 @@ internal sealed class LyricPickerWindow : PanelWindow
         _pinClipboard = pinClipboard;
         _acceptImport = acceptImport;
         _cancelImport = cancelImport;
+        _search = search;
     }
 
     protected override float DefaultWidthDip => 900f;
@@ -116,6 +126,7 @@ internal sealed class LyricPickerWindow : PanelWindow
     {
         var model = Snapshot();
         SyncList(model);
+        ResetQueryForTrack(model);
         DrawTrack(context, model);
         DrawToolbar(context, model);
 
@@ -150,7 +161,9 @@ internal sealed class LyricPickerWindow : PanelWindow
         var key = string.Concat(
             model.Revision,
             "|",
-            model.Versions.Count,
+            _searchMode ? model.SearchResults.Count : model.Versions.Count,
+            "|",
+            _searchMode ? "search" : "auto",
             "|",
             model.PinnedId?.ToString() ?? "-",
             "|",
@@ -162,7 +175,8 @@ internal sealed class LyricPickerWindow : PanelWindow
         }
 
         _listKey = key;
-        _scrollRow = Math.Clamp(_scrollRow, 0, Math.Max(0, model.Versions.Count - _visibleRows + 1));
+        var total = _searchMode ? model.SearchResults.Count : model.Versions.Count;
+        _scrollRow = Math.Clamp(_scrollRow, 0, Math.Max(0, total - _visibleRows + 1));
         ClearHover();
     }
 
@@ -185,11 +199,8 @@ internal sealed class LyricPickerWindow : PanelWindow
             return;
         }
 
-        var title = LyricText.Fit(model.Title.Length > 0 ? model.Title : model.Artist, 68);
-        Label(context, title, Pad, 12f, WidthDip - (2 * Pad), 32f, 22f, FontWeight.SemiBold, ColorText);
-
-        var meta = BuildMeta(model);
-        Label(context, meta, Pad, 44f, WidthDip - (2 * Pad), 20f, 12.5f, FontWeight.Normal, ColorTextDim);
+        // The title and the meta line the automatic lookup would have typed are the search box now:
+        // refining a lookup that found nothing happens here rather than in another window.
 
         // What the overlay is showing right now, on the right of the header, so the list starts from
         // an answer rather than from a question.
@@ -219,7 +230,7 @@ internal sealed class LyricPickerWindow : PanelWindow
             context,
             record,
             WidthDip - Pad - 220f,
-            44f,
+            40f,
             220f,
             18f,
             11f,
@@ -233,7 +244,7 @@ internal sealed class LyricPickerWindow : PanelWindow
                 context,
                 LyricText.Fit(model.Status, 40),
                 WidthDip - Pad - 320f,
-                64f,
+                58f,
                 320f,
                 18f,
                 11f,
@@ -242,7 +253,92 @@ internal sealed class LyricPickerWindow : PanelWindow
                 TextAlignment.Trailing);
         }
 
+        const float searchButtonWidth = 76f;
+
+        var fieldRight = WidthDip - Pad - 236f - 8f - searchButtonWidth - 8f;
+        var field = R(Pad, 14f, MathF.Max(Pad + 160f, fieldRight), 46f);
+
+        DrawQueryField(context, field);
+
+        Button(
+            context,
+            SearchControl,
+            "Search",
+            field.Right + 8f,
+            16f,
+            searchButtonWidth,
+            30f,
+            _query.Trim().Length > 0 && !model.IsDemo);
+
         Fill(context, R(Pad, InfoHeight - 1f, WidthDip - Pad, InfoHeight), ColorLine);
+    }
+
+    /// <summary>The editable query, drawn as the header. Editing is append and backspace at the end.</summary>
+    private void DrawQueryField(ID2D1DeviceContext context, Rect rect)
+    {
+        if (_queryFocused)
+        {
+            FillRound(
+                context,
+                rect.Left - 1f,
+                rect.Top - 1f,
+                rect.Right - rect.Left + 2f,
+                rect.Bottom - rect.Top + 2f,
+                9f,
+                ColorAccent);
+        }
+
+        FillRound(context, rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top, 8f, ColorControl);
+
+        var empty = _query.Length == 0;
+        var text = empty
+            ? "Search lrclib: artist, album, or a line"
+            : _queryFocused ? _query + "\u2502" : _query;
+
+        Label(
+            context,
+            LyricText.Fit(text, 74),
+            rect.Left + 10f,
+            rect.Top,
+            rect.Right - rect.Left - 20f,
+            rect.Bottom - rect.Top,
+            13f,
+            FontWeight.Normal,
+            empty ? ColorTextFaint : ColorText);
+
+        Hit(QueryFieldControl, rect);
+    }
+
+    /// <summary>Run the typed query. The automatic list comes back with Look again.</summary>
+    private void RunQuerySearch()
+    {
+        var query = _query.Trim();
+
+        if (query.Length == 0 || Snapshot().IsDemo)
+        {
+            Invalidate();
+            return;
+        }
+
+        _searchMode = true;
+        _scrollRow = 0;
+        ClearHover();
+        _search(query);
+        Invalidate();
+    }
+
+    /// <summary>A new track resets the field to what the automatic finder would have asked.</summary>
+    private void ResetQueryForTrack(LyricPickerModel model)
+    {
+        if (model.Revision == _queryRevision)
+        {
+            return;
+        }
+
+        _queryRevision = model.Revision;
+        _query = model.Query;
+        _queryFocused = false;
+        _searchMode = false;
     }
 
     private static string BuildMeta(LyricPickerModel model)
@@ -274,16 +370,19 @@ internal sealed class LyricPickerWindow : PanelWindow
 
     private void DrawToolbar(ID2D1DeviceContext context, LyricPickerModel model)
     {
-        var count = model.Versions.Count;
+        var count = _searchMode ? model.SearchResults.Count : model.Versions.Count;
+        var busy = _searchMode ? model.SearchLoading : model.Loading;
         var text = model.IsDemo
             ? "Demo mode: the canned track is not sent to lrclib."
             : !model.HasTrack
                 ? "No track to look up."
-                : model.Loading
-                    ? "Looking for other records\u2026"
+                : busy
+                    ? _searchMode ? "Searching lrclib\u2026" : "Looking for other records\u2026"
                     : count == 0
-                        ? "No alternative records found."
-                        : $"{count} {(count == 1 ? "version" : "versions")} \u00b7 best match first";
+                        ? _searchMode ? model.SearchMessage ?? "No records for that search." : "No alternative records found."
+                        : _searchMode
+                            ? $"{count} {(count == 1 ? "result" : "results")} for \u201c{LyricText.Fit(_query, 40)}\u201d"
+                            : $"{count} {(count == 1 ? "version" : "versions")} \u00b7 best match first";
 
         Label(
             context,
@@ -294,7 +393,7 @@ internal sealed class LyricPickerWindow : PanelWindow
             ToolbarHeight,
             12f,
             FontWeight.Normal,
-            model.Loading ? ColorAccent : ColorTextFaint);
+            busy ? ColorAccent : ColorTextFaint);
 
         const float lookWidth = 96f;
         const float viewWidth = 106f;
@@ -308,7 +407,7 @@ internal sealed class LyricPickerWindow : PanelWindow
             ToolbarTop,
             lookWidth,
             ToolbarHeight,
-            model.HasTrack && !model.Loading && !model.IsDemo);
+            model.HasTrack && !busy && !model.IsDemo);
 
         right -= lookWidth + 8f;
 
@@ -367,6 +466,9 @@ internal sealed class LyricPickerWindow : PanelWindow
 
     private void DrawVersions(ID2D1DeviceContext context, LyricPickerModel model)
     {
+        var records = _searchMode ? model.SearchResults : model.Versions;
+        var loading = _searchMode ? model.SearchLoading : model.Loading;
+
         var listHeight = ListBottom - ListTop;
         _visibleRows = Math.Max(1, (int)MathF.Floor(listHeight / RowHeight));
         _maxScrollRow = 0;
@@ -380,7 +482,7 @@ internal sealed class LyricPickerWindow : PanelWindow
             return;
         }
 
-        if (model.IsDemo && model.Versions.Count == 0)
+        if (model.IsDemo && records.Count == 0)
         {
             DrawEmpty(
                 context,
@@ -389,21 +491,25 @@ internal sealed class LyricPickerWindow : PanelWindow
             return;
         }
 
-        if (model.Loading && model.Versions.Count == 0)
+        if (loading && records.Count == 0)
         {
             DrawEmpty(
                 context,
-                "Looking for other versions\u2026",
-                "lrclib is being asked for every record with this title and artist.");
+                _searchMode ? "Searching lrclib\u2026" : "Looking for other versions\u2026",
+                _searchMode
+                    ? "Asking lrclib for every record that matches what you typed."
+                    : "lrclib is being asked for every record with this title and artist.");
             return;
         }
 
-        if (model.Versions.Count == 0)
+        if (records.Count == 0)
         {
             DrawEmpty(
                 context,
-                "No alternative versions",
-                "lrclib has nothing else for this track right now.");
+                _searchMode ? "No records for that search" : "No alternative versions",
+                _searchMode
+                    ? model.SearchMessage ?? "Try fewer words, or the song title on its own."
+                    : "lrclib has nothing else for this track right now.");
 
             // The empty state carries its own fix. This is the only moment the refresh matters, and a
             // button four rows up in the toolbar is a button nobody looks for. Same control id, so
@@ -423,7 +529,7 @@ internal sealed class LyricPickerWindow : PanelWindow
             return;
         }
 
-        var totalRows = model.Versions.Count + 1;
+        var totalRows = records.Count + (_searchMode ? 0 : 1);
         _maxScrollRow = Math.Max(0, totalRows - _visibleRows);
         _scrollRow = Math.Clamp(_scrollRow, 0, _maxScrollRow);
 
@@ -444,14 +550,15 @@ internal sealed class LyricPickerWindow : PanelWindow
                 break;
             }
 
-            if (index == 0)
+            if (index == 0 && !_searchMode)
             {
                 DrawAutomaticRow(context, model, y, pinned is null);
             }
             else
             {
-                var candidate = model.Versions[index - 1];
-                DrawCandidateRow(context, model, candidate, index - 1, y, pinned);
+                var slotIndex = _searchMode ? index : index - 1;
+                var candidate = records[slotIndex];
+                DrawCandidateRow(context, model, candidate, slotIndex, y, pinned);
             }
 
             y += RowHeight;
@@ -871,7 +978,22 @@ internal sealed class LyricPickerWindow : PanelWindow
                 Invalidate();
                 return;
 
+            case QueryFieldControl:
+                _queryFocused = true;
+                Invalidate();
+                return;
+
+            case SearchControl:
+                RunQuerySearch();
+                return;
+
             case RefreshControl:
+                if (_searchMode)
+                {
+                    RunQuerySearch();
+                    return;
+                }
+
                 _refresh();
                 Invalidate();
                 return;
@@ -960,8 +1082,43 @@ internal sealed class LyricPickerWindow : PanelWindow
         }
     }
 
+    protected override void OnBodyChar(char character)
+    {
+        if (!_queryFocused || char.IsControl(character) || _query.Length >= 120)
+        {
+            return;
+        }
+
+        _query += character;
+        Invalidate();
+    }
+
     protected override bool OnBodyKey(int virtualKey)
     {
+        if (_queryFocused)
+        {
+            switch (virtualKey)
+            {
+                case 0x0D: // Enter
+                    RunQuerySearch();
+                    return true;
+
+                case 0x08: // Backspace
+                    if (_query.Length > 0)
+                    {
+                        _query = _query[..^1];
+                        Invalidate();
+                    }
+
+                    return true;
+
+                case 0x1B: // Escape leaves the field, not the window
+                    _queryFocused = false;
+                    Invalidate();
+                    return true;
+            }
+        }
+
         var page = Math.Max(1, _visibleRows - 1);
         var next = virtualKey switch
         {

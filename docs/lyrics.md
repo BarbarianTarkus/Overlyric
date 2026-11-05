@@ -141,13 +141,14 @@ a BOM. Other ANSI code pages (Cyrillic, Greek, CJK) are not decoded, so save tho
 A plain-text sheet is accepted and shown as static text, but it cannot follow the music - the
 preview says so before you commit.
 
-Two escape hatches sit beside Import because a search box is deliberately not part of this window:
+The header is the search box: it opens on the track's `Artist Title`, and typing replaces the
+automatic list with lrclib's answer to your words (**Enter** or **Search**; **Look again** returns to
+the automatic list). Two more escape hatches sit beside Import:
 
-- **Open on LRCLIB** opens `lrclib.net` with the playing track's artist and title in the search box,
-  for the case where the automatic query was wrong rather than the catalogue incomplete.
+- **Open on LRCLIB** opens `lrclib.net/search/<artist title>` in the browser, for when the browser is
+  the better tool than the in-window search.
 - **Pin from clipboard** reads an lrclib record id - a bare number, or the digits in a record URL -
-  from the clipboard and pins that record. It is the no-text-input path to the same result as
-  choosing a row in the search results.
+  from the clipboard and pins that record.
 
 The complete sheet can **Export…** the timed lyrics in force as an LRC file (CRLF, millisecond
 timestamps, the `[ar:]`/`[ti:]`/`[al:]`/`[length:]` header), whether they came from LRCLIB or from an
@@ -179,24 +180,16 @@ The sheet itself is read-only: editing it and uploading it to LRCLIB remain the 
 already have a place to live because the window draws from `LyricSheet` — the parsed lines, the track
 details and the record identity in one document — instead of from a formatted string.
 
-The window does have one action of its own, because the automatic query is only ever a guess.
-**Search LRCLIB** — the footer button, the one in the empty state, or `Ctrl+F` — opens a single-line
-search field at the top of the sheet, prefilled with `Artist - Title`. Editing it and pressing **Enter** (or clicking **Search**)
-asks lrclib with exactly those words, which is the escape hatch when the metadata is wrong rather than
-merely untidy: a title the player invented, an artist credited differently, a song lrclib stores under
-another name. Nothing is cleaned on the way out, because the listener's words are the question.
+The window has one hand-off, because the automatic query is only ever a guess. **Choose lyrics** — the
+footer button and the one in the empty state — closes the sheet and opens the selector with the track's
+query already in its field, so refining a wrong guess happens in the window built for it. `Ctrl+F`
+still opens a single-line field over the sheet for a quick search without leaving it. Both paths pin
+the record for the track, and the sheet and the overlay follow immediately.
 
-The answer is a list of records inside the same window — title, artist, album, lrclib id, length, the
-distance from the playing track's length, and the usual badge. Each row is clickable: choosing one pins
-it for this track and closes the search, so the sheet and the overlay follow it immediately. **Back**
-(or `Esc`) returns to the sheet without changing anything, and the results stay available until the
-track changes. A search that lrclib cannot answer says so instead of pretending it found nothing; it is
-never written to the cache as the track's answer, because the next question may be different.
-
-The field is deliberately a small one: caret movement, Home/End, Backspace/Delete, clicking to place the
-caret and `Ctrl+V`. Selection, undo and IME composition are out of scope — this is a query box, not an
-editor — but pasting a title from anywhere is the intended way to handle an awkward one. Demo mode does
-not send its canned track to lrclib, so the search button is disabled there.
+The selector's field is deliberately small: append and backspace, with **Enter** to search and **Esc**
+to leave it. Selection, undo and IME composition are out of scope — it is a query box, not an editor —
+but pasting a title from anywhere is the intended way to handle an awkward one. Demo mode does not send
+its canned track to lrclib, so searching is disabled there.
 
 While the window is open it follows the track: a new lookup or a different chosen version replaces the
 document, and a new record scrolls back to the active line. A new *song* also resets the query, because

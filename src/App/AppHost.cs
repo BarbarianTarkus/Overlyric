@@ -2639,6 +2639,7 @@ internal sealed class AppHost
                 }
 
                 Interlocked.Increment(ref _lyricsStamp);
+                RefreshPicker();
             },
             token);
     }
@@ -2991,7 +2992,7 @@ internal sealed class AppHost
         {
             Process.Start(new ProcessStartInfo
             {
-                FileName = "https://lrclib.net/search?q=" + Uri.EscapeDataString(query),
+                FileName = "https://lrclib.net/search/" + Uri.EscapeDataString(query),
                 UseShellExecute = true
             });
         }
@@ -3558,7 +3559,8 @@ internal sealed class AppHost
             OpenLyricsOnLrclib,
             PinLyricFromClipboard,
             AcceptLyricImport,
-            CancelLyricImport);
+            CancelLyricImport,
+            SearchLyrics);
 
         var monitor = _overlay is { IsVisible: true }
             ? MonitorFromWindow(_overlay.Handle, MONITOR_DEFAULTTONEAREST)
@@ -3567,6 +3569,13 @@ internal sealed class AppHost
         _picker.ShowPanel(monitor);
         EnsureVersionsForPicker();
         _picker.Invalidate();
+    }
+
+    /// <summary>The sheet sends the listener to the selector rather than opening a second search UI.</summary>
+    private void ChooseLyricsFromViewer()
+    {
+        _viewer?.HidePanel();
+        OpenLyricPicker();
     }
 
     private bool IsOwnWindowOpen =>
@@ -3582,7 +3591,8 @@ internal sealed class AppHost
             OpenInExternalEditor,
             PublishLyrics,
             CurrentPosition,
-            SaveEditedLyrics);
+            SaveEditedLyrics,
+            ChooseLyricsFromViewer);
         _viewer.ShowSheet(BuildSheet());
     }
 
@@ -3654,6 +3664,24 @@ internal sealed class AppHost
             pinned = pinnedId;
         }
 
+        var title = MetadataNormaliser.CleanTitle(snapshot.Title, snapshot.Artist);
+        var query = string.Join(
+            ' ',
+            new[] { snapshot.Artist, title }.Where(static part => !string.IsNullOrWhiteSpace(part)));
+
+        bool searchLoading;
+        IReadOnlyList<LyricsCandidate> searchResults;
+        string? searchMessage;
+
+        lock (_gate)
+        {
+            // A search is an answer about the track it was asked for; another revision cannot use it.
+            var current = _searchRevision == snapshot.Revision;
+            searchLoading = current && _searchLoading;
+            searchResults = current ? _searchResults : [];
+            searchMessage = current ? _searchMessage : null;
+        }
+
         return new LyricPickerModel
         {
             HasTrack = snapshot.HasTrack,
@@ -3676,7 +3704,11 @@ internal sealed class AppHost
             Source = _lyricsSource,
             ImportPreview = _importPreviewRevision == snapshot.Revision ? _importPreview : null,
             ImportMessage = _importPreviewRevision == snapshot.Revision ? _importMessage : null,
-            Status = status
+            Status = status,
+            Query = query,
+            SearchLoading = searchLoading,
+            SearchResults = searchResults,
+            SearchMessage = searchMessage
         };
     }
 

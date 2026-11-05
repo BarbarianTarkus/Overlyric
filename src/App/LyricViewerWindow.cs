@@ -50,6 +50,9 @@ internal sealed class LyricViewerWindow : PanelWindow
     private const int PublishControl = 14;
     private const int PublishConfirmControl = 15;
     private const int PublishCancelControl = 16;
+
+    /// <summary>"Choose lyrics": leave this window and let the picker do the searching.</summary>
+    private const int ChooseLyricsControl = 17;
     private const int SearchResultBase = 100;
 
     /// <summary>Nudge buttons are this base plus an index into <see cref="NudgeStepsMs"/>.</summary>
@@ -103,6 +106,7 @@ internal sealed class LyricViewerWindow : PanelWindow
     private readonly Dictionary<int, long> _resultRecords = [];
 
     private readonly Action<string> _search;
+    private readonly Action _chooseLyrics;
     private readonly Action<long> _chooseRecord;
     private readonly Action<IReadOnlyList<LyricLine>> _export;
     private readonly Action<IReadOnlyList<LyricLine>> _openExternal;
@@ -142,7 +146,8 @@ internal sealed class LyricViewerWindow : PanelWindow
         Action<IReadOnlyList<LyricLine>> openExternal,
         Action<IReadOnlyList<LyricLine>> publish,
         Func<TimeSpan> position,
-        Func<IReadOnlyList<LyricLine>, string?> saveEdited)
+        Func<IReadOnlyList<LyricLine>, string?> saveEdited,
+        Action chooseLyrics)
     {
         ArgumentNullException.ThrowIfNull(search);
         ArgumentNullException.ThrowIfNull(chooseRecord);
@@ -151,6 +156,7 @@ internal sealed class LyricViewerWindow : PanelWindow
         ArgumentNullException.ThrowIfNull(publish);
         ArgumentNullException.ThrowIfNull(position);
         ArgumentNullException.ThrowIfNull(saveEdited);
+        ArgumentNullException.ThrowIfNull(chooseLyrics);
 
         _search = search;
         _chooseRecord = chooseRecord;
@@ -159,6 +165,7 @@ internal sealed class LyricViewerWindow : PanelWindow
         _publish = publish;
         _position = position;
         _saveEdited = saveEdited;
+        _chooseLyrics = chooseLyrics;
     }
 
     /// <summary>A short status line from the host, e.g. publish progress or an error.</summary>
@@ -903,7 +910,7 @@ internal sealed class LyricViewerWindow : PanelWindow
             null => "Open the overlay and choose Lyrics.",
             { IsComplete: false } => "lrclib has not answered yet. This window will update by itself.",
             { IsInstrumental: true } => "lrclib says there is nothing to sing on this track.",
-            { Lines.Count: 0 } => "Try Choose lyrics in the overlay, or search lrclib with a different query.",
+            { Lines.Count: 0 } => "Open Choose lyrics to pick another record, or press Ctrl+F to search lrclib yourself.",
             _ => ""
         };
 
@@ -935,15 +942,15 @@ internal sealed class LyricViewerWindow : PanelWindow
 
         if (sheet is { HasTrack: true })
         {
-            const float searchWidth = 150f;
+            const float chooseWidth = 150f;
 
-            var left = (WidthDip - searchWidth) / 2f;
+            var left = (WidthDip - chooseWidth) / 2f;
 
             Button(
                 context,
-                OpenSearchControl,
-                "Search LRCLIB",
-                R(left, center + 48f, left + searchWidth, center + 78f),
+                ChooseLyricsControl,
+                "Choose lyrics",
+                R(left, center + 48f, left + chooseWidth, center + 78f),
                 !sheet.IsDemo);
         }
     }
@@ -1044,8 +1051,8 @@ internal sealed class LyricViewerWindow : PanelWindow
 
             Button(
                 context,
-                OpenSearchControl,
-                "Search LRCLIB",
+                ChooseLyricsControl,
+                "Choose lyrics",
                 R(Pad, FooterTop + 7f, Pad + buttonWidth, FooterTop + 31f),
                 !sheet.IsDemo);
 
@@ -1109,7 +1116,7 @@ internal sealed class LyricViewerWindow : PanelWindow
             }
         }
 
-        // The empty state carries its own Search LRCLIB button, so the footer only has to say how
+        // The empty state carries its own Choose lyrics button, so the footer only has to say how
         // to leave the window.
 
         // Keep the line count only where the footer buttons leave room for it.
@@ -1729,6 +1736,10 @@ internal sealed class LyricViewerWindow : PanelWindow
 
         switch (id)
         {
+            case ChooseLyricsControl:
+                _chooseLyrics();
+                return;
+
             case OpenSearchControl:
                 OpenSearch();
                 return;

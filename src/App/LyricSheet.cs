@@ -156,5 +156,17 @@ internal sealed record LyricPickerModel
     /// <summary>A sentence about the last import or clipboard action, when there is one.</summary>
     public string? ImportMessage { get; init; }
 
+    /// <summary>The query the header field starts with: what the automatic finder would have asked.</summary>
+    public string Query { get; init; } = "";
+
+    /// <summary>True while a query typed in the picker is in flight.</summary>
+    public bool SearchLoading { get; init; }
+
+    /// <summary>Records returned by the query, best fit first.</summary>
+    public IReadOnlyList<LyricsCandidate> SearchResults { get; init; } = [];
+
+    /// <summary>Why a query produced nothing, when it did.</summary>
+    public string? SearchMessage { get; init; }
+
     public string? Status { get; init; }
 }

@@ -151,8 +151,9 @@ wheel, the scrollbar and the keyboard; **Automatic (best match)** is the first r
 
 The selector also owns the local lyric library: **Import file…** previews a `.lrc` or `.txt` against
 the track and, once accepted, that file is used instead of LRCLIB and badged **Local**;
-**Open on LRCLIB** and **Pin from clipboard** are the escape hatches for a wrong query without a text
-box. [Your own lyric file](lyrics.md#your-own-lyric-file) has the details.
+**Open on LRCLIB** and **Pin from clipboard** sit beside it. The header is a search box: it starts on
+the track's own query, and results replace the list while you refine it, so a wrong guess is corrected
+in place instead of in another window. [Your own lyric file](lyrics.md#your-own-lyric-file) has the details.
 
 ![Choose lyrics in demo mode](images/lyric-picker.png)
 
@@ -160,8 +161,9 @@ box. [Your own lyric file](lyrics.md#your-own-lyric-file) has the details.
 records, best first.*
 
 **Full lyrics** opens the complete sheet described under [The complete lyric sheet](lyrics.md#the-complete-lyric-sheet).
-Its **Search LRCLIB** button (or `Ctrl+F`) opens a query field when the automatic lookup cannot find the
-song, and a result picked there is pinned for the track and shown immediately; **Export…** writes the
+Its **Choose lyrics** button hands over to the selector, which is where searching lives; `Ctrl+F`
+still opens the sheet's own single-line field for a quick look. A record picked in either place is
+pinned for the track and shown immediately; **Export…** writes the
 timed sheet in force as an LRC file. The sheet is also a timing editor: Up/Down selects a line,
 **Set start**/**Set end** stamp it with the current playback position, the nudge buttons move it by
 10/50/250 ms (hold **Shift** to shift every line), and **Undo**/**Redo**/**Save** work as described
