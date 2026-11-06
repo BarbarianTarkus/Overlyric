@@ -86,7 +86,7 @@ where it is not).
 | Scenario | What it proves |
 | --- | --- |
 | `settings-sections` | clicks the eight navigation entries and compares each section to its baseline |
-| `menu-navigates-windows` | clicks the shared Window menu across Settings → Lyrics → Versions → Diagnostics → Settings and proves open-or-raise and Escape |
+| `menu-navigates-windows` | walks the shared Window menu across Settings → Lyrics → Versions → Diagnostics → Settings and proves one page swaps in place, with Escape closing it |
 | `launcher-opens-windows` | replays the tray callback, checks the launcher, and opens Versions from its rows |
 | `settings-toggle-persists` | the Karaoke switch flips and the value reaches `config.json` (and back) |
 | `settings-stepper` | `+`/`-` on Lyric size move the persisted `ActiveFontSize` by the window's step (2) |

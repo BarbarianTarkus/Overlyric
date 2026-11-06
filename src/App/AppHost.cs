@@ -250,8 +250,14 @@ internal sealed class AppHost
     private LyricViewerWindow? _viewer;
     private TrayLauncherWindow? _launcher;
 
-    /// <summary>Open-or-raise plus visibility, shared by the launcher and every title bar.</summary>
+    /// <summary>Show-or-swap plus visibility, shared by the launcher and every title bar.</summary>
     private readonly WindowNavigation _navigation;
+
+    /// <summary>The page the shell last showed, so a hidden shell reopens where it was left.</summary>
+    private WindowDestination _lastDestination = WindowDestination.Settings;
+
+    /// <summary>Last screen rectangle of the shell, used when no page window has a rectangle yet.</summary>
+    private RECT? _shellRect;
     private readonly bool _openSettings;
     private readonly bool _openPreview;
     private readonly HostCommand _startupCommand;
@@ -316,7 +322,7 @@ internal sealed class AppHost
         _openSettings = openSettings;
         _openPreview = openPreview;
         _startupCommand = startupCommand;
-        _navigation = new WindowNavigation(OpenDestination, IsWindowOpen);
+        _navigation = new WindowNavigation(OpenShell, IsWindowOpen);
     }
 
     public int Run()
@@ -3432,30 +3438,191 @@ internal sealed class AppHost
     }
 
     /// <summary>
-    /// Open or raise one of the four windows. The launcher rows and every title bar land here, so
-    /// "open" and "switch to" cannot drift apart.
+    /// Show one page of the single shell window. The page being replaced hands over its screen
+    /// rectangle, so the swap happens in place: one window is visible at a time and it does not
+    /// move or resize just because the destination changed. The launcher rows and every title bar
+    /// land here, so the two lists cannot drift.
     /// </summary>
-    private void OpenDestination(WindowDestination destination)
+    private void OpenShell(WindowDestination destination)
+    {
+        if (_overlay is null)
+        {
+            return;
+        }
+
+        var bounds = ShellBounds();
+        var prepared = bounds is { } existing && PrepareShellRect(destination, existing);
+
+        switch (destination)
+        {
+            case WindowDestination.Lyrics:
+                ShowLyricViewerWindow();
+                break;
+
+            case WindowDestination.Versions:
+                ShowLyricPickerWindow();
+                break;
+
+            case WindowDestination.Diagnostics:
+                ShowDiagnosticsWindow();
+                break;
+
+            case WindowDestination.Settings:
+                ShowSettingsWindow();
+                break;
+        }
+
+        if (bounds is { } adopt && !prepared)
+        {
+            AdoptShellRect(destination, adopt);
+        }
+
+        HideInactiveShellWindows(destination);
+        RefreshShellWindow(destination);
+        _lastDestination = destination;
+
+        if (ShellHandle(destination) is var handle && handle != nint.Zero && GetWindowRect(handle, out var actual))
+        {
+            _shellRect = actual;
+        }
+    }
+
+    /// <summary>
+    /// The rectangle the next page should take: the visible window's, or the last page's remembered
+    /// rectangle when the shell is hidden.
+    /// </summary>
+    private RECT? ShellBounds()
+    {
+        var handle = VisibleShellHandle();
+
+        if (handle == nint.Zero)
+        {
+            handle = ShellHandle(_lastDestination);
+        }
+
+        if (handle != nint.Zero && GetWindowRect(handle, out var rect) && rect.Width > 0 && rect.Height > 0)
+        {
+            return rect;
+        }
+
+        return _shellRect;
+    }
+
+    private nint VisibleShellHandle()
+    {
+        if (_viewer is { IsOpen: true })
+        {
+            return _viewer.Handle;
+        }
+
+        if (_picker is { IsOpen: true })
+        {
+            return _picker.Handle;
+        }
+
+        if (_diagnostics is { IsOpen: true })
+        {
+            return _diagnostics.Handle;
+        }
+
+        return _settings is { IsOpen: true } ? _settings.Handle : nint.Zero;
+    }
+
+    private nint ShellHandle(WindowDestination destination) => destination switch
+    {
+        WindowDestination.Lyrics => _viewer?.Handle ?? nint.Zero,
+        WindowDestination.Versions => _picker?.Handle ?? nint.Zero,
+        WindowDestination.Diagnostics => _diagnostics?.Handle ?? nint.Zero,
+        WindowDestination.Settings => _settings?.Handle ?? nint.Zero,
+        _ => nint.Zero
+    };
+
+    private bool PrepareShellRect(WindowDestination destination, RECT rect) => destination switch
+    {
+        WindowDestination.Lyrics => _viewer?.PrepareScreenRect(rect) ?? false,
+        WindowDestination.Versions => _picker?.PrepareScreenRect(rect) ?? false,
+        WindowDestination.Diagnostics => _diagnostics?.PrepareScreenRect(rect) ?? false,
+        WindowDestination.Settings => _settings?.PrepareScreenRect(rect) ?? false,
+        _ => false
+    };
+
+    private void AdoptShellRect(WindowDestination destination, RECT rect)
     {
         switch (destination)
         {
             case WindowDestination.Lyrics:
-                OpenLyricViewer();
+                _viewer?.AdoptScreenRect(rect);
                 break;
 
             case WindowDestination.Versions:
-                OpenLyricPicker();
+                _picker?.AdoptScreenRect(rect);
                 break;
 
             case WindowDestination.Diagnostics:
-                OpenDiagnostics();
+                _diagnostics?.AdoptScreenRect(rect);
                 break;
 
             case WindowDestination.Settings:
-                OpenSettings();
+                _settings?.AdoptScreenRect(rect);
                 break;
         }
     }
+
+    /// <summary>Redraw after the other pages hid, so their rails disappear from the menu at once.</summary>
+    private void RefreshShellWindow(WindowDestination destination)
+    {
+        switch (destination)
+        {
+            case WindowDestination.Lyrics:
+                _viewer?.Invalidate();
+                break;
+
+            case WindowDestination.Versions:
+                _picker?.Invalidate();
+                break;
+
+            case WindowDestination.Diagnostics:
+                _diagnostics?.Invalidate();
+                break;
+
+            case WindowDestination.Settings:
+                _settings?.RefreshIfOpen();
+                break;
+        }
+    }
+
+    /// <summary>One window at a time: the page that was showing steps aside before the next paints.</summary>
+    private void HideInactiveShellWindows(WindowDestination keep)
+    {
+        if (keep != WindowDestination.Lyrics)
+        {
+            _viewer?.HidePanel();
+        }
+
+        if (keep != WindowDestination.Versions)
+        {
+            _picker?.HidePanel();
+        }
+
+        if (keep != WindowDestination.Diagnostics)
+        {
+            _diagnostics?.HidePanel();
+        }
+
+        if (keep != WindowDestination.Settings)
+        {
+            _settings?.Hide();
+        }
+    }
+
+    /// <summary>The four entry points below are the public "go to this page" verbs; all route here.</summary>
+    private void OpenSettings() => OpenShell(WindowDestination.Settings);
+
+    private void OpenDiagnostics() => OpenShell(WindowDestination.Diagnostics);
+
+    private void OpenLyricPicker() => OpenShell(WindowDestination.Versions);
+
+    private void OpenLyricViewer() => OpenShell(WindowDestination.Lyrics);
 
     /// <summary>True while the destination's window is on screen; drives the OPEN tag and the rails.</summary>
     private bool IsWindowOpen(WindowDestination destination) => destination switch
@@ -3507,7 +3674,7 @@ internal sealed class AppHost
     }
 
     /// <summary>Show the configuration window, creating it the first time it is asked for.</summary>
-    private void OpenSettings()
+    private void ShowSettingsWindow()
     {
         if (_settings is null)
         {
@@ -3545,7 +3712,7 @@ internal sealed class AppHost
     }
 
     /// <summary>Open the diagnostics window: what is being shown, and why, plus copy-as-JSON.</summary>
-    private void OpenDiagnostics()
+    private void ShowDiagnosticsWindow()
     {
         _diagnostics ??= new DiagnosticsWindow(BuildDiagnosticsSnapshot, () => OpenFolder(AppConfig.DataDirectory));
         _diagnostics.Navigation = _navigation;
@@ -3630,7 +3797,7 @@ internal sealed class AppHost
     /// Open the lyric selector. It is created once and hidden on close, so reopening is instant; the
     /// monitor is the one the overlay is on, because that is the screen the click came from.
     /// </summary>
-    private void OpenLyricPicker()
+    private void ShowLyricPickerWindow()
     {
         _picker ??= new LyricPickerWindow(
             BuildPickerModel,
@@ -3666,7 +3833,7 @@ internal sealed class AppHost
         || _launcher is { IsOpen: true };
 
     /// <summary>Open the complete lyric sheet for the track that is playing.</summary>
-    private void OpenLyricViewer()
+    private void ShowLyricViewerWindow()
     {
         _viewer ??= new LyricViewerWindow(
             SearchLyrics,

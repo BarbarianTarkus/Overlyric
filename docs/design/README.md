@@ -51,19 +51,30 @@ with the review checklist and the open questions.
 What it specifies:
 
 * **Entry point** — a custom tray launcher, 340 × 552 DIP, anchored 12 DIP from the work-area edge
-  and 8 DIP above the taskbar. Left-clicking the notification-area icon opens it. Its four rows open
-  or raise the four windows; visible windows carry an OPEN tag; overlay switches and Exit sit below.
+  and 8 DIP above the taskbar. Left-clicking the notification-area icon opens it. Its four rows show
+  a page in the same shell; the page already showing carries an OPEN tag; overlay switches and Exit
+  sit below.
 * **Window menu** — the existing 44 DIP title bar gains the app mark and four destinations
   (Lyrics · Versions · Diagnostics · Settings) in a fixed order. The old window-name text is removed;
-  window bodies, sizes and scroll positions are untouched.
-* **States** — current (fill `#23303F` plus accent rail), visible (grey rail), hidden (dim), hover.
-* **Navigation** — choosing a destination raises the window if it is on screen, otherwise opens it.
-  The window you leave is never closed, hidden or moved.
+  page bodies, sizes and scroll positions are untouched.
+* **States** — current (fill `#23303F` plus accent rail), hidden (dim), hover. The page already
+  showing is the only one visible, so it always reads as current.
+* **Navigation** — choosing a destination swaps the page in place, at the same screen position and
+  size. One page is visible at a time; the page you leave is hidden, not destroyed, and keeps its
+  own scroll and edits.
 * **Approval** — five review statements, three decisions needed, and Q1–Q7 open questions, all
   marked TBD on purpose.
 
-Frames on page 2: Tray · notification area (schematic) 860 × 120 · Tray launcher — default and
-two windows open, 340 × 552 · Settings 780 × 584 · Lyrics 900 × 664 · Versions 900 × 624 ·
+**Revision after approval.** The board was approved on 2026-11-05 with *open-or-raise* navigation
+(each destination a separate window raised over the last). The reviewer changed that rule on
+2026-11-06: the destinations are pages of one window. The implementation and the README follow the
+single-window rule; the page-2 copy, flow diagram and launcher variant were updated for the
+revision. The **Menu states** card still defines a "visible" state that the one-page shell does not
+currently produce; it is kept as the component's full state set and may return if a second shell is
+ever opened.
+
+Frames on page 2: Tray · notification area (schematic) 860 × 120 · Tray launcher — nothing open
+and one page showing, 340 × 552 · Settings 780 × 584 · Lyrics 900 × 664 · Versions 900 × 624 ·
 Diagnostics 820 × 664 · Overlay (unlocked) 800 × 210 · Title bar anatomy 1600 × 360 · Menu states
 720 × 360 · Navigation flow 1560 × 460 · Navigation rules 760 × 460 · Specification 1140 × 900 ·
 Review and approval 640 × 900 · Assumptions and open questions 500 × 900.

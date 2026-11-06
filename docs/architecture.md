@@ -271,18 +271,22 @@ settings and config keep it opt-in; the normal overlay is one toggle away.
 
 ## Windows and the launcher
 
-The four windows — Lyrics, Versions, Diagnostics and Settings — are hidden rather than destroyed when
-closed, which is what makes reopening instant and keeps their position and size. The navigation
-contract has one owner: `WindowNavigation` answers "open that destination" and "is it on screen",
-and both the launcher and every title bar call it, so the two lists cannot disagree. The 44 DIP title bar is drawn by `WindowMenu`: the app mark plus the four
-destinations in a fixed order, the current window filled and railed in accent, a visible window
-railed in grey, the rest dim, and the bar still drags the frame everywhere except the menu and close.
+The four destinations — Lyrics, Versions, Diagnostics and Settings — are pages of one shell. Each
+page keeps its own window class and handle because their layouts differ, but only one is visible at
+a time: the page being replaced hides after the next one shows, and it hands over its screen
+rectangle so the swap happens in place, at the same position and size. Hiding rather than destroying
+keeps reopening instant and preserves each page's own state and scroll. The navigation contract has
+one owner: `WindowNavigation` answers "show that page" and "is it on screen", and both the launcher
+and every title bar call it, so the lists cannot disagree. The 44 DIP title bar is drawn by
+`WindowMenu`: the app mark plus the four destinations in a fixed order, the current page filled and
+railed in accent, the rest dim, and the bar still drags the frame everywhere except the menu and
+close.
 
 The launcher is a frameless tool window with no taskbar entry, anchored through
 `Shell_NotifyIconGetRect` and falling back to the work-area corner when the shell does not know the
 icon. It hides on deactivation, so an outside click dismisses it without a hook or a second window.
 Left-clicking the notification-area icon opens it; right-click keeps the command menu, which
-deliberately does not list the windows.
+deliberately does not list the pages.
 
 ## Scripting and the second instance
 

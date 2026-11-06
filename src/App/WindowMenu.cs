@@ -13,9 +13,9 @@ internal enum WindowDestination
 }
 
 /// <summary>
-/// The host's answer to "open that window" and "is it already on screen". Every panel window and
-/// the settings window hold the same instance, which is what keeps the launcher and the four title
-/// bars from disagreeing about which windows exist.
+/// The host's answer to "show that page" and "is it already on screen". Every panel window and the
+/// settings window hold the same instance, which is what keeps the launcher and the four title bars
+/// from disagreeing about which pages exist.
 /// </summary>
 internal sealed class WindowNavigation
 {

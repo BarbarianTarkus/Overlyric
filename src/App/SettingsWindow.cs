@@ -541,6 +541,72 @@ internal sealed class SettingsWindow : WindowBase
         }
     }
 
+    /// <summary>Screen rectangle in pixels; false when the window has not been created yet.</summary>
+    public bool TryGetScreenRect(out RECT rect)
+    {
+        if (Handle == nint.Zero)
+        {
+            rect = default;
+            return false;
+        }
+
+        return GetWindowRect(Handle, out rect);
+    }
+
+    /// <summary>
+    /// Move and size the window to a rectangle another page was using, without showing it. Called
+    /// before the show so an existing page does not appear at its old geometry and then jump.
+    /// </summary>
+    public bool PrepareScreenRect(RECT rect)
+    {
+        if (Handle == nint.Zero)
+        {
+            return false;
+        }
+
+        var scale = _dpi / 96f;
+        _widthDip = rect.Width / scale;
+        _windowHeightDip = rect.Height / scale;
+
+        FitToWorkArea();
+
+        SetWindowPos(
+            Handle,
+            IntPtr.Zero,
+            rect.Left,
+            rect.Top,
+            ToPixels(_widthDip),
+            ToPixels(_windowHeightDip),
+            SWP_NOACTIVATE | SWP_NOZORDER);
+
+        return true;
+    }
+
+    /// <summary>
+    /// Adopt the rectangle of the page being replaced once this window is showing: same screen
+    /// position and size, clamped to this window's own minimums and work area.
+    /// </summary>
+    public void AdoptScreenRect(RECT rect)
+    {
+        if (!_open || Handle == nint.Zero)
+        {
+            return;
+        }
+
+        var scale = _dpi / 96f;
+        _widthDip = rect.Width / scale;
+        _windowHeightDip = rect.Height / scale;
+
+        FitToWorkArea();
+
+        var width = ToPixels(_widthDip);
+        var height = ToPixels(_windowHeightDip);
+
+        SetWindowPos(Handle, IntPtr.Zero, rect.Left, rect.Top, width, height, SWP_NOACTIVATE | SWP_NOZORDER);
+        _host?.Resize(width, height, _dpi);
+        Render();
+    }
+
     /// <summary>
     /// Open the window on the Source section. The tray deep-links here from its source menu, and it
     /// shows the window itself rather than assuming the caller has already done so: a section that is

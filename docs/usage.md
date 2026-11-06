@@ -72,11 +72,11 @@ the overlay is locked — locked is click-through, which means no surface to hov
 | **↺** | Reset the timing for the track and output on screen: clears the track override, this output's profile and the global default. Dimmed when they are all already zero |
 | **Lyrics** | Open the complete lyric sheet |
 | **Versions** | Open the lyric selector |
-| **Settings** | Opens the settings window |
+| **Settings** | Shows the settings page |
 | **Lock** | Lock the overlay. The bar only exists unlocked, so this is the end-of-session gesture, and it needs no remembered chord |
 
-The bar reads left to right as status, correction, windows, finish: what you are looking at, the timing
-you are fixing, the two windows that show the words, then the two things that end the session.
+The bar reads left to right as status, correction, pages, finish: what you are looking at, the timing
+you are fixing, the two pages that show the words, then the two things that end the session.
 
 ![The overlay control bar](images/overlay-controls.png)
 
@@ -128,17 +128,17 @@ buttons are dimmed until there is a value to clear; the hint at the bottom spell
 ## Tray icon
 
 Left-click opens the **launcher** — a flyout anchored above the notification area and the one place
-an Overlyric window is opened from. Its four rows are **Lyrics**, **Versions**, **Diagnostics** and
-**Settings**; choosing one opens that window, or raises it when it is already on screen. A row whose
-window is already visible says **OPEN**. Below them sit the three overlay switches worth reaching for
+the one place an Overlyric page is opened from. Its four rows are **Lyrics**, **Versions**,
+**Diagnostics** and **Settings**; choosing one shows that page in the same window, at the same place on
+screen. A row whose page is already showing says **OPEN**. Below them sit the three overlay switches worth reaching for
 mid-song — **Show overlay**, **Locked** and **Stage mode** — and **Exit**. The launcher dismisses with
 Escape, a click outside, or by choosing a row.
 
 Right-click opens the command menu instead: the track line (informational and not selectable), **Refresh
 lyrics**, **Preview overlay**, **Play / Pause**, **Next track**, **Players** (automatic, whatever is
 publishing now, and the priority order), **Show overlay**, **Layout**, **Locked**, **Stage mode** and
-**Exit**. The windows are deliberately absent from it: the launcher and every window's own menu carry
-the same four destinations. **Layout** opens a submenu with the three modes ticked, because a row that
+**Exit**. The pages are deliberately absent from it: the launcher and every page's own title bar
+carry the same four destinations. **Layout** opens a submenu with the three modes ticked, because a row that
 cycles them cannot show which one is in force.
 
 **Refresh lyrics** throws away the cached answer for the current track and asks LRCLIB again. It is
@@ -146,14 +146,15 @@ the escape hatch for a record that is wrong, or for a lookup that failed while t
 **Preview overlay** drives the demo track for fifteen seconds, which is the quickest way to check a
 layout, a font size or the OLED preset without waiting for a song.
 
-## Moving between windows
+## Moving between pages
 
-Every window carries the same menu in its 44 DIP title bar, to the right of the app mark: **Lyrics ·
-Versions · Diagnostics · Settings**. The window you are in is filled and underlined in accent; a
-window that is already on screen keeps a grey underline; a hidden window is dim. Choosing a
-destination opens it, or raises it, and leaves the window you came from exactly where it was — the
-menu never closes, hides or re-centres anything. **Esc** or the close button hides a window rather
-than destroying it, so reopening restores its position and size.
+The four destinations are pages of one window, not four separate windows. Every page carries the same
+menu in its 44 DIP title bar, to the right of the app mark: **Lyrics · Versions · Diagnostics ·
+Settings**. The page you are in is filled and underlined in accent; the others are dim. Choosing a
+destination replaces the page in place — same position on screen, same size — so it reads as one
+window changing its contents rather than a second window opening on top. The shell keeps that
+rectangle while it is hidden, and **Esc** or the close button hides it; reopening restores the place
+and size it had.
 
 The overlay is the exception: it hugs its text and is click-through while locked, so it has no title
 bar. Its unlocked control bar keeps its **Lyrics**, **Versions** and **Settings** shortcuts, and the
@@ -190,9 +191,10 @@ timed sheet in force as an LRC file. The sheet is also a timing editor: Up/Down 
 under [Editing the timing](lyrics.md#editing-the-timing). **Edit file…** opens the local `.lrc` in
 Notepad and reloads the sheet when it is saved. Saving writes a local selection, so the edit survives
 a replay without changing the LRCLIB record. **Publish…**, shown for local sheets only, sends the
-confirmed sheet to LRCLIB as a new public record (see [Publishing to LRCLIB](lyrics.md#publishing-to-lrclib)). Both windows are
-dark, resize from any edge or corner, and close with **Esc**; they reuse the overlay's
-DirectComposition stack and the settings window's palette, so they add no new UI framework. The
+confirmed sheet to LRCLIB as a new public record (see [Publishing to LRCLIB](lyrics.md#publishing-to-lrclib)). The sheet
+and the selector are dark pages of the shell, which resizes from any edge or corner and closes with
+**Esc**; they reuse the overlay's DirectComposition stack and the settings window's palette, so they
+add no new UI framework. The
 selector's title column takes the extra width, while its match, length and badge columns stay
 anchored to the right; the sheet re-wraps its lines at the new width.
 

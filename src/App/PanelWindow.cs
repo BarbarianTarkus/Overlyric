@@ -195,6 +195,73 @@ internal abstract class PanelWindow : WindowBase
         }
     }
 
+    /// <summary>Screen rectangle in pixels; false when the window has not been created yet.</summary>
+    public bool TryGetScreenRect(out RECT rect)
+    {
+        if (Handle == nint.Zero)
+        {
+            rect = default;
+            return false;
+        }
+
+        return GetWindowRect(Handle, out rect);
+    }
+
+    /// <summary>
+    /// Move and size the window to a rectangle another page was using, without showing it. Called
+    /// before the show so an existing page does not appear at its old geometry and then jump.
+    /// </summary>
+    public bool PrepareScreenRect(RECT rect)
+    {
+        if (Handle == nint.Zero)
+        {
+            return false;
+        }
+
+        var scale = _dpi / 96f;
+        _widthDip = rect.Width / scale;
+        _heightDip = (rect.Height / scale) - TitleHeight;
+
+        FitToMonitor(MonitorFromRect(ref rect, MONITOR_DEFAULTTONEAREST));
+
+        SetWindowPos(
+            Handle,
+            HWND_TOPMOST,
+            rect.Left,
+            rect.Top,
+            ToPixels(WidthDip),
+            ToPixels(WindowHeight),
+            SWP_NOACTIVATE);
+
+        return true;
+    }
+
+    /// <summary>
+    /// Adopt the rectangle of the page being replaced once this window is showing: same screen
+    /// position and client size, clamped to this window's own minimums and work area.
+    /// </summary>
+    public void AdoptScreenRect(RECT rect)
+    {
+        if (!_open || Handle == nint.Zero)
+        {
+            return;
+        }
+
+        var scale = _dpi / 96f;
+        _widthDip = rect.Width / scale;
+        _heightDip = (rect.Height / scale) - TitleHeight;
+
+        FitToMonitor(MonitorFromRect(ref rect, MONITOR_DEFAULTTONEAREST));
+
+        var width = ToPixels(WidthDip);
+        var height = ToPixels(WindowHeight);
+
+        SetWindowPos(Handle, HWND_TOPMOST, rect.Left, rect.Top, width, height, SWP_NOACTIVATE);
+        _host?.Resize(width, height, _dpi);
+        OnPanelResized();
+        Render();
+    }
+
     /// <summary>Redraw after the model behind the window changed.</summary>
     public void Invalidate()
     {

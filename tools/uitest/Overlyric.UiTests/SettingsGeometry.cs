@@ -25,7 +25,7 @@ internal static class SettingsGeometry
 
     // --- The shared Window menu in the 44 DIP title bar -------------------------------------------
     // The same four destinations, at the same x, in every window (WindowMenu.cs). Clicking one
-    // opens or raises that window; it never hides the window you clicked from.
+    // swaps the page in place: the page you were on hides and the next takes its rectangle.
     public const int MenuY = 22;
     public const int MenuLyricsX = 80;
     public const int MenuVersionsX = 160;

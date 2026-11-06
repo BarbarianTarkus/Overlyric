@@ -125,6 +125,17 @@ internal sealed class AppSession : IDisposable
 
     public long ExtendedStyle() => NativeMethods.GetWindowLongPtrW(Window, NativeMethods.GWL_EXSTYLE).ToInt64();
 
+    /// <summary>The window's screen rectangle in pixels, for proving a page swap happens in place.</summary>
+    public (int X, int Y, int Width, int Height) ScreenRect(nint window)
+    {
+        if (!NativeMethods.GetWindowRect(window, out var rect))
+        {
+            throw new ScenarioFailureException("GetWindowRect failed: the window handle is no longer valid.");
+        }
+
+        return (rect.Left, rect.Top, rect.Width, rect.Height);
+    }
+
     /// <summary>
     /// Posts a left click at a client coordinate. The coordinate is DIP, which is also the client
     /// pixel under the 96 DPI seam. PostMessage is the whole point: it feeds the window's own message

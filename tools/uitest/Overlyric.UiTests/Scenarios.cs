@@ -70,78 +70,105 @@ internal sealed class SettingsSectionsScenario : IScenario
 }
 
 /// <summary>
-/// The shared Window menu, walked across three windows: Settings opens Lyrics, Lyrics opens
-/// Versions, Versions opens Diagnostics, Diagnostics raises Settings back, and Escape closes the
-/// one the run is looking at. Every window class is the same, so the title is the identity.
+/// The shared Window menu, walked across the four pages. One shell window is visible at a time:
+/// choosing a destination hides the page it came from and shows the next at the same screen
+/// rectangle, so the change reads as a page swap rather than a new window.
 /// </summary>
 internal sealed class SettingsMenuScenario : IScenario
 {
     public string Name => "menu-navigates-windows";
 
-    public string Description => "clicks the shared Window menu across three windows and proves open-or-raise and Escape";
+    public string Description => "walks the shared Window menu and proves one page swaps in place, with Escape closing it";
 
     public void Run(ScenarioContext context)
     {
         using var session = context.LaunchSettings();
         var settings = session.Window;
+        var bounds = session.ScreenRect(settings);
 
         session.Click(SettingsGeometry.MenuLyricsX, SettingsGeometry.MenuY);
         var lyrics = session.WaitForWindowTitle("Lyrics");
+        context.Sleep(300);
 
         context.Check(
             "Lyrics opens from the Settings menu",
             NativeMethods.IsWindowVisible(lyrics),
             "The Lyrics window exists but is not visible.");
         context.Check(
-            "the Settings window stays open",
-            NativeMethods.IsWindowVisible(settings),
-            "Opening Lyrics hid the Settings window; the menu is open-or-raise, not replace.");
+            "the Settings page steps aside",
+            !NativeMethods.IsWindowVisible(settings),
+            "Opening Lyrics left the Settings window visible; the menu must swap pages in one window.");
+        context.Check(
+            "Lyrics takes the Settings rectangle",
+            session.ScreenRect(lyrics) == bounds,
+            $"expected {bounds}, got {session.ScreenRect(lyrics)}.");
 
         context.CaptureWindow("menu-lyrics", lyrics, settleMs: 1_000);
 
+        bounds = session.ScreenRect(lyrics);
         AppSession.ClickWindow(lyrics, SettingsGeometry.MenuVersionsX, SettingsGeometry.MenuY);
         var versions = session.WaitForWindowTitle("Choose lyrics");
+        context.Sleep(300);
 
         context.Check(
             "Versions opens from the Lyrics menu",
             NativeMethods.IsWindowVisible(versions),
             "The Versions window exists but is not visible.");
         context.Check(
-            "the Lyrics window stays open",
-            NativeMethods.IsWindowVisible(lyrics),
-            "Opening Versions hid the Lyrics window.");
+            "the Lyrics page steps aside",
+            !NativeMethods.IsWindowVisible(lyrics),
+            "Opening Versions left the Lyrics window visible.");
+        context.Check(
+            "Versions takes the Lyrics rectangle",
+            session.ScreenRect(versions) == bounds,
+            $"expected {bounds}, got {session.ScreenRect(versions)}.");
 
         context.CaptureWindow("menu-versions", versions, settleMs: 1_000);
 
+        bounds = session.ScreenRect(versions);
         AppSession.ClickWindow(versions, SettingsGeometry.MenuDiagnosticsX, SettingsGeometry.MenuY);
         var diagnostics = session.WaitForWindowTitle("Diagnostics");
+        context.Sleep(300);
 
         context.Check(
             "Diagnostics opens from the Versions menu",
             NativeMethods.IsWindowVisible(diagnostics),
             "The Diagnostics window exists but is not visible.");
+        context.Check(
+            "the Versions page steps aside",
+            !NativeMethods.IsWindowVisible(versions),
+            "Opening Diagnostics left the Versions window visible.");
+        context.Check(
+            "Diagnostics takes the Versions rectangle",
+            session.ScreenRect(diagnostics) == bounds,
+            $"expected {bounds}, got {session.ScreenRect(diagnostics)}.");
 
         context.CaptureWindow("menu-diagnostics", diagnostics, settleMs: 1_000);
 
+        bounds = session.ScreenRect(diagnostics);
         AppSession.ClickWindow(diagnostics, SettingsGeometry.MenuSettingsX, SettingsGeometry.MenuY);
         context.Sleep(250);
 
         context.Check(
-            "Settings is raised, not re-created",
+            "Settings comes back from the Diagnostics menu",
             NativeMethods.IsWindowVisible(settings),
             "Choosing Settings on the Diagnostics menu left the settings window hidden.");
         context.Check(
-            "Diagnostics stays open behind it",
-            NativeMethods.IsWindowVisible(diagnostics),
-            "Choosing Settings hid the Diagnostics window; the menu is open-or-raise, not replace.");
+            "the Diagnostics page steps aside",
+            !NativeMethods.IsWindowVisible(diagnostics),
+            "Choosing Settings left the Diagnostics window visible.");
+        context.Check(
+            "Settings takes the Diagnostics rectangle",
+            session.ScreenRect(settings) == bounds,
+            $"expected {bounds}, got {session.ScreenRect(settings)}.");
 
-        AppSession.KeyWindow(diagnostics, 0x1B);
+        AppSession.KeyWindow(settings, 0x1B);
         context.Sleep(250);
 
         context.Check(
-            "Escape hides the Diagnostics window",
-            !NativeMethods.IsWindowVisible(diagnostics),
-            "The Diagnostics window is still visible after Escape.");
+            "Escape hides the shell",
+            !NativeMethods.IsWindowVisible(settings),
+            "The shell is still visible after Escape.");
     }
 }
 
@@ -154,12 +181,13 @@ internal sealed class LauncherScenario : IScenario
 {
     public string Name => "launcher-opens-windows";
 
-    public string Description => "replays a tray click, checks the launcher and opens Versions from its rows";
+    public string Description => "replays a tray click, checks the launcher and opens Versions from its rows in place";
 
     public void Run(ScenarioContext context)
     {
         using var session = context.LaunchSettings();
         var settings = session.Window;
+        var bounds = session.ScreenRect(settings);
 
         session.PostTrayClick();
         var launcher = session.WaitForWindowTitle("Overlyric");
@@ -174,6 +202,7 @@ internal sealed class LauncherScenario : IScenario
         // The Versions row: rows start at 156 DIP, 46 DIP apart, and are 44 DIP tall.
         AppSession.ClickWindow(launcher, 170, 224);
         var versions = session.WaitForWindowTitle("Choose lyrics");
+        context.Sleep(300);
 
         context.Check(
             "the Versions row opens the selector",
@@ -184,9 +213,9 @@ internal sealed class LauncherScenario : IScenario
             !NativeMethods.IsWindowVisible(launcher),
             "The launcher is still visible after choosing a window.");
         context.Check(
-            "the settings window stays open",
-            NativeMethods.IsWindowVisible(settings),
-            "Choosing Versions from the launcher hid the settings window.");
+            "the launcher's page opens in the same window",
+            !NativeMethods.IsWindowVisible(settings) && session.ScreenRect(versions) == bounds,
+            $"Settings visible: {NativeMethods.IsWindowVisible(settings)}; expected {bounds}, got {session.ScreenRect(versions)}.");
     }
 }
 
