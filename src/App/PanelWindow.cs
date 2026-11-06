@@ -237,29 +237,18 @@ internal abstract class PanelWindow : WindowBase
     }
 
     /// <summary>
-    /// Adopt the rectangle of the page being replaced once this window is showing: same screen
-    /// position and client size, clamped to this window's own minimums and work area.
+    /// Create the window hidden if it does not exist yet, then place it at the shell's rectangle.
+    /// Creating before the first show is what keeps the first page switch from flashing at the
+    /// window's default position before it is moved.
     /// </summary>
-    public void AdoptScreenRect(RECT rect)
+    public void CreateForShell(RECT rect)
     {
-        if (!_open || Handle == nint.Zero)
+        if (Handle == nint.Zero)
         {
-            return;
+            CreatePanel(MonitorFromRect(ref rect, MONITOR_DEFAULTTONEAREST));
         }
 
-        var scale = _dpi / 96f;
-        _widthDip = rect.Width / scale;
-        _heightDip = (rect.Height / scale) - TitleHeight;
-
-        FitToMonitor(MonitorFromRect(ref rect, MONITOR_DEFAULTTONEAREST));
-
-        var width = ToPixels(WidthDip);
-        var height = ToPixels(WindowHeight);
-
-        SetWindowPos(Handle, HWND_TOPMOST, rect.Left, rect.Top, width, height, SWP_NOACTIVATE);
-        _host?.Resize(width, height, _dpi);
-        OnPanelResized();
-        Render();
+        PrepareScreenRect(rect);
     }
 
     /// <summary>Redraw after the model behind the window changed.</summary>

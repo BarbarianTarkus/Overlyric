@@ -3450,8 +3450,13 @@ internal sealed class AppHost
             return;
         }
 
+        EnsureShellWindow(destination);
         var bounds = ShellBounds();
-        var prepared = bounds is { } existing && PrepareShellRect(destination, existing);
+
+        if (bounds is { } existing)
+        {
+            CreateOrPrepareShell(destination, existing);
+        }
 
         switch (destination)
         {
@@ -3472,12 +3477,8 @@ internal sealed class AppHost
                 break;
         }
 
-        if (bounds is { } adopt && !prepared)
-        {
-            AdoptShellRect(destination, adopt);
-        }
-
         HideInactiveShellWindows(destination);
+        AfterShowShellWindow(destination);
         RefreshShellWindow(destination);
         _lastDestination = destination;
 
@@ -3537,34 +3538,64 @@ internal sealed class AppHost
         _ => nint.Zero
     };
 
-    private bool PrepareShellRect(WindowDestination destination, RECT rect) => destination switch
-    {
-        WindowDestination.Lyrics => _viewer?.PrepareScreenRect(rect) ?? false,
-        WindowDestination.Versions => _picker?.PrepareScreenRect(rect) ?? false,
-        WindowDestination.Diagnostics => _diagnostics?.PrepareScreenRect(rect) ?? false,
-        WindowDestination.Settings => _settings?.PrepareScreenRect(rect) ?? false,
-        _ => false
-    };
-
-    private void AdoptShellRect(WindowDestination destination, RECT rect)
+    private void EnsureShellWindow(WindowDestination destination)
     {
         switch (destination)
         {
             case WindowDestination.Lyrics:
-                _viewer?.AdoptScreenRect(rect);
+                EnsureLyricViewerWindow();
                 break;
 
             case WindowDestination.Versions:
-                _picker?.AdoptScreenRect(rect);
+                EnsureLyricPickerWindow();
                 break;
 
             case WindowDestination.Diagnostics:
-                _diagnostics?.AdoptScreenRect(rect);
+                EnsureDiagnosticsWindow();
                 break;
 
             case WindowDestination.Settings:
-                _settings?.AdoptScreenRect(rect);
+                EnsureSettingsWindow();
                 break;
+        }
+    }
+
+    /// <summary>
+    /// Create the page hidden at the shell's rectangle if it is new, or move the hidden page there
+    /// before it is shown. Either way the first frame lands in the right place.
+    /// </summary>
+    private void CreateOrPrepareShell(WindowDestination destination, RECT rect)
+    {
+        switch (destination)
+        {
+            case WindowDestination.Lyrics:
+                _viewer?.CreateForShell(rect);
+                break;
+
+            case WindowDestination.Versions:
+                _picker?.CreateForShell(rect);
+                break;
+
+            case WindowDestination.Diagnostics:
+                _diagnostics?.CreateForShell(rect);
+                break;
+
+            case WindowDestination.Settings:
+                _settings?.CreateForShell(rect);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Work that belongs after the page is on screen and the previous one is off it: the selector
+    /// asks lrclib for alternatives here, because that lookup can take long enough to keep the old
+    /// page visible if it ran before the swap was finished.
+    /// </summary>
+    private void AfterShowShellWindow(WindowDestination destination)
+    {
+        if (destination == WindowDestination.Versions)
+        {
+            EnsureVersionsForPicker();
         }
     }
 
@@ -3674,11 +3705,14 @@ internal sealed class AppHost
     }
 
     /// <summary>Show the configuration window, creating it the first time it is asked for.</summary>
-    private void ShowSettingsWindow()
+    private void EnsureSettingsWindow()
     {
-        if (_settings is null)
+        if (_settings is not null)
         {
-            _settings = new SettingsWindow(
+            return;
+        }
+
+        _settings = new SettingsWindow(
                 _config,
                 ApplySettings,
                 AssignShortcut,
@@ -3705,18 +3739,27 @@ internal sealed class AppHost
                     ClearTrack = ClearTrackTiming,
                     NudgeOutput = NudgeOutputTiming
                 });
-        }
 
         _settings.Navigation = _navigation;
-        _settings.Show();
+    }
+
+    private void ShowSettingsWindow()
+    {
+        EnsureSettingsWindow();
+        _settings!.Show();
     }
 
     /// <summary>Open the diagnostics window: what is being shown, and why, plus copy-as-JSON.</summary>
-    private void ShowDiagnosticsWindow()
+    private void EnsureDiagnosticsWindow()
     {
         _diagnostics ??= new DiagnosticsWindow(BuildDiagnosticsSnapshot, () => OpenFolder(AppConfig.DataDirectory));
         _diagnostics.Navigation = _navigation;
-        _diagnostics.ShowDiagnostics();
+    }
+
+    private void ShowDiagnosticsWindow()
+    {
+        EnsureDiagnosticsWindow();
+        _diagnostics!.ShowDiagnostics();
     }
 
     /// <summary>The live facts the diagnostics window paints; pulled on each draw.</summary>
@@ -3797,9 +3840,14 @@ internal sealed class AppHost
     /// Open the lyric selector. It is created once and hidden on close, so reopening is instant; the
     /// monitor is the one the overlay is on, because that is the screen the click came from.
     /// </summary>
-    private void ShowLyricPickerWindow()
+    private void EnsureLyricPickerWindow()
     {
-        _picker ??= new LyricPickerWindow(
+        if (_picker is not null)
+        {
+            return;
+        }
+
+        _picker = new LyricPickerWindow(
             BuildPickerModel,
             ChooseVersion,
             RefreshVersions,
@@ -3811,14 +3859,18 @@ internal sealed class AppHost
             CancelLyricImport,
             SearchLyrics);
 
+        _picker.Navigation = _navigation;
+    }
+
+    private void ShowLyricPickerWindow()
+    {
+        EnsureLyricPickerWindow();
+
         var monitor = _overlay is { IsVisible: true }
             ? MonitorFromWindow(_overlay.Handle, MONITOR_DEFAULTTONEAREST)
             : nint.Zero;
 
-        _picker.Navigation = _navigation;
-        _picker.ShowPanel(monitor);
-        EnsureVersionsForPicker();
-        _picker.Invalidate();
+        _picker!.ShowPanel(monitor);
     }
 
     /// <summary>The sheet sends the listener to the selector rather than opening a second search UI.</summary>
@@ -3833,9 +3885,14 @@ internal sealed class AppHost
         || _launcher is { IsOpen: true };
 
     /// <summary>Open the complete lyric sheet for the track that is playing.</summary>
-    private void ShowLyricViewerWindow()
+    private void EnsureLyricViewerWindow()
     {
-        _viewer ??= new LyricViewerWindow(
+        if (_viewer is not null)
+        {
+            return;
+        }
+
+        _viewer = new LyricViewerWindow(
             SearchLyrics,
             id => ChooseVersion(id),
             ExportLyrics,
@@ -3844,8 +3901,14 @@ internal sealed class AppHost
             CurrentPosition,
             SaveEditedLyrics,
             ChooseLyricsFromViewer);
+
         _viewer.Navigation = _navigation;
-        _viewer.ShowSheet(BuildSheet());
+    }
+
+    private void ShowLyricViewerWindow()
+    {
+        EnsureLyricViewerWindow();
+        _viewer!.ShowSheet(BuildSheet());
     }
 
     /// <summary>

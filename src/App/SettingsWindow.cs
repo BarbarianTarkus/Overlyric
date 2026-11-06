@@ -583,28 +583,18 @@ internal sealed class SettingsWindow : WindowBase
     }
 
     /// <summary>
-    /// Adopt the rectangle of the page being replaced once this window is showing: same screen
-    /// position and size, clamped to this window's own minimums and work area.
+    /// Create the window hidden if it does not exist yet, then place it at the shell's rectangle.
+    /// Creating before the first show is what keeps the first page switch from flashing at the
+    /// window's default position before it is moved.
     /// </summary>
-    public void AdoptScreenRect(RECT rect)
+    public void CreateForShell(RECT rect)
     {
-        if (!_open || Handle == nint.Zero)
+        if (Handle == nint.Zero)
         {
-            return;
+            Create();
         }
 
-        var scale = _dpi / 96f;
-        _widthDip = rect.Width / scale;
-        _windowHeightDip = rect.Height / scale;
-
-        FitToWorkArea();
-
-        var width = ToPixels(_widthDip);
-        var height = ToPixels(_windowHeightDip);
-
-        SetWindowPos(Handle, IntPtr.Zero, rect.Left, rect.Top, width, height, SWP_NOACTIVATE | SWP_NOZORDER);
-        _host?.Resize(width, height, _dpi);
-        Render();
+        PrepareScreenRect(rect);
     }
 
     /// <summary>
