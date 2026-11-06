@@ -156,8 +156,15 @@ internal sealed record LyricPickerModel
     /// <summary>A sentence about the last import or clipboard action, when there is one.</summary>
     public string? ImportMessage { get; init; }
 
-    /// <summary>The query the header field starts with: what the automatic finder would have asked.</summary>
+    /// <summary>The query the header fields start with: what the automatic finder would have asked.</summary>
     public string Query { get; init; } = "";
+
+    /// <summary>Album art from the session thumbnail, premultiplied BGRA8; null when the player has none.</summary>
+    public byte[]? Artwork { get; init; }
+
+    public int ArtworkWidth { get; init; }
+
+    public int ArtworkHeight { get; init; }
 
     /// <summary>True while a query typed in the picker is in flight.</summary>
     public bool SearchLoading { get; init; }

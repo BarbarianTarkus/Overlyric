@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Overlyric.Lyrics;
 using Vortice.Direct2D1;
 using Vortice.DirectWrite;
@@ -31,8 +32,9 @@ internal sealed class LyricPickerWindow : PanelWindow
     private const int ClipboardControl = 7;
     private const int ImportAcceptControl = 8;
     private const int ImportCancelControl = 9;
-    private const int QueryFieldControl = 10;
-    private const int SearchControl = 11;
+    private const int TitleFieldControl = 10;
+    private const int ArtistFieldControl = 11;
+    private const int AlbumFieldControl = 12;
     private const int RowBase = 100;
 
     private const float Pad = 28f;
@@ -66,10 +68,40 @@ internal sealed class LyricPickerWindow : PanelWindow
     private readonly Action _cancelImport;
     private readonly Action<string> _search;
 
-    private string _query = "";
+    private ID2D1Bitmap? _artworkBitmap;
+    private byte[]? _artworkSource;
+
+    private string _titleField = "";
+    private string _artistField = "";
+    private string _albumField = "";
+    private string _albumSeed = "";
     private long _queryRevision = long.MinValue;
-    private bool _queryFocused;
+
+    /// <summary>Which header field holds the keyboard: 0 none, 1 the title, 2 the artist, 3 the album.</summary>
+    private int _fieldFocus;
     private bool _searchMode;
+
+    /// <summary>
+    /// What the search box currently asks for, in lrclib's word order. The album is a refinement, not
+    /// part of the default question: it only joins when the listener has changed it. Left as the track
+    /// states it, "artist title" is what finds a song; adding the album narrows the answer to nothing
+    /// far more often than it disambiguates.
+    /// </summary>
+    private string ComposedQuery
+    {
+        get
+        {
+            var parts = new List<string>(3) { _artistField.Trim(), _titleField.Trim() };
+            var album = _albumField.Trim();
+
+            if (album.Length > 0 && !string.Equals(album, _albumSeed.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                parts.Add(album);
+            }
+
+            return string.Join(' ', parts.Where(static part => part.Length > 0));
+        }
+    }
 
     private int _scrollRow;
     private int _maxScrollRow;
@@ -253,77 +285,204 @@ internal sealed class LyricPickerWindow : PanelWindow
                 TextAlignment.Trailing);
         }
 
-        const float searchButtonWidth = 76f;
-
-        var fieldRight = WidthDip - Pad - 236f - 8f - searchButtonWidth - 8f;
-        var field = R(Pad, 14f, MathF.Max(Pad + 160f, fieldRight), 46f);
-
-        DrawQueryField(context, field);
-
-        Button(
-            context,
-            SearchControl,
-            "Search",
-            field.Right + 8f,
-            16f,
-            searchButtonWidth,
-            30f,
-            _query.Trim().Length > 0 && !model.IsDemo);
+        DrawHeaderFields(context, model);
 
         Fill(context, R(Pad, InfoHeight - 1f, WidthDip - Pad, InfoHeight), ColorLine);
     }
 
-    /// <summary>The editable query, drawn as the header. Editing is append and backspace at the end.</summary>
-    private void DrawQueryField(ID2D1DeviceContext context, Rect rect)
+    /// <summary>
+    /// The header is the query, in the shape the album art gives it: the cover and the album name on
+    /// the left, the song title, the artist and the length centred beside it. The title and the artist
+    /// are editable where they are printed - no box, no second search window - and Enter, or the
+    /// Search button, asks lrclib what the two lines say.
+    /// </summary>
+    private void DrawHeaderFields(ID2D1DeviceContext context, LyricPickerModel model)
     {
-        if (_queryFocused)
+        const float artworkSize = 48f;
+        const float artworkX = 50f;
+        const float centerLeft = 100f;
+        var centerWidth = MathF.Max(200f, WidthDip - 200f);
+
+        var artwork = ArtworkBitmap(context, model);
+
+        if (artwork is not null)
         {
-            FillRound(
-                context,
-                rect.Left - 1f,
-                rect.Top - 1f,
-                rect.Right - rect.Left + 2f,
-                rect.Bottom - rect.Top + 2f,
-                9f,
-                ColorAccent);
+            context.DrawBitmap(
+                artwork,
+                new Vortice.RawRectF(artworkX, 4f, artworkX + artworkSize, 4f + artworkSize),
+                1f,
+                InterpolationMode.Linear,
+                null,
+                null);
+        }
+        else
+        {
+            FillRound(context, artworkX, 4f, artworkSize, artworkSize, 3f, ColorControl);
         }
 
-        FillRound(context, rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top, 8f, ColorControl);
+        // The album name sits under the cover, centred on it, and is editable like the other two.
+        DrawFieldText(
+            context,
+            _albumField,
+            _fieldFocus == 3,
+            "Album",
+            11f,
+            FontWeight.Normal,
+            ColorTextFaint,
+            0f,
+            52f,
+            (2f * artworkX) + artworkSize,
+            16f,
+            16);
 
-        var empty = _query.Length == 0;
-        var text = empty
-            ? "Search lrclib: artist, album, or a line"
-            : _queryFocused ? _query + "\u2502" : _query;
+        DrawFieldText(context, _titleField, _fieldFocus == 1, "Song title", 22f, FontWeight.SemiBold, ColorText, centerLeft, 3f, centerWidth, 30f, 48);
+        DrawFieldText(context, _artistField, _fieldFocus == 2, "Artist", 12.5f, FontWeight.Normal, ColorTextDim, centerLeft, 32f, centerWidth, 18f, 64);
 
         Label(
             context,
-            LyricText.Fit(text, 74),
-            rect.Left + 10f,
-            rect.Top,
-            rect.Right - rect.Left - 20f,
-            rect.Bottom - rect.Top,
-            13f,
+            LyricText.Fit(BuildMetaLine(model), 40),
+            centerLeft,
+            52f,
+            centerWidth,
+            18f,
+            12.5f,
             FontWeight.Normal,
-            empty ? ColorTextFaint : ColorText);
+            ColorTextDim,
+            TextAlignment.Center);
 
-        Hit(QueryFieldControl, rect);
+        Hit(TitleFieldControl, R(centerLeft, 3f, centerLeft + centerWidth, 32f));
+        Hit(ArtistFieldControl, R(centerLeft, 32f, centerLeft + centerWidth, 52f));
+        Hit(AlbumFieldControl, R(0f, 52f, (2f * artworkX) + artworkSize, 70f));
     }
 
-    /// <summary>Run the typed query. The automatic list comes back with Look again.</summary>
+    private static string BuildMetaLine(LyricPickerModel model)
+    {
+        var parts = new List<string>(2);
+
+        if (model.DurationSeconds is > 0)
+        {
+            parts.Add(LyricText.FormatDuration(model.DurationSeconds));
+        }
+
+        if (!string.IsNullOrWhiteSpace(model.SourceApp))
+        {
+            parts.Add(model.SourceApp!);
+        }
+
+        return string.Join(" \u00b7 ", parts);
+    }
+
+    private void DrawFieldText(
+        ID2D1DeviceContext context,
+        string text,
+        bool focused,
+        string placeholder,
+        float size,
+        FontWeight weight,
+        uint color,
+        float left,
+        float top,
+        float width,
+        float height,
+        int fit)
+    {
+        var empty = text.Length == 0;
+        var shown = empty && !focused ? placeholder : LyricText.Fit(text, fit);
+        var shownColor = empty && !focused ? ColorTextFaint : color;
+
+        Label(context, shown, left, top, width, height, size, weight, shownColor, TextAlignment.Center);
+
+        if (!focused)
+        {
+            return;
+        }
+
+        // The caret and the rule are measured, not drawn as a "|" glyph: the character carries its own
+        // side bearings, which is what left a gap between the last letter and the cursor.
+        var textWidth = Measure(shown, size, weight);
+        var textLeft = left + MathF.Max(0f, (width - textWidth) / 2f);
+
+        var caretHeight = MathF.Max(size, 12f);
+        var caretTop = top + MathF.Max(1f, (height - caretHeight) / 2f);
+        var caretX = textLeft + textWidth + 1f;
+
+        Fill(context, R(caretX, caretTop, caretX + 1f, caretTop + caretHeight), ColorAccent);
+        Fill(context, R(textLeft - 2f, top + height - 1f, textLeft + textWidth + 2f, top + height), ColorAccent);
+    }
+
+    /// <summary>The album art, decoded once per image and reused until the track changes.</summary>
+    private ID2D1Bitmap? ArtworkBitmap(ID2D1DeviceContext context, LyricPickerModel model)
+    {
+        if (model.Artwork is null || model.ArtworkWidth <= 0 || model.ArtworkHeight <= 0)
+        {
+            return null;
+        }
+
+        if (ReferenceEquals(model.Artwork, _artworkSource))
+        {
+            return _artworkBitmap;
+        }
+
+        _artworkBitmap?.Dispose();
+        _artworkBitmap = null;
+        _artworkSource = model.Artwork;
+
+        var handle = GCHandle.Alloc(model.Artwork, GCHandleType.Pinned);
+
+        try
+        {
+            var properties = new BitmapProperties1(
+                new Vortice.DCommon.PixelFormat(Vortice.DXGI.Format.B8G8R8A8_UNorm, Vortice.DCommon.AlphaMode.Premultiplied),
+                96f,
+                96f);
+
+            _artworkBitmap = context.CreateBitmap(
+                new SizeI(model.ArtworkWidth, model.ArtworkHeight),
+                handle.AddrOfPinnedObject(),
+                (uint)(model.ArtworkWidth * 4),
+                properties);
+        }
+        catch (Exception)
+        {
+            _artworkBitmap = null;
+        }
+        finally
+        {
+            handle.Free();
+        }
+
+        return _artworkBitmap;
+    }
+
+    /// <summary>
+    /// Ask lrclib the question the two lines spell out. When they still hold the track's own words the
+    /// answer is the automatic list again, which is what "look again" meant before the fields existed.
+    /// </summary>
     private void RunQuerySearch()
     {
-        var query = _query.Trim();
+        var model = Snapshot();
+        var query = ComposedQuery;
 
-        if (query.Length == 0 || Snapshot().IsDemo)
+        if (query.Length == 0 || model.IsDemo)
         {
             Invalidate();
             return;
         }
 
-        _searchMode = true;
         _scrollRow = 0;
         ClearHover();
-        _search(query);
+
+        if (string.Equals(query, model.Query.Trim(), StringComparison.OrdinalIgnoreCase))
+        {
+            _searchMode = false;
+            _refresh();
+        }
+        else
+        {
+            _searchMode = true;
+            _search(query);
+        }
+
         Invalidate();
     }
 
@@ -336,36 +495,12 @@ internal sealed class LyricPickerWindow : PanelWindow
         }
 
         _queryRevision = model.Revision;
-        _query = model.Query;
-        _queryFocused = false;
+        _titleField = model.Title;
+        _artistField = model.Artist;
+        _albumSeed = model.Album ?? "";
+        _albumField = _albumSeed;
+        _fieldFocus = 0;
         _searchMode = false;
-    }
-
-    private static string BuildMeta(LyricPickerModel model)
-    {
-        var parts = new List<string>(4);
-
-        if (model.Artist.Length > 0)
-        {
-            parts.Add(model.Artist);
-        }
-
-        if (!string.IsNullOrWhiteSpace(model.Album))
-        {
-            parts.Add(model.Album!);
-        }
-
-        if (model.DurationSeconds is > 0)
-        {
-            parts.Add(LyricText.FormatDuration(model.DurationSeconds));
-        }
-
-        if (!string.IsNullOrWhiteSpace(model.SourceApp))
-        {
-            parts.Add(model.SourceApp!);
-        }
-
-        return parts.Count == 0 ? "Unknown track" : string.Join(" \u00b7 ", parts);
     }
 
     private void DrawToolbar(ID2D1DeviceContext context, LyricPickerModel model)
@@ -381,7 +516,7 @@ internal sealed class LyricPickerWindow : PanelWindow
                     : count == 0
                         ? _searchMode ? model.SearchMessage ?? "No records for that search." : "No alternative records found."
                         : _searchMode
-                            ? $"{count} {(count == 1 ? "result" : "results")} for \u201c{LyricText.Fit(_query, 40)}\u201d"
+                            ? $"{count} {(count == 1 ? "result" : "results")} for \u201c{LyricText.Fit(ComposedQuery, 40)}\u201d"
                             : $"{count} {(count == 1 ? "version" : "versions")} \u00b7 best match first";
 
         Label(
@@ -402,7 +537,7 @@ internal sealed class LyricPickerWindow : PanelWindow
         Button(
             context,
             RefreshControl,
-            "Look again",
+            "Search",
             right - lookWidth,
             ToolbarTop,
             lookWidth,
@@ -978,24 +1113,23 @@ internal sealed class LyricPickerWindow : PanelWindow
                 Invalidate();
                 return;
 
-            case QueryFieldControl:
-                _queryFocused = true;
+            case TitleFieldControl:
+                _fieldFocus = 1;
                 Invalidate();
                 return;
 
-            case SearchControl:
-                RunQuerySearch();
+            case ArtistFieldControl:
+                _fieldFocus = 2;
+                Invalidate();
+                return;
+
+            case AlbumFieldControl:
+                _fieldFocus = 3;
+                Invalidate();
                 return;
 
             case RefreshControl:
-                if (_searchMode)
-                {
-                    RunQuerySearch();
-                    return;
-                }
-
-                _refresh();
-                Invalidate();
+                RunQuerySearch();
                 return;
 
             case ViewLyricsControl:
@@ -1084,36 +1218,73 @@ internal sealed class LyricPickerWindow : PanelWindow
 
     protected override void OnBodyChar(char character)
     {
-        if (!_queryFocused || char.IsControl(character) || _query.Length >= 120)
+        if (_fieldFocus == 0 || char.IsControl(character))
         {
             return;
         }
 
-        _query += character;
+        if (_fieldFocus == 1)
+        {
+            if (_titleField.Length < 96)
+            {
+                _titleField += character;
+            }
+        }
+        else if (_fieldFocus == 2)
+        {
+            if (_artistField.Length < 96)
+            {
+                _artistField += character;
+            }
+        }
+        else if (_albumField.Length < 96)
+        {
+            _albumField += character;
+        }
+
         Invalidate();
     }
 
     protected override bool OnBodyKey(int virtualKey)
     {
-        if (_queryFocused)
+        if (_fieldFocus != 0)
         {
             switch (virtualKey)
             {
-                case 0x0D: // Enter
+                case 0x0D: // Enter asks lrclib the question the two lines spell out
                     RunQuerySearch();
                     return true;
 
-                case 0x08: // Backspace
-                    if (_query.Length > 0)
+                case 0x09: // Tab walks the three fields: title, artist, album
+                    _fieldFocus = _fieldFocus == 3 ? 1 : _fieldFocus + 1;
+                    Invalidate();
+                    return true;
+
+                case 0x08: // Backspace edits the line with the keyboard
+                    if (_fieldFocus == 1)
                     {
-                        _query = _query[..^1];
-                        Invalidate();
+                        if (_titleField.Length > 0)
+                        {
+                            _titleField = _titleField[..^1];
+                        }
+                    }
+                    else if (_fieldFocus == 2)
+                    {
+                        if (_artistField.Length > 0)
+                        {
+                            _artistField = _artistField[..^1];
+                        }
+                    }
+                    else if (_albumField.Length > 0)
+                    {
+                        _albumField = _albumField[..^1];
                     }
 
+                    Invalidate();
                     return true;
 
                 case 0x1B: // Escape leaves the field, not the window
-                    _queryFocused = false;
+                    _fieldFocus = 0;
                     Invalidate();
                     return true;
             }

@@ -3665,6 +3665,8 @@ internal sealed class AppHost
         }
 
         var title = MetadataNormaliser.CleanTitle(snapshot.Title, snapshot.Artist);
+        // The selector seeds its fields from the same words, so an untouched header is what "look
+        // again" asks for: artist and title. The album joins only when the listener edits it.
         var query = string.Join(
             ' ',
             new[] { snapshot.Artist, title }.Where(static part => !string.IsNullOrWhiteSpace(part)));
@@ -3706,6 +3708,9 @@ internal sealed class AppHost
             ImportMessage = _importPreviewRevision == snapshot.Revision ? _importMessage : null,
             Status = status,
             Query = query,
+            Artwork = snapshot.Artwork,
+            ArtworkWidth = snapshot.ArtworkWidth,
+            ArtworkHeight = snapshot.ArtworkHeight,
             SearchLoading = searchLoading,
             SearchResults = searchResults,
             SearchMessage = searchMessage
