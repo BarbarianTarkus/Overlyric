@@ -11,9 +11,9 @@
 
   <ItemGroup>
     <!-- Both are pure: the sweep is arithmetic and the lyricsfile reader is a text parser. -->
-    <Compile Include="..\..\src\Overlyric\Lyrics\KaraokeSweep.cs" />
-    <Compile Include="..\..\src\Overlyric\Lyrics\LyricLine.cs" />
-    <Compile Include="..\..\src\Overlyric\Lyrics\LyricsFile.cs" />
+    <Compile Include="..\..\src\Lyrics\KaraokeSweep.cs" />
+    <Compile Include="..\..\src\Lyrics\LyricLine.cs" />
+    <Compile Include="..\..\src\Lyrics\LyricsFile.cs" />
   </ItemGroup>
 
 </Project>

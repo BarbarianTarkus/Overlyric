@@ -11,7 +11,7 @@
 
   <ItemGroup>
     <!-- Only the selector: it has no Windows dependency beyond what it is handed. -->
-    <Compile Include="..\..\src\Overlyric\Media\SourceSelector.cs" />
+    <Compile Include="..\..\src\Media\SourceSelector.cs" />
   </ItemGroup>
 
 </Project>

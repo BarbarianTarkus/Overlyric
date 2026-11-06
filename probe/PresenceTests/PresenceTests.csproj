@@ -12,7 +12,7 @@
   <ItemGroup>
     <!-- The hide-list match and the fullscreen heuristic are pure decisions: the Windows calls feed
          them, and a probe can feed them without a game. -->
-    <Compile Include="..\..\src\Overlyric\Media\PresenceRules.cs" />
+    <Compile Include="..\..\src\Media\PresenceRules.cs" />
   </ItemGroup>
 
 </Project>

@@ -13,8 +13,8 @@
 
   <ItemGroup>
     <!-- Only the chord parser: it has no Windows dependency beyond the modifier constants. -->
-    <Compile Include="..\..\src\Overlyric\App\HotKeyChord.cs" />
-    <Compile Include="..\..\src\Overlyric\Interop\NativeMethods.cs" />
+    <Compile Include="..\..\src\App\HotKeyChord.cs" />
+    <Compile Include="..\..\src\Interop\NativeMethods.cs" />
   </ItemGroup>
 
 </Project>

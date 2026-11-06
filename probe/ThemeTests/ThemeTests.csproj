@@ -16,16 +16,16 @@
   <ItemGroup>
     <!-- The config-to-theme mapping is pure apart from the colour type, so it can be checked
          without a window, a device or a settings click. -->
-    <Compile Include="..\..\src\Overlyric\App\AppConfig.cs" />
-    <Compile Include="..\..\src\Overlyric\App\InstanceScope.cs" />
-    <Compile Include="..\..\src\Overlyric\App\MonitorSettings.cs" />
-    <Compile Include="..\..\src\Overlyric\Media\AudioOutput.cs" />
-    <Compile Include="..\..\src\Overlyric\Media\PresenceRules.cs" />
-    <Compile Include="..\..\src\Overlyric\Media\SourceSelector.cs" />
-    <Compile Include="..\..\src\Overlyric\Media\TimingProfiles.cs" />
-    <Compile Include="..\..\src\Overlyric\Overlay\OverlayAnchor.cs" />
-    <Compile Include="..\..\src\Overlyric\Overlay\OverlayNotice.cs" />
-    <Compile Include="..\..\src\Overlyric\Overlay\OverlayTheme.cs" />
+    <Compile Include="..\..\src\App\AppConfig.cs" />
+    <Compile Include="..\..\src\App\InstanceScope.cs" />
+    <Compile Include="..\..\src\App\MonitorSettings.cs" />
+    <Compile Include="..\..\src\Media\AudioOutput.cs" />
+    <Compile Include="..\..\src\Media\PresenceRules.cs" />
+    <Compile Include="..\..\src\Media\SourceSelector.cs" />
+    <Compile Include="..\..\src\Media\TimingProfiles.cs" />
+    <Compile Include="..\..\src\Overlay\OverlayAnchor.cs" />
+    <Compile Include="..\..\src\Overlay\OverlayNotice.cs" />
+    <Compile Include="..\..\src\Overlay\OverlayTheme.cs" />
   </ItemGroup>
 
 </Project>

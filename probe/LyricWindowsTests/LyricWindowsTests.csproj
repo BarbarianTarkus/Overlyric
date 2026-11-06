@@ -12,15 +12,15 @@
   <ItemGroup>
     <!-- The selector and viewer share their wording and badge rules through these files; both are
          pure, so the decisions can be checked without a display, a window or a network. -->
-    <Compile Include="..\..\src\Overlyric\App\LyricBadges.cs" />
-    <Compile Include="..\..\src\Overlyric\App\LyricSheet.cs" />
-    <Compile Include="..\..\src\Overlyric\App\LyricText.cs" />
-    <Compile Include="..\..\src\Overlyric\Lyrics\LocalLyricsStore.cs" />
-    <Compile Include="..\..\src\Overlyric\Lyrics\LrcParser.cs" />
-    <Compile Include="..\..\src\Overlyric\Lyrics\LyricLine.cs" />
-    <Compile Include="..\..\src\Overlyric\Lyrics\LyricTextCodec.cs" />
-    <Compile Include="..\..\src\Overlyric\Lyrics\LyricsCandidate.cs" />
-    <Compile Include="..\..\src\Overlyric\Lyrics\LyricsResult.cs" />
+    <Compile Include="..\..\src\App\LyricBadges.cs" />
+    <Compile Include="..\..\src\App\LyricSheet.cs" />
+    <Compile Include="..\..\src\App\LyricText.cs" />
+    <Compile Include="..\..\src\Lyrics\LocalLyricsStore.cs" />
+    <Compile Include="..\..\src\Lyrics\LrcParser.cs" />
+    <Compile Include="..\..\src\Lyrics\LyricLine.cs" />
+    <Compile Include="..\..\src\Lyrics\LyricTextCodec.cs" />
+    <Compile Include="..\..\src\Lyrics\LyricsCandidate.cs" />
+    <Compile Include="..\..\src\Lyrics\LyricsResult.cs" />
   </ItemGroup>
 
 </Project>

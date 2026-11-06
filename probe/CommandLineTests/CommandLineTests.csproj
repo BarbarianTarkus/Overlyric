@@ -12,9 +12,9 @@
   <ItemGroup>
     <!-- The command grammar and the pipe transport are plain .NET; the dispatch they feed is the
          app's, and it needs the message loop. -->
-    <Compile Include="..\..\src\Overlyric\App\CommandLine.cs" />
-    <Compile Include="..\..\src\Overlyric\Interop\CommandPipe.cs" />
-    <Compile Include="..\..\src\Overlyric\App\InstanceScope.cs" />
+    <Compile Include="..\..\src\App\CommandLine.cs" />
+    <Compile Include="..\..\src\Interop\CommandPipe.cs" />
+    <Compile Include="..\..\src\App\InstanceScope.cs" />
   </ItemGroup>
 
 </Project>

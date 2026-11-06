@@ -11,7 +11,7 @@
 
   <ItemGroup>
     <!-- The clock has no Windows dependency, so it can be exercised as plain .NET. -->
-    <Compile Include="..\..\src\Overlyric\Media\PlaybackClock.cs" />
+    <Compile Include="..\..\src\Media\PlaybackClock.cs" />
   </ItemGroup>
 
 </Project>

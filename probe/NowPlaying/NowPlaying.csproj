@@ -13,7 +13,7 @@
 
   <ItemGroup>
     <!-- Exercises the real lookup pipeline, not a reimplementation of it. -->
-    <Compile Include="..\..\src\Overlyric\Lyrics\**\*.cs" />
+    <Compile Include="..\..\src\Lyrics\**\*.cs" />
   </ItemGroup>
 
 </Project>

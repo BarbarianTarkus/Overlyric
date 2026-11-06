@@ -11,8 +11,8 @@
 
   <ItemGroup>
     <!-- The ring buffer and the snapshot are plain .NET; only the window needs a desktop. -->
-    <Compile Include="..\..\src\Overlyric\App\DiagnosticLog.cs" />
-    <Compile Include="..\..\src\Overlyric\App\DiagnosticsSnapshot.cs" />
+    <Compile Include="..\..\src\App\DiagnosticLog.cs" />
+    <Compile Include="..\..\src\App\DiagnosticsSnapshot.cs" />
   </ItemGroup>
 
 </Project>

@@ -56,16 +56,16 @@ dotnet tool install --global dotnet-coverage          # once per machine
 pwsh tools\collect-coverage.ps1                        # writes coverage\probes.xml
 ```
 
-The script runs the seventeen probes that need no desktop session, media player or AOT publish
+The script runs the eighteen probes that need no desktop session, media player or AOT publish
 (ApiBudget, FullscreenProbe, NowPlaying, SmtcAot, SmtcProbe, ToastProbe and VorticeAot are left
 out), merges their reports and prints the result. It fails when a probe fails, but still merges what
 it collected. `SonarQube.Analysis.xml` points the analysis at `coverage/probes.xml`
 (`sonar.cs.cobertura.reportsPaths`); run the script before `begin`, or the analysis imports nothing.
 `coverage/` is git-ignored.
 
-Measured on 27 October 2026 (analysis 0.4.0): the seventeen probes compile 3,161 source lines
-and cover 2,595 of them (82.1 %), and Sonar reports 37.9 % on its combined line-and-branch metric
-over the whole project. The rest is the layer the probes cannot reach: `AppHost`, the window
+Measured on 6 November 2026 (analysis 0.4.0, after the unified shell): the eighteen probes compile
+3,209 source lines and cover 2,627 of them (81.9 %), and Sonar reports 36.5 % on its combined
+line-and-branch metric over the whole project. The rest is the layer the probes cannot reach: `AppHost`, the window
 classes, `Interop\`, `AudioSessions` and the DirectComposition host need a desktop session, a real
 player and a GPU.
 
@@ -91,10 +91,10 @@ The first full analysis (0.3.1, 49 files) reported 74 open issues: 51 `SYSLIB105
 `LibraryImport` instead of `DllImport`), 6 `S1244` (exact floating-point comparison) and 17 spread
 over `CA1822`, `CA1859`, `CA1806`, `CA1068`, `S6640`, `S1751` and `S8949`. All of them were fixed
 in code - no issue was marked accepted or false positive - and every analysis since then has
-reported 0 open issues and 0 new violations. The 0.4.0 analysis (27 October 2026) reports
-37.9 % overall coverage against the 30 % floor, no new violations, 4,688 cyclomatic and 2,782
-cognitive complexity over 18,902 non-comment lines, and 0.5 % duplicated lines: a green gate under
-`Overlyric`.
+reported 0 open issues and 0 new violations. The 0.4.0 analysis (6 November 2026, after the
+unified shell) reports 36.5 % overall coverage against the 30 % floor, no new violations, 4,984
+cyclomatic and 2,979 cognitive complexity over 20,110 non-comment lines, and 0.7 % duplicated
+lines: a green gate under `Overlyric`.
 
 ## Agents (DSH)
 

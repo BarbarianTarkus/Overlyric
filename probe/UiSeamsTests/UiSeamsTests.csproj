@@ -11,8 +11,8 @@
 
   <ItemGroup>
     <!-- Both seams are plain .NET: environment values in, names or a DPI scale out. -->
-    <Compile Include="..\..\src\Overlyric\App\InstanceScope.cs" />
-    <Compile Include="..\..\src\Overlyric\App\DpiOverride.cs" />
+    <Compile Include="..\..\src\App\InstanceScope.cs" />
+    <Compile Include="..\..\src\App\DpiOverride.cs" />
   </ItemGroup>
 
 </Project>

@@ -12,8 +12,8 @@
   <ItemGroup>
     <!-- The resolution order and its labels are pure C#: they can be checked without a desktop, an
          audio endpoint or the Win32 host. -->
-    <Compile Include="..\..\src\Overlyric\Media\TimingProfiles.cs" />
-    <Compile Include="..\..\src\Overlyric\Media\AudioOutput.cs" />
+    <Compile Include="..\..\src\Media\TimingProfiles.cs" />
+    <Compile Include="..\..\src\Media\AudioOutput.cs" />
   </ItemGroup>
 
 </Project>

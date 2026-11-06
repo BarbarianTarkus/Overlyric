@@ -11,10 +11,10 @@
 
   <ItemGroup>
     <!-- Pure logic only: no Vortice, no WinRT, no window, no clock. -->
-    <Compile Include="..\..\src\Overlyric\Overlay\OverlayNotice.cs" />
-    <Compile Include="..\..\src\Overlyric\App\InfoPopup.cs" />
-    <Compile Include="..\..\src\Overlyric\App\LyricStatus.cs" />
-    <Compile Include="..\..\src\Overlyric\App\LyricsAlert.cs" />
+    <Compile Include="..\..\src\Overlay\OverlayNotice.cs" />
+    <Compile Include="..\..\src\App\InfoPopup.cs" />
+    <Compile Include="..\..\src\App\LyricStatus.cs" />
+    <Compile Include="..\..\src\App\LyricsAlert.cs" />
   </ItemGroup>
 
 </Project>

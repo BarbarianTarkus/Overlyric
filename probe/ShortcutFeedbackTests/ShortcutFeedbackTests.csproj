@@ -11,8 +11,8 @@
 
   <ItemGroup>
     <!-- Pure wording only: no window, no composition stack, no clock. -->
-    <Compile Include="..\..\src\Overlyric\Overlay\OverlayNotice.cs" />
-    <Compile Include="..\..\src\Overlyric\App\ShortcutFeedback.cs" />
+    <Compile Include="..\..\src\Overlay\OverlayNotice.cs" />
+    <Compile Include="..\..\src\App\ShortcutFeedback.cs" />
   </ItemGroup>
 
 </Project>

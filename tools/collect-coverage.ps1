@@ -13,7 +13,7 @@
 
         pwsh tools\collect-coverage.ps1
         dotnet-sonarscanner begin /k:overlyric /v:<version> "/s:<repo>\SonarQube.Analysis.xml" ...
-        dotnet build src\Overlyric\Overlyric.csproj
+        dotnet build src\Overlyric.csproj
         dotnet-sonarscanner end ...
 
     The probes not listed below need a desktop session, hardware or an AOT publish and are
@@ -103,7 +103,7 @@ if ($LASTEXITCODE -ne 0) { throw "dotnet-coverage merge failed with code $LASTEX
 # Sonar counts the whole project; this counts what the probes compile, so the two numbers differ.
 [xml]$doc = Get-Content -LiteralPath $merged
 $seen = @{}
-foreach ($class in $doc.SelectNodes('//class[contains(@filename, "\src\Overlyric\")]')) {
+foreach ($class in $doc.SelectNodes('//class[contains(@filename, "\src\")]')) {
     $file = $class.filename
     foreach ($line in $class.SelectNodes('.//line')) {
         $key = "$file|$($line.number)"

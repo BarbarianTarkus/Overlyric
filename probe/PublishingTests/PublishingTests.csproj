@@ -12,9 +12,9 @@
   <ItemGroup>
     <!-- The challenge maths, the payload and the local validation are pure; only the HTTP send and
          the confirmation UI need the app. -->
-    <Compile Include="..\..\src\Overlyric\Lyrics\LrclibPublish.cs" />
-    <Compile Include="..\..\src\Overlyric\Lyrics\LyricLine.cs" />
-    <Compile Include="..\..\src\Overlyric\Lyrics\LyricTextCodec.cs" />
+    <Compile Include="..\..\src\Lyrics\LrclibPublish.cs" />
+    <Compile Include="..\..\src\Lyrics\LyricLine.cs" />
+    <Compile Include="..\..\src\Lyrics\LyricTextCodec.cs" />
   </ItemGroup>
 
 </Project>

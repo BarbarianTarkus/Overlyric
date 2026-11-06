@@ -12,11 +12,11 @@
   <ItemGroup>
     <!-- The store, the selection file and the text codec are pure .NET; only the file dialogs and
          the windows around them need a desktop. -->
-    <Compile Include="..\..\src\Overlyric\Lyrics\LyricLine.cs" />
-    <Compile Include="..\..\src\Overlyric\Lyrics\LyricSelection.cs" />
-    <Compile Include="..\..\src\Overlyric\Lyrics\LyricTextCodec.cs" />
-    <Compile Include="..\..\src\Overlyric\Lyrics\LocalLyricsStore.cs" />
-    <Compile Include="..\..\src\Overlyric\Lyrics\LrcParser.cs" />
+    <Compile Include="..\..\src\Lyrics\LyricLine.cs" />
+    <Compile Include="..\..\src\Lyrics\LyricSelection.cs" />
+    <Compile Include="..\..\src\Lyrics\LyricTextCodec.cs" />
+    <Compile Include="..\..\src\Lyrics\LocalLyricsStore.cs" />
+    <Compile Include="..\..\src\Lyrics\LrcParser.cs" />
   </ItemGroup>
 
 </Project>

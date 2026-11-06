@@ -11,7 +11,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="..\..\src\Overlyric\Lyrics\**\*.cs" />
+    <Compile Include="..\..\src\Lyrics\**\*.cs" />
   </ItemGroup>
 
 </Project>

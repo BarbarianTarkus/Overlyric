@@ -12,8 +12,8 @@
   <ItemGroup>
     <!-- The timing editor's rules are pure C#: selection, undo/redo, clamping, sorting and the
          refusal of an impossible edit. No window involved. -->
-    <Compile Include="..\..\src\Overlyric\App\LyricEditSession.cs" />
-    <Compile Include="..\..\src\Overlyric\Lyrics\LyricLine.cs" />
+    <Compile Include="..\..\src\App\LyricEditSession.cs" />
+    <Compile Include="..\..\src\Lyrics\LyricLine.cs" />
   </ItemGroup>
 
 </Project>
