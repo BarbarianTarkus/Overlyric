@@ -173,8 +173,16 @@ internal sealed class Frame
     {
         using var source = new Bitmap(path);
 
-        // Normalising through a 32bpp surface keeps a 24bpp baseline and a 32bpp capture comparable
-        // byte for byte, without depending on the encoder's choice.
+        // A 32bpp PNG is read directly. Drawing it onto a second surface would let GDI+ colour-manage
+        // the pixels, and on a machine with a display profile that silently rewrites every value -
+        // the baseline then differs from the capture by more than the tolerance while looking
+        // identical. LockBits returns the stored bytes, which is what the comparison is about.
+        if (source.PixelFormat == PixelFormat.Format32bppArgb)
+        {
+            return new Frame(source.Width, source.Height, ReadPixels(source), true);
+        }
+
+        // Other formats still need an expansion to 32bpp; keep the surface route for those.
         using var normalised = new Bitmap(source.Width, source.Height, PixelFormat.Format32bppArgb);
 
         using (var graphics = Graphics.FromImage(normalised))

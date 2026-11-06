@@ -144,6 +144,8 @@ internal sealed class LyricPickerWindow : PanelWindow
 
     protected override string Title => "Choose lyrics";
 
+    protected override WindowDestination Destination => WindowDestination.Versions;
+
     private float ListBottom => HeightDip - FooterHeight;
 
     private float ListRight => WidthDip - 44f;

@@ -23,6 +23,15 @@ internal static class SettingsGeometry
 
     public const int NavX = 98;
 
+    // --- The shared Window menu in the 44 DIP title bar -------------------------------------------
+    // The same four destinations, at the same x, in every window (WindowMenu.cs). Clicking one
+    // opens or raises that window; it never hides the window you clicked from.
+    public const int MenuY = 22;
+    public const int MenuLyricsX = 80;
+    public const int MenuVersionsX = 160;
+    public const int MenuDiagnosticsX = 262;
+    public const int MenuSettingsX = 360;
+
     /// <summary>The eight navigation entries, in the order the window lists them.</summary>
     public static readonly (string Name, int ClientY)[] NavEntries =
     [

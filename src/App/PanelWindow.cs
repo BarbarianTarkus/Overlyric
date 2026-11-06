@@ -29,7 +29,12 @@ namespace Overlyric.App;
 internal abstract class PanelWindow : WindowBase
 {
     protected const float TitleHeight = 44f;
-    protected const int CloseControl = -1;
+
+    /// <summary>
+    /// Not -1: that is the "nothing hovered" value, and the close button would then paint its
+    /// hover state whenever the pointer was anywhere else.
+    /// </summary>
+    protected const int CloseControl = -2;
 
     private const int WmSetCursor = 0x0020;
     private const int WmCaptureChanged = 0x0215;
@@ -56,15 +61,16 @@ internal abstract class PanelWindow : WindowBase
     private static nint _classBrush;
     private static nint _handCursor;
 
-    private readonly Dictionary<uint, ID2D1SolidColorBrush> _brushes = [];
-    private readonly Dictionary<(float Size, FontWeight Weight, TextAlignment Align, ParagraphAlignment Paragraph, WordWrapping Wrap), IDWriteTextFormat> _formats = [];
-    private readonly Dictionary<(string Text, float Size, FontWeight Weight), float> _widths = [];
     private readonly List<(int Id, Rect Rect)> _hits = [];
+
+    /// <summary>Brushes and formats for this host; created on first draw, dropped with the device.</summary>
+    private TextCache? _text;
 
     private CompositionHost? _host;
     private float _dpi = 96f;
     private bool _open;
     private int _hover = -1;
+    private WindowDestination? _menuHover;
     private int _dragControl;
     private bool _dragging;
 
@@ -87,6 +93,15 @@ internal abstract class PanelWindow : WindowBase
     protected virtual float MinHeightDip => 380f;
 
     protected abstract string Title { get; }
+
+    /// <summary>Which destination this window is in the shared Window menu.</summary>
+    protected abstract WindowDestination Destination { get; }
+
+    /// <summary>
+    /// Host callbacks shared by every window: open-or-raise a destination, and whether one is on
+    /// screen. Assigned after construction because the host owns the navigation object.
+    /// </summary>
+    public WindowNavigation? Navigation { get; set; }
 
     protected abstract void DrawBody(ID2D1DeviceContext context);
 
@@ -127,6 +142,8 @@ internal abstract class PanelWindow : WindowBase
     protected void ClearHover() => _hover = -1;
 
     protected IDWriteFactory WriteFactory => _host!.WriteFactory!;
+
+    private TextCache Text => _text ??= new TextCache(WriteFactory);
 
     /// <summary>Body size in device-independent pixels, for layouts that fill the panel.</summary>
     protected float BodyWidth => WidthDip;
@@ -364,20 +381,8 @@ internal abstract class PanelWindow : WindowBase
 
     private void ReleaseDeviceResources()
     {
-        foreach (var brush in _brushes.Values)
-        {
-            brush.Dispose();
-        }
-
-        _brushes.Clear();
-
-        foreach (var format in _formats.Values)
-        {
-            format.Dispose();
-        }
-
-        _formats.Clear();
-        _widths.Clear();
+        _text?.Dispose();
+        _text = null;
     }
 
     private void Render()
@@ -414,16 +419,13 @@ internal abstract class PanelWindow : WindowBase
         Fill(context, R(0f, 0f, WidthDip, TitleHeight), ColorTitle);
         Fill(context, R(0f, TitleHeight - 1f, WidthDip, TitleHeight), ColorLine);
 
-        Label(
-            context,
-            Title,
-            22f,
-            0f,
-            WidthDip - 120f,
-            TitleHeight,
-            12.5f,
-            FontWeight.SemiBold,
-            ColorTextDim);
+        WindowMenu.Draw(
+            Destination,
+            Navigation?.IsOpen,
+            _menuHover,
+            (left, top, width, height, radius, argb) => FillRound(context, left, top, width, height, radius, argb),
+            (menuText, left, top, width, height, size, weight, argb, align) =>
+                Label(context, menuText, left, top, width, height, size, weight, argb, align));
 
         var close = CloseRect();
         var hot = _hover == CloseControl;
@@ -481,9 +483,10 @@ internal abstract class PanelWindow : WindowBase
                 return IntPtr.Zero;
 
             case WM_MOUSELEAVE:
-                if (_hover != -1)
+                if (_hover != -1 || _menuHover is not null)
                 {
                     _hover = -1;
+                    _menuHover = null;
                     Render();
                 }
 
@@ -574,12 +577,25 @@ internal abstract class PanelWindow : WindowBase
         var close = CloseRect();
         var overClose = x >= close.Left && x < close.Right && y >= close.Top && y < close.Bottom;
 
-        return new IntPtr(y < TitleHeight && !overClose ? HTCAPTION : HTCLIENT);
+        if (y < TitleHeight)
+        {
+            // The menu and close are real controls; the rest of the bar drags the window.
+            return new IntPtr(overClose || WindowMenu.TryHit(x, y, out _) ? HTCLIENT : HTCAPTION);
+        }
+
+        return new IntPtr(HTCLIENT);
     }
 
     private void OnMouseDown(nint lParam)
     {
         var (x, y) = ToDip(lParam);
+
+        if (y < TitleHeight && WindowMenu.TryHit(x, y, out var destination))
+        {
+            _menuHover = destination;
+            Navigation?.Open(destination);
+            return;
+        }
 
         if (TryHit(x, y, out var id))
         {
@@ -613,6 +629,16 @@ internal abstract class PanelWindow : WindowBase
         var (x, y) = ToDip(lParam);
         OnBodyMouseMove(x, y - TitleHeight);
 
+        var menuHover = y < TitleHeight && WindowMenu.TryHit(x, y, out var destination)
+            ? destination
+            : (WindowDestination?)null;
+
+        if (menuHover != _menuHover)
+        {
+            _menuHover = menuHover;
+            Render();
+        }
+
         if (_dragging)
         {
             return;
@@ -645,7 +671,7 @@ internal abstract class PanelWindow : WindowBase
 
         var (x, y) = ToDipFromScreen();
 
-        if (!TryHit(x, y, out _))
+        if (!TryHit(x, y, out _) && !WindowMenu.TryHit(x, y, out _))
         {
             return DefaultWindowProc(hWnd, WmSetCursor, wParam, lParam);
         }
@@ -760,7 +786,7 @@ internal abstract class PanelWindow : WindowBase
         new(RectangleF.FromLTRB(left, top, right, bottom));
 
     protected void Fill(ID2D1DeviceContext context, Rect rect, uint argb) =>
-        context.FillRectangle(rect, GetBrush(context, argb));
+        Text.Fill(context, rect, argb);
 
     protected void FillRound(
         ID2D1DeviceContext context,
@@ -770,9 +796,7 @@ internal abstract class PanelWindow : WindowBase
         float height,
         float radius,
         uint argb) =>
-        context.FillRoundedRectangle(
-            new RoundedRectangle(new RectangleF(left, top, width, height), radius, radius),
-            GetBrush(context, argb));
+        Text.FillRound(context, left, top, width, height, radius, argb);
 
     protected void Label(
         ID2D1DeviceContext context,
@@ -788,15 +812,7 @@ internal abstract class PanelWindow : WindowBase
         ParagraphAlignment paragraph = ParagraphAlignment.Center,
         WordWrapping wrap = WordWrapping.NoWrap)
     {
-        if (width <= 0f || height <= 0f)
-        {
-            return;
-        }
-
-        var format = GetFormat(size, weight, align, paragraph, wrap);
-        var layout = WriteFactory.CreateTextLayout(text, format, width, height);
-        context.DrawTextLayout(new Vector2(left, top), layout, GetBrush(context, argb));
-        layout.Dispose();
+        Text.Label(context, text, left, top, width, height, size, weight, argb, align, paragraph, wrap);
     }
 
     /// <summary>A small rounded chip. Returns its left edge so callers can lay out from the right.</summary>
@@ -830,33 +846,12 @@ internal abstract class PanelWindow : WindowBase
         return left;
     }
 
-    protected float Measure(string text, float size, FontWeight weight)
-    {
-        var key = (text, size, weight);
-
-        if (_widths.TryGetValue(key, out var cached))
-        {
-            return cached;
-        }
-
-        var format = GetFormat(size, weight, TextAlignment.Leading, ParagraphAlignment.Near, WordWrapping.NoWrap);
-        var layout = WriteFactory.CreateTextLayout(text, format, 4096f, 100f);
-        var width = layout.Metrics.Width;
-        layout.Dispose();
-
-        _widths[key] = width;
-        return width;
-    }
+    protected float Measure(string text, float size, FontWeight weight) =>
+        Text.Measure(text, size, weight);
 
     /// <summary>Measures the wrapped height of a block of text; used by the viewer's line layout.</summary>
-    protected float MeasureHeight(string text, float width, float size, FontWeight weight)
-    {
-        var format = GetFormat(size, weight, TextAlignment.Leading, ParagraphAlignment.Near, WordWrapping.Wrap);
-        var layout = WriteFactory.CreateTextLayout(text, format, Math.Max(16f, width), 10000f);
-        var height = layout.Metrics.Height;
-        layout.Dispose();
-        return height;
-    }
+    protected float MeasureHeight(string text, float width, float size, FontWeight weight) =>
+        Text.MeasureHeight(text, width, size, weight);
 
     protected void Scrollbar(
         ID2D1DeviceContext context,
@@ -888,42 +883,11 @@ internal abstract class PanelWindow : WindowBase
         FontWeight weight,
         TextAlignment align,
         ParagraphAlignment paragraph,
-        WordWrapping wrap)
-    {
-        var key = (size, weight, align, paragraph, wrap);
+        WordWrapping wrap) =>
+        Text.Format(size, weight, align, paragraph, wrap);
 
-        if (_formats.TryGetValue(key, out var cached))
-        {
-            return cached;
-        }
-
-        var format = WriteFactory.CreateTextFormat(
-            "Segoe UI Variable Display",
-            null!,
-            weight,
-            FontStyle.Normal,
-            FontStretch.Normal,
-            size);
-
-        format.TextAlignment = align;
-        format.ParagraphAlignment = paragraph;
-        format.WordWrapping = wrap;
-
-        _formats[key] = format;
-        return format;
-    }
-
-    protected ID2D1SolidColorBrush GetBrush(ID2D1DeviceContext context, uint argb)
-    {
-        if (_brushes.TryGetValue(argb, out var cached))
-        {
-            return cached;
-        }
-
-        var brush = context.CreateSolidColorBrush(OverlayTheme.ToColor4(argb));
-        _brushes[argb] = brush;
-        return brush;
-    }
+    protected ID2D1SolidColorBrush GetBrush(ID2D1DeviceContext context, uint argb) =>
+        Text.Brush(context, argb);
 
     protected (float X, float Y) ToDip(nint lParam)
     {

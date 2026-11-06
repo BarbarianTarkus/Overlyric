@@ -38,7 +38,7 @@ backdrop, so the black is the capture background rather than a theme.
 
 ### Lyrics windows
 
-| Full lyrics | Choose lyrics |
+| Lyrics | Choose lyrics |
 | --- | --- |
 | ![The full lyric sheet](images/lyric-viewer.png) | ![The lyric selector in demo mode](images/lyric-picker.png) |
 | The sheet in demo mode. A real track carries its LRCLIB record id; demo tracks do not. | Demo tracks are deliberately not sent to LRCLIB, so the list is empty here. A real track lists its records. |

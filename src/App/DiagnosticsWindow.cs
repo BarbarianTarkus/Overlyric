@@ -54,6 +54,8 @@ internal sealed class DiagnosticsWindow : PanelWindow
 
     protected override string Title => "Diagnostics";
 
+    protected override WindowDestination Destination => WindowDestination.Diagnostics;
+
     private static float ListTop => HeaderHeight;
 
     private float ListBottom => HeightDip - FooterHeight;

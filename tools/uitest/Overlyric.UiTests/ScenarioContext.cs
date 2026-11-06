@@ -248,17 +248,21 @@ internal sealed class ScenarioContext
     /// contract (the layered overlay window is not guaranteed to render through PrintWindow) but a
     /// human still wants to see what the run saw.
     /// </summary>
-    public void CaptureArtifact(string name, AppSession session, int settleMs = 0)
+    public void CaptureArtifact(string name, AppSession session, int settleMs = 0) =>
+        CaptureWindow(name, session.Window, settleMs);
+
+    /// <summary>The same review-only capture, for a window the session did not open itself.</summary>
+    public void CaptureWindow(string name, nint window, int settleMs = 0)
     {
         // The overlay's first capture can land before the compositor has committed its first frame,
         // which is a black image. A settle window makes the review artifact actually show the scene
         // without turning a review artifact into an assertion.
         if (settleMs > 0)
         {
-            WaitUntil(() => !Frame.Capture(session.Window).IsBlank, settleMs);
+            WaitUntil(() => !Frame.Capture(window).IsBlank, settleMs);
         }
 
-        var frame = Frame.Capture(session.Window);
+        var frame = Frame.Capture(window);
         var path = Path.Combine(WorkDirectory, "captures", name + ".png");
         frame.Save(path);
 

@@ -28,6 +28,9 @@ internal static partial class NativeMethods
 
     internal const int WM_DESTROY = 0x0002;
     internal const int WM_SIZE = 0x0005;
+    internal const int WM_ACTIVATE = 0x0006;
+
+    internal const int WA_INACTIVE = 0;
     internal const int WM_CLOSE = 0x0010;
     internal const int WM_PAINT = 0x000F;
     internal const int WM_GETMINMAXINFO = 0x0024;
@@ -242,6 +245,16 @@ internal static partial class NativeMethods
         public IntPtr hBalloonIcon;
     }
 
+    /// <summary>The identity a notification-area icon was added with, for Shell_NotifyIconGetRect.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct NOTIFYICONIDENTIFIER
+    {
+        public int cbSize;
+        public IntPtr hWnd;
+        public uint uID;
+        public Guid guidItem;
+    }
+
     /// <summary>
     /// Sized to the native PAINTSTRUCT (68 bytes of payload, 72 with padding on x64).
     /// The reserved tail is never read, so an opaque block of the right size is enough.
@@ -397,6 +410,9 @@ internal static partial class NativeMethods
     internal static partial IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
 
     [LibraryImport("user32.dll", SetLastError = true)]
+    internal static partial IntPtr MonitorFromRect(ref RECT lprc, uint dwFlags);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool GetMonitorInfoW(IntPtr hMonitor, ref MONITORINFO lpmi);
 
@@ -488,6 +504,10 @@ internal static partial class NativeMethods
     [LibraryImport("shell32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool Shell_NotifyIconW(uint dwMessage, IntPtr lpData);
+
+    /// <summary>The icon's rectangle in screen pixels; a negative HRESULT when the shell does not know it.</summary>
+    [LibraryImport("shell32.dll")]
+    internal static partial int Shell_NotifyIconGetRect(ref NOTIFYICONIDENTIFIER identifier, out RECT rect);
 
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

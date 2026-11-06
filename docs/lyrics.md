@@ -141,9 +141,11 @@ a BOM. Other ANSI code pages (Cyrillic, Greek, CJK) are not decoded, so save tho
 A plain-text sheet is accepted and shown as static text, but it cannot follow the music - the
 preview says so before you commit.
 
-The header is the search box: it opens on the track's `Artist Title`, and typing replaces the
-automatic list with lrclib's answer to your words (**Enter** or **Search**; **Look again** returns to
-the automatic list). Two more escape hatches sit beside Import:
+The header is the search box, in the shape the album art gives it: the album name under the cover,
+the song title and the artist are all editable, and **Enter** or **Search** asks lrclib their words.
+The album is opt-in as a search term - untouched it stays out of the question, and editing it appends
+it - because `artist title` is what finds a song on lrclib. With the fields untouched, **Search** is
+the old look-again. Two more escape hatches sit beside Import:
 
 - **Open on LRCLIB** opens `lrclib.net/search/<artist title>` in the browser, for when the browser is
   the better tool than the in-window search.
@@ -171,7 +173,7 @@ and Overlyric says so once, rather than leaving a silent gap.
 
 ## The complete lyric sheet
 
-**Full lyrics** opens the whole sheet in its own window: every line, its timestamp, where it came
+**Lyrics** in the launcher — or the same tab in any window's title bar — opens the whole sheet in its own window: every line, its timestamp, where it came
 from (an LRCLIB record id or a local file), and the same badge the selector uses. The line being sung is highlighted and scrolled into
 view when the window opens. With plain lyrics the timestamp column is absent rather than filled with
 zeroes, because zeroes would claim a timing the sheet does not have.

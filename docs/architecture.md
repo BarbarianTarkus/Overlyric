@@ -269,6 +269,21 @@ block. It shows no header, no progress bar and no control bar, and turning it on
 because a stage is something the audience watches rather than something the player drags. The
 settings and config keep it opt-in; the normal overlay is one toggle away.
 
+## Windows and the launcher
+
+The four windows — Lyrics, Versions, Diagnostics and Settings — are hidden rather than destroyed when
+closed, which is what makes reopening instant and keeps their position and size. The navigation
+contract has one owner: `WindowNavigation` answers "open that destination" and "is it on screen",
+and both the launcher and every title bar call it, so the two lists cannot disagree. The 44 DIP title bar is drawn by `WindowMenu`: the app mark plus the four
+destinations in a fixed order, the current window filled and railed in accent, a visible window
+railed in grey, the rest dim, and the bar still drags the frame everywhere except the menu and close.
+
+The launcher is a frameless tool window with no taskbar entry, anchored through
+`Shell_NotifyIconGetRect` and falling back to the work-area corner when the shell does not know the
+icon. It hides on deactivation, so an outside click dismisses it without a hook or a second window.
+Left-clicking the notification-area icon opens it; right-click keeps the command menu, which
+deliberately does not list the windows.
+
 ## Scripting and the second instance
 
 The app has one overlay and one tray by design, so a second launch cannot be allowed to create a

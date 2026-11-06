@@ -127,23 +127,41 @@ buttons are dimmed until there is a value to clear; the hint at the bottom spell
 
 ## Tray icon
 
-Left-click toggles the overlay. Right-click opens a deliberately short menu: the track line
-(informational — greyed out and not selectable), **Full lyrics…** (the sheet), **Versions…** (the
-selector), **Refresh lyrics**, **Preview overlay**, **Players** (automatic, whatever is publishing now,
-and the priority order), then the three state switches worth reaching for mid-song — **Show overlay**,
-**Layout** and **Locked** — and finally **Settings…** and **Exit**. **Layout** opens a submenu with the
-three modes ticked, because a row that cycles them cannot show which one is in force. Everything else
-moved into the settings window, because a menu that dismisses itself on every click is a poor place to
-change anything.
+Left-click opens the **launcher** — a flyout anchored above the notification area and the one place
+an Overlyric window is opened from. Its four rows are **Lyrics**, **Versions**, **Diagnostics** and
+**Settings**; choosing one opens that window, or raises it when it is already on screen. A row whose
+window is already visible says **OPEN**. Below them sit the three overlay switches worth reaching for
+mid-song — **Show overlay**, **Locked** and **Stage mode** — and **Exit**. The launcher dismisses with
+Escape, a click outside, or by choosing a row.
+
+Right-click opens the command menu instead: the track line (informational and not selectable), **Refresh
+lyrics**, **Preview overlay**, **Play / Pause**, **Next track**, **Players** (automatic, whatever is
+publishing now, and the priority order), **Show overlay**, **Layout**, **Locked**, **Stage mode** and
+**Exit**. The windows are deliberately absent from it: the launcher and every window's own menu carry
+the same four destinations. **Layout** opens a submenu with the three modes ticked, because a row that
+cycles them cannot show which one is in force.
 
 **Refresh lyrics** throws away the cached answer for the current track and asks LRCLIB again. It is
 the escape hatch for a record that is wrong, or for a lookup that failed while the network was down.
 **Preview overlay** drives the demo track for fifteen seconds, which is the quickest way to check a
 layout, a font size or the OLED preset without waiting for a song.
 
+## Moving between windows
+
+Every window carries the same menu in its 44 DIP title bar, to the right of the app mark: **Lyrics ·
+Versions · Diagnostics · Settings**. The window you are in is filled and underlined in accent; a
+window that is already on screen keeps a grey underline; a hidden window is dim. Choosing a
+destination opens it, or raises it, and leaves the window you came from exactly where it was — the
+menu never closes, hides or re-centres anything. **Esc** or the close button hides a window rather
+than destroying it, so reopening restores its position and size.
+
+The overlay is the exception: it hugs its text and is click-through while locked, so it has no title
+bar. Its unlocked control bar keeps its **Lyrics**, **Versions** and **Settings** shortcuts, and the
+launcher covers everything else.
+
 ## The lyric selector and viewer
 
-**Choose lyrics** — from the overlay controls or the tray — opens the selector described under
+**Choose lyrics** — from the overlay controls or the launcher — opens the selector described under
 [Choosing a version by hand](lyrics.md#choosing-a-version-by-hand). It is a normal window, not a menu: it can
 show song details, a badge per record, lengths and match deltas side by side, and it stays open while
 the listener compares choices and hears each one on the overlay behind it. The list scrolls with the
@@ -151,16 +169,18 @@ wheel, the scrollbar and the keyboard; **Automatic (best match)** is the first r
 
 The selector also owns the local lyric library: **Import file…** previews a `.lrc` or `.txt` against
 the track and, once accepted, that file is used instead of LRCLIB and badged **Local**;
-**Open on LRCLIB** and **Pin from clipboard** sit beside it. The header is a search box: it starts on
-the track's own query, and results replace the list while you refine it, so a wrong guess is corrected
-in place instead of in another window. [Your own lyric file](lyrics.md#your-own-lyric-file) has the details.
+**Open on LRCLIB** and **Pin from clipboard** sit beside it. The header is the search box: the album
+under the cover, the song title and the artist are editable where they are printed, and **Enter** or
+**Search** asks LRCLIB what they say, with the results replacing the list. The album is a refinement -
+left as the track states it, the question is `artist title`; change it to add it as a third term.
+Leaving everything as the track states it and pressing **Search** simply looks again. [Your own lyric file](lyrics.md#your-own-lyric-file) has the details.
 
 ![Choose lyrics in demo mode](images/lyric-picker.png)
 
 *Demo tracks are deliberately not sent to LRCLIB, so the list is empty here; a real track lists its
 records, best first.*
 
-**Full lyrics** opens the complete sheet described under [The complete lyric sheet](lyrics.md#the-complete-lyric-sheet).
+**Lyrics** opens the complete sheet described under [The complete lyric sheet](lyrics.md#the-complete-lyric-sheet).
 Its **Choose lyrics** button hands over to the selector, which is where searching lives; `Ctrl+F`
 still opens the sheet's own single-line field for a quick look. A record picked in either place is
 pinned for the track and shown immediately; **Export…** writes the
@@ -235,7 +255,7 @@ first launch still mean what they did.
 
 ## Diagnostics
 
-**Diagnostics…** in the tray opens a read-only window that answers "why is it showing this?": the
+**Diagnostics** in the launcher opens a read-only window that answers "why is it showing this?": the
 session and playback state, whether the clock is following a live timeline or self-clocking, where
 the lyric sheet came from (local file, pinned record, automatic, cache), the line count and verdict,
 the timing in force and which layer supplied it, the output device, the chosen display, the
@@ -248,7 +268,7 @@ opens the folder that holds `diagnostics.log`. The log is bounded in memory (256
 
 ## Settings window
 
-`Settings…` in the tray, or `Overlyric.exe --settings`, opens a resizable dark window with eight
+**Settings** in the launcher, or `Overlyric.exe --settings`, opens a resizable dark window with eight
 sections down the left, in two groups. **ON SCREEN** holds **Lyrics** (mode, lines shown, text sizes,
 the karaoke sweep, and the track info and info pop-up that belong together), **Appearance** (the
 backdrop, what stays lit, and the burn-in preset and tools — see [OLED and burn-in](oled.md)),

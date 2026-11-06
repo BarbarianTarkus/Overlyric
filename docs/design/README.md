@@ -5,8 +5,10 @@ document: every window drawn at the DIP size the code opens it, with the real th
 geometry constants and the strings the draw code actually uses. [`preview.png`](preview.png) is a
 flat render of the same page for browsing without FigCraft.
 
-It is a copy of *what is implemented*, not a proposal: nothing here exists that the app does not
-draw, and nothing the app draws is left out except the native tray menu.
+Page 1 is the implemented UI as it stood before the unified shell (Overlyric 0.4.0), and page 2 is
+the approved design for that shell, implemented in the app on 2026-11-05 — see
+[Proposal page](#proposal-page). Page 1 is kept as the pre-change record rather than regenerated:
+the four destination windows on page 2 are the chrome the code now draws.
 
 ## Screens
 
@@ -39,11 +41,45 @@ The settings frames use the window's default 780 × 584 opening size (540 DIP bo
 bar). The overlay frames are sized to their content, which is what the real window does: it hugs the
 pill.
 
+## Proposal page
+
+Page 2, **Proposal · unified shell**, is the design approved on 2026-11-05 for unifying the
+independent windows. It was implemented the same day; page 1 still shows the earlier chrome.
+[`proposal-preview.png`](proposal-preview.png) is a flat render of it, and the page itself ends
+with the review checklist and the open questions.
+
+What it specifies:
+
+* **Entry point** — a custom tray launcher, 340 × 552 DIP, anchored 12 DIP from the work-area edge
+  and 8 DIP above the taskbar. Left-clicking the notification-area icon opens it. Its four rows open
+  or raise the four windows; visible windows carry an OPEN tag; overlay switches and Exit sit below.
+* **Window menu** — the existing 44 DIP title bar gains the app mark and four destinations
+  (Lyrics · Versions · Diagnostics · Settings) in a fixed order. The old window-name text is removed;
+  window bodies, sizes and scroll positions are untouched.
+* **States** — current (fill `#23303F` plus accent rail), visible (grey rail), hidden (dim), hover.
+* **Navigation** — choosing a destination raises the window if it is on screen, otherwise opens it.
+  The window you leave is never closed, hidden or moved.
+* **Approval** — five review statements, three decisions needed, and Q1–Q7 open questions, all
+  marked TBD on purpose.
+
+Frames on page 2: Tray · notification area (schematic) 860 × 120 · Tray launcher — default and
+two windows open, 340 × 552 · Settings 780 × 584 · Lyrics 900 × 664 · Versions 900 × 624 ·
+Diagnostics 820 × 664 · Overlay (unlocked) 800 × 210 · Title bar anatomy 1600 × 360 · Menu states
+720 × 360 · Navigation flow 1560 × 460 · Navigation rules 760 × 460 · Specification 1140 × 900 ·
+Review and approval 640 × 900 · Assumptions and open questions 500 × 900.
+
+The implementation follows the specification's scope: playback, players, layout, refresh and the
+rest of the native tray menu are unchanged. The UI suite gained a scenario for the shared menu and
+one for the launcher (a private desktop has no shell, so the launcher scenario replays the tray
+callback the icon would send).
+
 ## The search flow
 
 Searching lives in one window. The sheet's **Choose lyrics** button (footer and empty state) closes it
 and opens the selector; the selector's header is an editable field that starts on the track's own
-query, and results replace the automatic list instead of opening another screen. `Ctrl+F` remains the
+query, and results replace the automatic list instead of opening another screen. Both header lines
+(the song and the artist) plus the album under the cover are editable in place, and the toolbar
+button reads **Search**. `Ctrl+F` remains the
 sheet's quick in-place field. The selector's **Open on LRCLIB** link uses the path form,
 `lrclib.net/search/<query>`, because the `?q=` form lands on an empty page.
 

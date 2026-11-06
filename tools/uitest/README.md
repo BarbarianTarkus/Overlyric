@@ -44,8 +44,8 @@ user's session. It kills only the process trees it started, and closes the deskt
 
 * Windows 10/11, .NET 10 SDK.
 * The application built in Debug:
-  `dotnet build src\Overlyric\Overlyric.csproj -c Debug`
-  (the suite defaults to `src\Overlyric\bin\Debug\net10.0-windows10.0.26100.0\win-x64\Overlyric.exe`;
+  `dotnet build src\Overlyric.csproj -c Debug`
+  (the suite defaults to `src\bin\Debug\net10.0-windows10.0.26100.0\win-x64\Overlyric.exe`;
   pass `--exe` to use another build).
 
 ## Running
@@ -76,7 +76,7 @@ work, the application calls `SetForegroundWindow` when it opens, and the desktop
 downgraded to notes. Use it to watch a step; use the default mode for everything else.
 
 Exit code is 0 when every scenario passes, the safety checks hold and every expected scenario run
-was reported; 1 otherwise. A full run takes about 7 seconds (see the per-scenario times printed at
+was reported; 1 otherwise. A full run takes about 10 seconds (see the per-scenario times printed at
 the end of the run). The artifact directory is printed last:
 `<repo>\.dsh-tmp\uitest\<runId>\` (`.dsh-tmp/` is ignored locally; add it to `.gitignore` in a clone
 where it is not).
@@ -86,6 +86,8 @@ where it is not).
 | Scenario | What it proves |
 | --- | --- |
 | `settings-sections` | clicks the eight navigation entries and compares each section to its baseline |
+| `menu-navigates-windows` | clicks the shared Window menu across Settings → Lyrics → Versions → Diagnostics → Settings and proves open-or-raise and Escape |
+| `launcher-opens-windows` | replays the tray callback, checks the launcher, and opens Versions from its rows |
 | `settings-toggle-persists` | the Karaoke switch flips and the value reaches `config.json` (and back) |
 | `settings-stepper` | `+`/`-` on Lyric size move the persisted `ActiveFontSize` by the window's step (2) |
 | `settings-escape-closes` | `WM_KEYDOWN(VK_ESCAPE)` hides the settings window |
@@ -137,6 +139,11 @@ hard-coding a second copy. Notable choices:
 Captures land in the artifact directory under `<scenario>/repeat-<n>/captures/` - always, pass or
 fail - and the diff (if any) is written next to them as `<step>.diff.png`, the capture with every
 failing pixel painted red.
+
+Both the baseline and the capture are 32bpp PNGs, and `Frame.Load` reads those bytes directly
+instead of drawing the file onto a second surface. GDI+ would colour-manage that draw on a machine
+with a display profile, rewriting every value while the two images still looked identical - the
+comparison is meant to be about drawn pixels, not about the monitor's profile.
 
 A pixel differs when any colour channel moves by more than 8; a step fails when more than
 `max(32, 0.02% of unmasked pixels)` differ. Eight leaves room for text rasterisation jitter; the

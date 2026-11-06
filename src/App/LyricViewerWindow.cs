@@ -185,6 +185,8 @@ internal sealed class LyricViewerWindow : PanelWindow
 
     protected override string Title => "Lyrics";
 
+    protected override WindowDestination Destination => WindowDestination.Lyrics;
+
     private float ListBottom => HeightDip - FooterHeight - EditToolbarHeight;
 
     private float EditToolbarTop => HeightDip - FooterHeight - EditToolbarHeight + 4f;

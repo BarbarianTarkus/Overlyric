@@ -136,13 +136,13 @@ internal sealed class Options
         }
 
         options.ExePath = exe is null
-            ? Path.Combine(options.RepoRoot, "src/Overlyric/bin/Debug/net10.0-windows10.0.26100.0/win-x64/Overlyric.exe")
+            ? Path.Combine(options.RepoRoot, "src/bin/Debug/net10.0-windows10.0.26100.0/win-x64/Overlyric.exe")
             : Path.GetFullPath(exe);
 
         if (!File.Exists(options.ExePath))
         {
             throw new ArgumentException(
-                $"The application under test was not found at '{options.ExePath}'. Build it first: dotnet build src/Overlyric/Overlyric.csproj -c Debug (or pass --exe).");
+                $"The application under test was not found at '{options.ExePath}'. Build it first: dotnet build src/Overlyric.csproj -c Debug (or pass --exe).");
         }
 
         if (!File.Exists(options.FixturePath))

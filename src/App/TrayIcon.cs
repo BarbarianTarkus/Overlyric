@@ -64,6 +64,29 @@ internal sealed class TrayIcon : IDisposable
         }
     }
 
+    /// <summary>
+    /// The icon's rectangle in screen pixels, which is what the launcher anchors to. The shell
+    /// returns a negative HRESULT when it does not know the icon (hidden overflow, Explorer restart),
+    /// so callers fall back to the work-area corner.
+    /// </summary>
+    public bool TryGetRect(out RECT rect)
+    {
+        if (!_added)
+        {
+            rect = default;
+            return false;
+        }
+
+        var identifier = new NOTIFYICONIDENTIFIER
+        {
+            cbSize = Marshal.SizeOf<NOTIFYICONIDENTIFIER>(),
+            hWnd = _owner,
+            uID = IconId
+        };
+
+        return Shell_NotifyIconGetRect(ref identifier, out rect) >= 0;
+    }
+
     public void SetTooltip(string tooltip)
     {
         if (!_added)

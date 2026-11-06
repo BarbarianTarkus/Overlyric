@@ -362,13 +362,15 @@ internal sealed class SettingsWindow : WindowBase
     /// <summary>The live timing state and the actions that change it, both owned by the host.</summary>
     private readonly TimingCommands _timing;
 
-    private readonly Dictionary<uint, ID2D1SolidColorBrush> _brushes = [];
-    private readonly Dictionary<(float Size, FontWeight Weight, TextAlignment Align), IDWriteTextFormat> _formats = [];
     private readonly List<(int Id, Rect Rect)> _hits = [];
+
+    /// <summary>Brushes and formats for this host; created on first draw, dropped with the device.</summary>
+    private TextCache? _text;
 
     private CompositionHost? _host;
     private Section _section = Section.Lyrics;
     private int _hover = -1;
+    private WindowDestination? _menuHover;
     private bool _open;
     private bool _draggingOpacity;
     private float _sliderLeft;
@@ -485,6 +487,12 @@ internal sealed class SettingsWindow : WindowBase
     }
 
     public bool IsOpen => _open;
+
+    /// <summary>
+    /// Host callbacks shared by every window. Assigned after construction because the host owns the
+    /// navigation object that opens or raises the four windows.
+    /// </summary>
+    public WindowNavigation? Navigation { get; set; }
 
     /// <summary>
     /// Repaint an open window when the host changed state it displays without a click here - the
@@ -744,19 +752,8 @@ internal sealed class SettingsWindow : WindowBase
 
     private void ReleaseDeviceResources()
     {
-        foreach (var brush in _brushes.Values)
-        {
-            brush.Dispose();
-        }
-
-        _brushes.Clear();
-
-        foreach (var format in _formats.Values)
-        {
-            format.Dispose();
-        }
-
-        _formats.Clear();
+        _text?.Dispose();
+        _text = null;
     }
 
     private int ToPixels(float dip) => (int)MathF.Round(dip * _dpi / 96f);
@@ -803,9 +800,10 @@ internal sealed class SettingsWindow : WindowBase
                 return IntPtr.Zero;
 
             case WM_MOUSELEAVE:
-                if (_hover != -1)
+                if (_hover != -1 || _menuHover is not null)
                 {
                     _hover = -1;
+                    _menuHover = null;
                     Render();
                 }
 
@@ -876,12 +874,25 @@ internal sealed class SettingsWindow : WindowBase
 
         var overClose = x >= close.Left && x < close.Right && y >= close.Top && y < close.Bottom;
 
-        return new IntPtr(y < TitleHeightDip && !overClose ? HTCAPTION : HTCLIENT);
+        if (y < TitleHeightDip)
+        {
+            // The menu and close are real controls; the rest of the bar drags the window.
+            return new IntPtr(overClose || WindowMenu.TryHit(x, y, out _) ? HTCLIENT : HTCAPTION);
+        }
+
+        return new IntPtr(HTCLIENT);
     }
 
     private void OnMouseDown(nint lParam)
     {
         var (x, y) = ToDip(lParam);
+
+        if (y < TitleHeightDip && WindowMenu.TryHit(x, y, out var destination))
+        {
+            _menuHover = destination;
+            Navigation?.Open(destination);
+            return;
+        }
 
         // Hits inside the content are recorded in content coordinates, which start below the
         // title bar; the close button is the one control that lives in window coordinates.
@@ -952,6 +963,16 @@ internal sealed class SettingsWindow : WindowBase
         {
             SetScrollFrom(y - TitleHeightDip);
             return;
+        }
+
+        var menuHover = y < TitleHeightDip && WindowMenu.TryHit(x, y, out var destination)
+            ? destination
+            : (WindowDestination?)null;
+
+        if (menuHover != _menuHover)
+        {
+            _menuHover = menuHover;
+            Render();
         }
 
         var hover = -1;
@@ -1744,16 +1765,13 @@ internal sealed class SettingsWindow : WindowBase
         Fill(context, R(0f, 0f, _widthDip, TitleHeightDip), ColorNav);
         Fill(context, R(0f, TitleHeightDip - 1f, _widthDip, TitleHeightDip), ColorLine);
 
-        Label(
-            context,
-            "Overlyric Settings",
-            22f,
-            0f,
-            _widthDip - 120f,
-            TitleHeightDip,
-            12.5f,
-            FontWeight.SemiBold,
-            ColorTextDim);
+        WindowMenu.Draw(
+            WindowDestination.Settings,
+            Navigation?.IsOpen,
+            _menuHover,
+            (left, top, width, height, radius, argb) => FillRound(context, left, top, width, height, radius, argb),
+            (text, left, top, width, height, size, weight, argb, align) =>
+                Label(context, text, left, top, width, height, size, weight, argb, align));
 
         var close = CloseRect();
         var hot = _hover == (int)Control.Close;
@@ -2838,7 +2856,7 @@ internal sealed class SettingsWindow : WindowBase
                     new RectangleF(rect.Left - 3f, rect.Top - 3f, (rect.Right - rect.Left) + 6f, (rect.Bottom - rect.Top) + 6f),
                     radius,
                     radius),
-                GetBrush(context, 0x807CC4FF),
+                Text.Brush(context, 0x807CC4FF),
                 1.5f);
 
             return;
@@ -2908,13 +2926,13 @@ internal sealed class SettingsWindow : WindowBase
         _scroll = Math.Clamp(_scroll, 0f, MaxScroll);
     }
 
+    private TextCache Text => _text ??= new TextCache(_host!.WriteFactory!);
+
     private void Fill(ID2D1DeviceContext context, Rect rect, uint argb) =>
-        context.FillRectangle(rect, GetBrush(context, argb));
+        Text.Fill(context, rect, argb);
 
     private void FillRound(ID2D1DeviceContext context, float left, float top, float width, float height, float radius, uint argb) =>
-        context.FillRoundedRectangle(
-            new RoundedRectangle(new RectangleF(left, top, width, height), radius, radius),
-            GetBrush(context, argb));
+        Text.FillRound(context, left, top, width, height, radius, argb);
 
     private void Label(
         ID2D1DeviceContext context,
@@ -2928,51 +2946,7 @@ internal sealed class SettingsWindow : WindowBase
         uint argb,
         TextAlignment align = TextAlignment.Leading)
     {
-        if (width <= 0f || height <= 0f)
-        {
-            return;
-        }
-
-        var format = GetFormat(size, weight, align);
-        var layout = _host!.WriteFactory!.CreateTextLayout(text, format, width, height);
-        context.DrawTextLayout(new Vector2(left, top), layout, GetBrush(context, argb));
-        layout.Dispose();
-    }
-
-    private IDWriteTextFormat GetFormat(float size, FontWeight weight, TextAlignment align)
-    {
-        var key = (size, weight, align);
-        if (_formats.TryGetValue(key, out var cached))
-        {
-            return cached;
-        }
-
-        var format = _host!.WriteFactory!.CreateTextFormat(
-            "Segoe UI Variable Display",
-            null!,
-            weight,
-            FontStyle.Normal,
-            FontStretch.Normal,
-            size);
-
-        format.TextAlignment = align;
-        format.ParagraphAlignment = ParagraphAlignment.Center;
-        format.WordWrapping = WordWrapping.NoWrap;
-
-        _formats[key] = format;
-        return format;
-    }
-
-    private ID2D1SolidColorBrush GetBrush(ID2D1DeviceContext context, uint argb)
-    {
-        if (_brushes.TryGetValue(argb, out var cached))
-        {
-            return cached;
-        }
-
-        var brush = context.CreateSolidColorBrush(OverlayTheme.ToColor4(argb));
-        _brushes[argb] = brush;
-        return brush;
+        Text.Label(context, text, left, top, width, height, size, weight, argb, align);
     }
 
     private static Rect R(float left, float top, float right, float bottom) =>

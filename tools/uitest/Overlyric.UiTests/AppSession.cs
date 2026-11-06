@@ -130,25 +130,31 @@ internal sealed class AppSession : IDisposable
     /// pixel under the 96 DPI seam. PostMessage is the whole point: it feeds the window's own message
     /// queue without moving the cursor, changing the focus, or asking the input system for anything.
     /// </summary>
-    public void Click(int dipX, int dipY)
+    public void Click(int dipX, int dipY) => ClickWindow(Window, dipX, dipY);
+
+    /// <summary>Click a window other than the one this session opened (a window the menu raised).</summary>
+    public static void ClickWindow(nint window, int dipX, int dipY)
     {
-        PostMouse(NativeMethods.WM_MOUSEMOVE, 0, dipX, dipY);
+        PostMouseTo(window, NativeMethods.WM_MOUSEMOVE, 0, dipX, dipY);
         Thread.Sleep(20);
-        PostMouse(NativeMethods.WM_LBUTTONDOWN, NativeMethods.MK_LBUTTON, dipX, dipY);
+        PostMouseTo(window, NativeMethods.WM_LBUTTONDOWN, NativeMethods.MK_LBUTTON, dipX, dipY);
         Thread.Sleep(40);
-        PostMouse(NativeMethods.WM_LBUTTONUP, 0, dipX, dipY);
+        PostMouseTo(window, NativeMethods.WM_LBUTTONUP, 0, dipX, dipY);
     }
 
     /// <summary>Posts one key press and release to this window's queue.</summary>
-    public void Key(uint virtualKey)
+    public void Key(uint virtualKey) => KeyWindow(Window, virtualKey);
+
+    /// <summary>Send one key press and release to any window this instance owns.</summary>
+    public static void KeyWindow(nint window, uint virtualKey)
     {
-        if (!NativeMethods.PostMessageW(Window, NativeMethods.WM_KEYDOWN, new nint(virtualKey), new nint(0x00010001)))
+        if (!NativeMethods.PostMessageW(window, NativeMethods.WM_KEYDOWN, new nint(virtualKey), new nint(0x00010001)))
         {
             throw new ScenarioFailureException($"PostMessage(WM_KEYDOWN, 0x{virtualKey:X2}) failed.");
         }
 
         Thread.Sleep(30);
-        NativeMethods.PostMessageW(Window, NativeMethods.WM_KEYUP, new nint(virtualKey), unchecked((nint)0xC0010001L));
+        NativeMethods.PostMessageW(window, NativeMethods.WM_KEYUP, new nint(virtualKey), unchecked((nint)0xC0010001L));
     }
 
     /// <summary>
@@ -169,6 +175,28 @@ internal sealed class AppSession : IDisposable
         catch (Exception exception)
         {
             return $"{exception.GetType().Name}: {exception.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Replays the notification-area icon's left click. A private desktop has no shell, so there is
+    /// no real icon to click; this posts the same callback message Windows sends to the message
+    /// window when the icon is clicked, which is the whole path the launcher depends on.
+    /// </summary>
+    public void PostTrayClick()
+    {
+        var window = FindWindow(_process.Pid, "OverlyricMessageWindow", requireVisible: false);
+
+        if (window == nint.Zero)
+        {
+            throw new ScenarioFailureException(
+                "Could not find the application's OverlyricMessageWindow to post the tray click to.");
+        }
+
+        // WM_APP + 10 is TrayIcon.Message; the low word of lParam is WM_LBUTTONUP.
+        if (!NativeMethods.PostMessageW(window, 0x800A, nint.Zero, new nint(0x0202)))
+        {
+            throw new ScenarioFailureException("PostMessage(tray click) to the message window failed.");
         }
     }
 
@@ -195,11 +223,11 @@ internal sealed class AppSession : IDisposable
         }
     }
 
-    private void PostMouse(uint message, uint wParam, int x, int y)
+    private static void PostMouseTo(nint window, uint message, uint wParam, int x, int y)
     {
         var lParam = new nint((y << 16) | (x & 0xFFFF));
 
-        if (!NativeMethods.PostMessageW(Window, message, new nint(wParam), lParam))
+        if (!NativeMethods.PostMessageW(window, message, new nint(wParam), lParam))
         {
             throw new ScenarioFailureException(
                 $"PostMessage(0x{message:X4}, {x},{y}) failed: the window no longer accepts messages.");
@@ -230,6 +258,66 @@ internal sealed class AppSession : IDisposable
 
         throw new ScenarioFailureException(
             $"No visible window of class '{className}' appeared within {timeoutMs / 1000}s.{Environment.NewLine}{DiagnosticsTail()}");
+    }
+
+    /// <summary>
+    /// Wait for another window of this instance by its title. The panel windows share one window
+    /// class, so the title is the only way to tell Lyrics, Versions and Diagnostics apart.
+    /// </summary>
+    public nint WaitForWindowTitle(string title, int timeoutMs = 5_000)
+    {
+        var stopwatch = Stopwatch.StartNew();
+
+        while (stopwatch.ElapsedMilliseconds < timeoutMs)
+        {
+            if (_process.HasExited)
+            {
+                throw new ScenarioFailureException(
+                    $"The application exited while waiting for the '{title}' window (code {_process.ExitCode}).{Environment.NewLine}{DiagnosticsTail()}");
+            }
+
+            var window = FindWindowByTitle(_process.Pid, title);
+
+            if (window != nint.Zero)
+            {
+                return window;
+            }
+
+            Thread.Sleep(50);
+        }
+
+        throw new ScenarioFailureException(
+            $"No visible window titled '{title}' appeared within {timeoutMs / 1000}s.");
+    }
+
+    private static nint FindWindowByTitle(int pid, string title)
+    {
+        var found = nint.Zero;
+
+        NativeMethods.EnumWindows(
+            (window, _) =>
+            {
+                NativeMethods.GetWindowThreadProcessId(window, out var owner);
+
+                if (owner != (uint)pid || !NativeMethods.IsWindowVisible(window))
+                {
+                    return true;
+                }
+
+                var buffer = new StringBuilder(256);
+                NativeMethods.GetWindowTextW(window, buffer, buffer.Capacity);
+
+                if (!string.Equals(buffer.ToString(), title, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+
+                found = window;
+                return false;
+            },
+            nint.Zero);
+
+        return found;
     }
 
     private static nint FindWindow(int pid, string className, bool requireVisible)

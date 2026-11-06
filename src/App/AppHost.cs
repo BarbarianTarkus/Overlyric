@@ -248,6 +248,10 @@ internal sealed class AppHost
     private SettingsWindow? _settings;
     private LyricPickerWindow? _picker;
     private LyricViewerWindow? _viewer;
+    private TrayLauncherWindow? _launcher;
+
+    /// <summary>Open-or-raise plus visibility, shared by the launcher and every title bar.</summary>
+    private readonly WindowNavigation _navigation;
     private readonly bool _openSettings;
     private readonly bool _openPreview;
     private readonly HostCommand _startupCommand;
@@ -312,6 +316,7 @@ internal sealed class AppHost
         _openSettings = openSettings;
         _openPreview = openPreview;
         _startupCommand = startupCommand;
+        _navigation = new WindowNavigation(OpenDestination, IsWindowOpen);
     }
 
     public int Run()
@@ -323,7 +328,7 @@ internal sealed class AppHost
         _hotKeys.Pressed += OnHotKey;
 
         _tray = new TrayIcon(_messageWindow.Handle);
-        _tray.LeftClicked += ToggleOverlay;
+        _tray.LeftClicked += ShowLauncher;
         _tray.MenuRequested += ShowTrayMenu;
         _tray.Show("Overlyric - waiting for playback");
 
@@ -345,7 +350,7 @@ internal sealed class AppHost
         {
             _tray.Alert(
                 "Overlyric is running",
-                "Play something, or right-click the tray icon and choose Preview overlay. Settings are in the same menu.");
+                "Play something, or click the tray icon for the launcher: lyrics, versions, diagnostics and settings are all there.");
         }
 
         _overlay = new OverlayWindow(_config.ToTheme());
@@ -3426,6 +3431,81 @@ internal sealed class AppHost
         }
     }
 
+    /// <summary>
+    /// Open or raise one of the four windows. The launcher rows and every title bar land here, so
+    /// "open" and "switch to" cannot drift apart.
+    /// </summary>
+    private void OpenDestination(WindowDestination destination)
+    {
+        switch (destination)
+        {
+            case WindowDestination.Lyrics:
+                OpenLyricViewer();
+                break;
+
+            case WindowDestination.Versions:
+                OpenLyricPicker();
+                break;
+
+            case WindowDestination.Diagnostics:
+                OpenDiagnostics();
+                break;
+
+            case WindowDestination.Settings:
+                OpenSettings();
+                break;
+        }
+    }
+
+    /// <summary>True while the destination's window is on screen; drives the OPEN tag and the rails.</summary>
+    private bool IsWindowOpen(WindowDestination destination) => destination switch
+    {
+        WindowDestination.Lyrics => _viewer?.IsOpen == true,
+        WindowDestination.Versions => _picker?.IsOpen == true,
+        WindowDestination.Diagnostics => _diagnostics?.IsOpen == true,
+        WindowDestination.Settings => _settings?.IsOpen == true,
+        _ => false
+    };
+
+    /// <summary>
+    /// The notification-area icon's left click: the launcher, the one place every window is opened
+    /// from. Right-click still opens the playback and overlay menu.
+    /// </summary>
+    private void ShowLauncher()
+    {
+        if (_overlay is null)
+        {
+            return;
+        }
+
+        _launcher ??= new TrayLauncherWindow(
+            BuildLauncherModel,
+            _navigation,
+            () => Execute(Commands.ToggleOverlay),
+            () => Execute(Commands.ToggleLock),
+            () => Execute(Commands.ToggleStage),
+            Shutdown,
+            () => _tray is not null && _tray.TryGetRect(out var rect) ? rect : (RECT?)null);
+
+        _launcher.ShowLauncher();
+    }
+
+    /// <summary>Pulled on every show so the flyout never prints a track that has already changed.</summary>
+    private TrayLauncherModel BuildLauncherModel()
+    {
+        var snapshot = _snapshot;
+
+        return new TrayLauncherModel(
+            snapshot.HasTrack,
+            snapshot.Title,
+            snapshot.Artist,
+            snapshot.HasTrack ? snapshot.SourceAppFriendly : "",
+            _overlayEnabled,
+            _locked,
+            _config.StageMode,
+            typeof(AppHost).Assembly.GetName().Version?.ToString(3) ?? "?");
+    }
+
     /// <summary>Show the configuration window, creating it the first time it is asked for.</summary>
     private void OpenSettings()
     {
@@ -3460,6 +3540,7 @@ internal sealed class AppHost
                 });
         }
 
+        _settings.Navigation = _navigation;
         _settings.Show();
     }
 
@@ -3467,6 +3548,7 @@ internal sealed class AppHost
     private void OpenDiagnostics()
     {
         _diagnostics ??= new DiagnosticsWindow(BuildDiagnosticsSnapshot, () => OpenFolder(AppConfig.DataDirectory));
+        _diagnostics.Navigation = _navigation;
         _diagnostics.ShowDiagnostics();
     }
 
@@ -3566,6 +3648,7 @@ internal sealed class AppHost
             ? MonitorFromWindow(_overlay.Handle, MONITOR_DEFAULTTONEAREST)
             : nint.Zero;
 
+        _picker.Navigation = _navigation;
         _picker.ShowPanel(monitor);
         EnsureVersionsForPicker();
         _picker.Invalidate();
@@ -3579,7 +3662,8 @@ internal sealed class AppHost
     }
 
     private bool IsOwnWindowOpen =>
-        _picker is { IsOpen: true } || _viewer is { IsOpen: true } || _settings is { IsOpen: true };
+        _picker is { IsOpen: true } || _viewer is { IsOpen: true } || _settings is { IsOpen: true }
+        || _launcher is { IsOpen: true };
 
     /// <summary>Open the complete lyric sheet for the track that is playing.</summary>
     private void OpenLyricViewer()
@@ -3593,6 +3677,7 @@ internal sealed class AppHost
             CurrentPosition,
             SaveEditedLyrics,
             ChooseLyricsFromViewer);
+        _viewer.Navigation = _navigation;
         _viewer.ShowSheet(BuildSheet());
     }
 
@@ -4070,29 +4155,24 @@ internal sealed class AppHost
             ? $"{status.SourceAppFriendly}: {Truncate(status.TrackDescription, 48)}"
             : "Nothing playing";
 
-        // The top level keeps what is worth reaching for while music is playing: the lyric commands
-        // lead, the player list that explains a silent overlay follows, then the three state
-        // switches. Everything set once and left alone lives in the settings window, which - unlike a
-        // menu - stays open while it is being used.
+        // The top level keeps what is worth reaching for while music is playing: the commands for the
+        // current track, the player list that explains a silent overlay, then the state switches.
+        // The four windows are deliberately absent: they open from the launcher (left-click), which
+        // is one list shared with every title bar.
         var items = new List<TrayMenuItem>
         {
             // Informational, and previously selectable while doing nothing.
             TrayMenuItem.Disabled(trackLine),
-            new(Commands.OpenLyricSheet, "Full lyrics\u2026"),
-            new(Commands.OpenLyricPicker, "Versions\u2026"),
             new(Commands.RefreshLyrics, "Refresh lyrics"),
             new(Commands.PreviewOverlay, "Preview overlay"),
             new(Commands.PlayPause, "Play / Pause"),
             new(Commands.NextTrack, "Next track"),
-            new(Commands.OpenDiagnostics, "Diagnostics\u2026"),
             TrayMenuItem.Submenu("Players", SourceMenuItems()),
             TrayMenuItem.Separator,
             new(Commands.ToggleOverlay, "Show overlay", _overlayEnabled),
             TrayMenuItem.Submenu("Layout", LayoutMenuItems()),
             new(Commands.ToggleLock, "Locked (click-through)", _locked),
             new(Commands.ToggleStage, "Stage mode", _config.StageMode),
-            TrayMenuItem.Separator,
-            new(Commands.OpenSettings, "Settings\u2026"),
             TrayMenuItem.Separator,
             new(Commands.Exit, "Exit")
         };
@@ -4208,6 +4288,9 @@ internal sealed class AppHost
         _searchCts?.Cancel();
         _searchCts?.Dispose();
         _searchCts = null;
+
+        _launcher?.Dispose();
+        _launcher = null;
 
         _settings?.Dispose();
         _settings = null;
