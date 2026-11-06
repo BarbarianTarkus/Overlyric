@@ -132,7 +132,7 @@ internal sealed class TrayLauncherWindow : WindowBase
 
         if (Handle == nint.Zero)
         {
-            CreateWindow("Overlyric", ToPixels(WidthDip), ToPixels(HeightDip));
+            CreateWindow("Overlyric Launcher", ToPixels(WidthDip), ToPixels(HeightDip));
         }
 
         var dpi = GetDpiForWindow(Handle);

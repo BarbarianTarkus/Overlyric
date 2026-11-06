@@ -183,8 +183,10 @@ records, best first.*
 
 **Lyrics** opens the complete sheet described under [The complete lyric sheet](lyrics.md#the-complete-lyric-sheet).
 Its **Choose lyrics** button hands over to the selector, which is where searching lives; `Ctrl+F`
-still opens the sheet's own single-line field for a quick look. A record picked in either place is
-pinned for the track and shown immediately; **Export…** writes the
+still opens the sheet's own single-line field for a quick look. The header repeats the selector's
+shape — cover and album on the left, the song title and artist centred, the duration and player under
+them, the badges and record id on the right — so moving between the two pages keeps the eye in the
+same place. A record picked in either place is pinned for the track and shown immediately; **Export…** writes the
 timed sheet in force as an LRC file. The sheet is also a timing editor: Up/Down selects a line,
 **Set start**/**Set end** stamp it with the current playback position, the nudge buttons move it by
 10/50/250 ms (hold **Shift** to shift every line), and **Undo**/**Redo**/**Save** work as described

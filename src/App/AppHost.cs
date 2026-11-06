@@ -402,6 +402,10 @@ internal sealed class AppHost
             // path can be exercised without anything playing.
             _overlay.SetVisible(true);
 
+            // Every page reads the same snapshot; without this the demo sheet listed its lines
+            // under a header that said nothing was playing.
+            _snapshot = DemoSnapshot;
+
             lock (_gate)
             {
                 _lines = DemoLines;

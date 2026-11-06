@@ -88,6 +88,7 @@ where it is not).
 | `settings-sections` | clicks the eight navigation entries and compares each section to its baseline |
 | `menu-navigates-windows` | walks the shared Window menu across Settings → Lyrics → Versions → Diagnostics → Settings and proves one page swaps in place, with Escape closing it |
 | `launcher-opens-windows` | replays the tray callback, checks the launcher, and opens Versions from its rows |
+| `demo-lyrics-header` | opens the Lyrics page from the launcher in demo mode and keeps a header capture for review |
 | `settings-toggle-persists` | the Karaoke switch flips and the value reaches `config.json` (and back) |
 | `settings-stepper` | `+`/`-` on Lyric size move the persisted `ActiveFontSize` by the window's step (2) |
 | `settings-escape-closes` | `WM_KEYDOWN(VK_ESCAPE)` hides the settings window |

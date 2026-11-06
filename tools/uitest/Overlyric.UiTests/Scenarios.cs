@@ -19,6 +19,7 @@ internal static class ScenarioRegistry
         new SettingsSectionsScenario(),
         new SettingsMenuScenario(),
         new LauncherScenario(),
+        new DemoLyricsScenario(),
         new SettingsToggleScenario(),
         new SettingsStepperScenario(),
         new SettingsEscapeScenario(),
@@ -190,7 +191,7 @@ internal sealed class LauncherScenario : IScenario
         var bounds = session.ScreenRect(settings);
 
         session.PostTrayClick();
-        var launcher = session.WaitForWindowTitle("Overlyric");
+        var launcher = session.WaitForWindowTitle("Overlyric Launcher");
 
         context.Check(
             "the tray click opens the launcher",
@@ -216,6 +217,44 @@ internal sealed class LauncherScenario : IScenario
             "the launcher's page opens in the same window",
             !NativeMethods.IsWindowVisible(settings) && session.ScreenRect(versions) == bounds,
             $"Settings visible: {NativeMethods.IsWindowVisible(settings)}; expected {bounds}, got {session.ScreenRect(versions)}.");
+    }
+}
+
+/// <summary>
+/// The Lyrics page in demo mode, opened from the launcher. The capture is for review rather than a
+/// baseline: it is where the shared header disposition (cover, album, centred title/artist/meta,
+/// badges on the right) is checked against the selector's.
+/// </summary>
+internal sealed class DemoLyricsScenario : IScenario
+{
+    public string Name => "demo-lyrics-header";
+
+    public string Description => "opens the Lyrics page from the launcher in demo mode and keeps a header capture";
+
+    public void Run(ScenarioContext context)
+    {
+        using var session = context.LaunchDemo();
+
+        session.PostTrayClick();
+        var launcher = session.WaitForWindowTitle("Overlyric Launcher");
+
+        context.Check(
+            "the demo launcher is visible",
+            NativeMethods.IsWindowVisible(launcher),
+            "The launcher window is not visible after the tray click.");
+        context.CaptureWindow("demo-launcher", launcher, settleMs: 500);
+
+        // The Lyrics row: first row at 156 DIP, 46 DIP apart, 44 DIP tall.
+        AppSession.ClickWindow(launcher, 170, 178);
+        var lyrics = session.WaitForWindowTitle("Lyrics");
+        context.Sleep(400);
+
+        context.Check(
+            "the Lyrics page opens from the demo launcher",
+            NativeMethods.IsWindowVisible(lyrics),
+            "The Lyrics window exists but is not visible.");
+
+        context.CaptureWindow("lyrics-header", lyrics, settleMs: 1_000);
     }
 }
 

@@ -73,6 +73,11 @@ revision. The **Menu states** card still defines a "visible" state that the one-
 currently produce; it is kept as the component's full state set and may return if a second shell is
 ever opened.
 
+A later 2026-11-06 revision aligned the **Lyrics** header to the **Versions** one — cover and album on
+the left, the song title and artist centred, the duration and player under them, badges and record id
+on the right. The page-2 **Lyrics** frame still shows the earlier left-aligned header; the code and
+[docs/usage.md](../usage.md) carry the shared shape.
+
 Frames on page 2: Tray · notification area (schematic) 860 × 120 · Tray launcher — nothing open
 and one page showing, 340 × 552 · Settings 780 × 584 · Lyrics 900 × 664 · Versions 900 × 624 ·
 Diagnostics 820 × 664 · Overlay (unlocked) 800 × 210 · Title bar anatomy 1600 × 360 · Menu states

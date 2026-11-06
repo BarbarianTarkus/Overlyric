@@ -61,8 +61,8 @@ internal sealed class LyricViewerWindow : PanelWindow
     private static readonly int[] NudgeStepsMs = [-250, -50, -10, 10, 50, 250];
 
     private const float Pad = 28f;
-    private const float HeaderHeight = 98f;
-    private const float ListTop = 106f;
+    private const float HeaderHeight = 74f;
+    private const float ListTop = 82f;
     private const float FooterHeight = 38f;
 
     /// <summary>The timing-editing toolbar sits between the list and the footer.</summary>
@@ -78,8 +78,8 @@ internal sealed class LyricViewerWindow : PanelWindow
 
     private const float SearchFieldHeight = 34f;
     private const float SearchFieldPadding = 12f;
-    private const float SearchStatusTop = 148f;
-    private const float SearchResultsTop = 174f;
+    private const float SearchStatusTop = 124f;
+    private const float SearchResultsTop = 150f;
     private const float SearchRowHeight = 44f;
     private const float SearchTextSize = 13f;
     private const int MaxQueryLength = 240;
@@ -610,29 +610,74 @@ internal sealed class LyricViewerWindow : PanelWindow
         }
 
         var artwork = ArtworkBitmap(context, sheet);
-        var artworkSize = 38f;
-        var contentLeft = Pad;
-        var contentWidth = WidthDip - (2 * Pad);
+        const float artworkSize = 48f;
+        const float artworkX = 50f;
+        const float centerLeft = 100f;
+        var centerWidth = MathF.Max(200f, WidthDip - 200f);
 
         if (artwork is not null)
         {
             context.DrawBitmap(
                 artwork,
-                new Vortice.RawRectF(Pad, 10f, Pad + artworkSize, 10f + artworkSize),
+                new Vortice.RawRectF(artworkX, 4f, artworkX + artworkSize, 4f + artworkSize),
                 1f,
                 InterpolationMode.Linear,
                 null,
                 null);
-
-            contentLeft = Pad + artworkSize + 12f;
-            contentWidth = WidthDip - Pad - contentLeft;
+        }
+        else
+        {
+            FillRound(context, artworkX, 4f, artworkSize, artworkSize, 3f, ColorControl);
         }
 
-        var title = LyricText.Fit(sheet.Title.Length > 0 ? sheet.Title : sheet.Artist, 72);
-        Label(context, title, contentLeft, 10f, contentWidth, 32f, 22f, FontWeight.SemiBold, ColorText);
+        // The cover and its album caption sit where the selector puts them, so switching between
+        // the two pages does not move the eye.
+        Label(
+            context,
+            LyricText.Fit(string.IsNullOrWhiteSpace(sheet.Album) ? "Album" : sheet.Album!, 24),
+            0f,
+            52f,
+            (2f * artworkX) + artworkSize,
+            16f,
+            11f,
+            FontWeight.Normal,
+            ColorTextFaint,
+            TextAlignment.Center);
 
-        var meta = BuildMeta(sheet);
-        Label(context, meta, contentLeft, 42f, contentWidth, 20f, 12.5f, FontWeight.Normal, ColorTextDim);
+        var title = LyricText.Fit(sheet.Title.Length > 0 ? sheet.Title : sheet.Artist, 72);
+        Label(context, title, centerLeft, 3f, centerWidth, 30f, 22f, FontWeight.SemiBold, ColorText, TextAlignment.Center);
+
+        if (sheet.Title.Length > 0 && sheet.Artist.Length > 0)
+        {
+            Label(
+                context,
+                LyricText.Fit(sheet.Artist, 64),
+                centerLeft,
+                32f,
+                centerWidth,
+                18f,
+                12.5f,
+                FontWeight.Normal,
+                ColorTextDim,
+                TextAlignment.Center);
+        }
+
+        var meta = BuildMetaLine(sheet);
+
+        if (meta.Length > 0)
+        {
+            Label(
+                context,
+                LyricText.Fit(meta, 40),
+                centerLeft,
+                52f,
+                centerWidth,
+                18f,
+                12.5f,
+                FontWeight.Normal,
+                ColorTextDim,
+                TextAlignment.Center);
+        }
 
         var badge = LyricBadges.ForSheet(
             sheet.IsComplete,
@@ -665,32 +710,29 @@ internal sealed class LyricViewerWindow : PanelWindow
         Label(
             context,
             record,
-            WidthDip - Pad - 240f,
-            46f,
-            240f,
+            WidthDip - Pad - 220f,
+            40f,
+            220f,
             18f,
             11f,
             FontWeight.Normal,
             ColorTextFaint,
             TextAlignment.Trailing);
 
-        // The status used to float on the right, twenty pixels under the record id, in the same
-        // corner. As a strip under the header it cannot collide with anything, and it only occupies
-        // space when there is something to say.
+        // The status takes the same right-hand slot as the selector's, under the record id.
         if (!string.IsNullOrWhiteSpace(sheet.Status))
         {
-            FillRound(context, Pad, 70f, WidthDip - (2 * Pad), 22f, 6f, ColorControl);
-            FillRound(context, Pad, 70f, 3f, 22f, 1.5f, ColorWarning);
             Label(
                 context,
-                LyricText.Fit(sheet.Status, 110),
-                Pad + 12f,
-                70f,
-                WidthDip - (2 * Pad) - 24f,
-                22f,
-                11.5f,
+                LyricText.Fit(sheet.Status, 48),
+                WidthDip - Pad - 320f,
+                58f,
+                320f,
+                18f,
+                11f,
                 FontWeight.Normal,
-                ColorWarning);
+                ColorWarning,
+                TextAlignment.Trailing);
         }
 
         Fill(context, R(Pad, HeaderHeight - 1f, WidthDip - Pad, HeaderHeight), ColorLine);
@@ -750,19 +792,10 @@ internal sealed class LyricViewerWindow : PanelWindow
         base.Dispose();
     }
 
-    private static string BuildMeta(LyricSheet sheet)
+    /// <summary>Duration and source, under the artist: the same line the selector prints there.</summary>
+    private static string BuildMetaLine(LyricSheet sheet)
     {
-        var parts = new List<string>(4);
-
-        if (sheet.Artist.Length > 0)
-        {
-            parts.Add(sheet.Artist);
-        }
-
-        if (!string.IsNullOrWhiteSpace(sheet.Album))
-        {
-            parts.Add(sheet.Album!);
-        }
+        var parts = new List<string>(2);
 
         if (sheet.DurationSeconds is > 0)
         {
@@ -774,7 +807,7 @@ internal sealed class LyricViewerWindow : PanelWindow
             parts.Add(sheet.SourceApp!);
         }
 
-        return parts.Count == 0 ? "Unknown track" : string.Join(" \u00b7 ", parts);
+        return string.Join(" \u00b7 ", parts);
     }
 
     /// <summary>
