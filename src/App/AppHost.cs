@@ -681,7 +681,12 @@ internal sealed class AppHost
                     " [",
                     snapshot.SourceAppFriendly,
                     "] rev ",
-                    snapshot.Revision.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+                    snapshot.Revision.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    // The album is part of the question asked of lrclib, and a browser often reports
+                    // none at all, so whether one arrived is the first thing to look at when two
+                    // players disagree about the same song.
+                    " album: ",
+                    string.IsNullOrWhiteSpace(snapshot.Album) ? "(none)" : snapshot.Album));
 
             // A new song - or the first one seen after start-up - is exactly when a listener wants
             // to know what is playing and what the lyric lookup made of it.
@@ -1581,17 +1586,6 @@ internal sealed class AppHost
                             ? [.. translationLines]
                             : [];
 
-                    _diagnosticLog.Add(
-                        "lyrics",
-                        string.Concat(
-                            _lyricsSource.ToString(),
-                            " lines=",
-                            _lines.Length.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                            _lyricsSynced ? " synced" : " untimed",
-                            _lyricsStatus is null ? string.Empty : " status=" + _lyricsStatus,
-                            _lyricsRecordId is { } loggedId ? " record=" + loggedId.ToString(System.Globalization.CultureInfo.InvariantCulture) : string.Empty,
-                            lookup.LocalFileMissing ? " (local file missing)" : string.Empty));
-
                     if (result is null)
                     {
                         // lrclib has no record for this track. If the title or album announces it as
@@ -1617,6 +1611,22 @@ internal sealed class AppHost
                         _isInstrumental = false;
                         _lyricsStatus = null;
                     }
+
+                    // Logged after the state it describes, never before: this line used to be built
+                    // above the branches, so it reported the fields as the *previous* track left
+                    // them - a pinned record with fifty synced lines was logged as "lines=0 untimed",
+                    // which reads as a lookup that found nothing and sent one bug hunt after the
+                    // parser instead of after the metadata.
+                    _diagnosticLog.Add(
+                        "lyrics",
+                        string.Concat(
+                            _lyricsSource.ToString(),
+                            " lines=",
+                            _lines.Length.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                            _lyricsSynced ? " synced" : " untimed",
+                            _lyricsStatus is null ? string.Empty : " status=" + _lyricsStatus,
+                            _lyricsRecordId is { } loggedId ? " record=" + loggedId.ToString(System.Globalization.CultureInfo.InvariantCulture) : string.Empty,
+                            lookup.LocalFileMissing ? " (local file missing)" : string.Empty));
 
                     // Nothing to show: line up another attempt unless lrclib answered definitively.
                     // A definitive miss is already a tombstone, so retrying it would only re-read the

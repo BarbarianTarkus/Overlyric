@@ -94,7 +94,10 @@ machine-specific; the settings window writes them and `Settings → Timing` read
 ## Cache
 
 Fetched lyrics are cached as one JSON file per track in `%LOCALAPPDATA%\Overlyric\cache`, including
-negative entries, so a track LRCLIB has never heard of is not re-queried on every replay.
+negative entries, so a track LRCLIB has never heard of is not re-queried on every replay. A negative
+entry older than an hour is re-opened with one `/api/get` for its artist and title, because LRCLIB
+backfills: without that, a record it picked up since the verdict was given would stay hidden until
+the entry expired. A replay inside the hour costs no request at all.
 
 Each entry also records the version of the matching rules that produced it. When those rules change —
 the release-suffix fix and the synced-same-duration rule both did — an entry written by the older rules
@@ -155,6 +158,12 @@ The rolling decision log lives at `%LOCALAPPDATA%\Overlyric\diagnostics.log`. It
 changes, lookup verdicts, timing nudges and Presence decisions, and it is the same content the
 diagnostics window's "Copy as JSON" includes. It is capped at 256 KB and cut in half when it passes
 that size; delete it at any time and it starts again.
+
+A track line names the album the player reported — `album: (none)` when it reports none, which is
+what a browser media session usually does — and a lyric line states the verdict the lookup actually
+reached: `Pinned lines=50 synced record=40090101`, or `Lrclib lines=0 untimed status=No lyrics
+found`. Reading the two together is what tells "the player sent the wrong metadata" apart from "the
+catalogue had nothing".
 
 ## Start with Windows
 

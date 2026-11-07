@@ -259,7 +259,11 @@ internal static class Program
         };
 
         using var client = new LrclibClient("Overlyric/0.1.0 (https://github.com/overlyric/overlyric)", stub.BaseUrl);
-        var service = new LyricsService(client, new LyricsCache(directory));
+        var service = new LyricsService(
+            client,
+            new LyricsCache(directory),
+            LyricSelectionStore.Load(Path.Combine(directory, "selections.json")),
+            new LocalLyricsStore(Path.Combine(directory, "lyrics")));
         var probe = new Probe(stub, directory);
 
         Console.WriteLine(name);
@@ -314,7 +318,11 @@ internal sealed class Probe(StubServer stub, string directory)
     public LyricsService Restart()
     {
         var client = new LrclibClient("Overlyric/0.1.0 (https://github.com/overlyric/overlyric)", stub.BaseUrl);
-        return new LyricsService(client, new LyricsCache(directory));
+        return new LyricsService(
+            client,
+            new LyricsCache(directory),
+            LyricSelectionStore.Load(Path.Combine(directory, "selections.json")),
+            new LocalLyricsStore(Path.Combine(directory, "lyrics")));
     }
 }
 

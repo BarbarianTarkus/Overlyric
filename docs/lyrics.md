@@ -263,7 +263,9 @@ goes first and the ranked search is spent only when it did not answer, or answer
 (see [Matching the right record](#matching-the-right-record)). A cold track costs one request when
 lrclib knows it well, two when the reported album carries a release suffix that has to be cleaned
 away, and four when a search has to settle it after both album forms missed; the album-scoped
-supplement adds the fifth on the path that needs it. A replay costs nothing.
+supplement adds the fifth on the path that needs it. A replay costs nothing — unless the track was
+tombstoned, in which case one `/api/get` re-opens the verdict once an hour (see
+[the tombstone rule](#a-transient-outage-must-never-become-a-permanent-verdict)).
 
 Four rules keep the client inside the API's terms, all of them checked against the live service:
 
@@ -292,7 +294,7 @@ would hide a track's lyrics after one bad moment. So the client distinguishes th
 | Response | Meaning | Cached? |
 | --- | --- | --- |
 | `200` with lyrics | Found | Yes, as lyrics |
-| `404`, or a record with no lyrics at all | Definitively absent | Yes, as a tombstone, for 21 days |
+| `404`, or a record with no lyrics at all | Definitively absent | Yes, as a tombstone: for 21 days, and re-asked hourly |
 | `429`, `5xx`, `400`, `401`, timeout, network error | Unknown — ask again later | **No** |
 
 A `400 ValidationError` belongs in the second group on purpose. lrclib rejects a `duration` outside
@@ -306,13 +308,27 @@ in a later request", because a background service picks them up, so a verdict th
 would hide lyrics that exist by now — the one failure this cache must not cause. Three weeks is long
 enough that a hopeless track is not re-queried on every replay.
 
+**A verdict is re-opened after an hour, with the cheapest question there is.** Three weeks of silence
+is still too long when the catalogue gains the record the next day, and that is not hypothetical:
+*Silicon Sally* was reported by a browser session as having no lyrics one evening, the record was in
+lrclib before the next, and the tombstone kept the overlay empty — for a song that resolved normally
+from a player reporting the album, because the album is part of the cache key. So a verdict older
+than an hour is re-opened with one `/api/get` for its artist and title: no album, and no duration
+either, because a verdict is written after a search and a search asks about neither. That is one
+record and about 1.8 kB, against the twenty records and roughly 36 kB of the search a tombstone
+exists to avoid. A record that comes back overturns the verdict and the track is resolved properly; a
+`404` confirms it and re-dates it, so a replay inside the next hour costs nothing; an outage confirms
+nothing and leaves the date alone, so the next play asks again instead of waiting out an hour on a
+request that never landed. `probe\ResilienceTests` pins all three outcomes down against the same
+stub.
+
 Unsynced lyrics are shown only after the search for a synced sheet of the same length has come up empty:
 then single-line mode says `Lyrics not synced` rather than guessing, and multi-line mode scrolls the
 text proportionally to track position.
 
 `probe\ResilienceTests` covers the classification, the caching decision, the one-request outage, the
-tombstone lifetime and the candidate list (74 checks), against a local stub returning `503`, `429`,
-`400`, `404` and lyric-less `200` responses. `probe\ApiBudget` measures the requests themselves and
+tombstone lifetime and its hourly re-check, and the candidate list (110 checks), against a local stub
+returning `503`, `429`, `400`, `404` and lyric-less `200` responses. `probe\ApiBudget` measures the requests themselves and
 prints what each resolution path costs.
 
 ## Instrumental tracks

@@ -189,11 +189,25 @@ public sealed class LyricsCache
     }
 
     /// <summary>True when a negative tombstone for <paramref name="key"/> is still current.</summary>
-    public bool IsMiss(string key)
+    public bool IsMiss(string key) => MissAge(key) is not null;
+
+    /// <summary>
+    /// How long ago the current tombstone for <paramref name="key"/> was written, or null when there
+    /// is no verdict left to trust: none was ever written, the one on disk came from an older matcher,
+    /// or it has outlived <see cref="TombstoneLifetime"/>.
+    /// </summary>
+    /// <remarks>
+    /// The lifetime answers "may this verdict still be true"; the age answers "how much has happened
+    /// since it was given". lrclib backfills missing tracks, so a verdict can be inside its lifetime
+    /// and still be out of date - <c>Silicon Sally</c> was reported as having no lyrics for a day
+    /// after the record appeared in the catalogue - and an age is what lets the caller decide when
+    /// one cheap question is worth spending to find out.
+    /// </remarks>
+    public TimeSpan? MissAge(string key)
     {
         if (string.IsNullOrEmpty(key))
         {
-            return false;
+            return null;
         }
 
         try
@@ -201,13 +215,13 @@ public sealed class LyricsCache
             var path = MissPath(key);
             if (!File.Exists(path))
             {
-                return false;
+                return null;
             }
 
             var json = File.ReadAllText(path, Encoding.UTF8);
             if (string.IsNullOrWhiteSpace(json))
             {
-                return false;
+                return null;
             }
 
             var entry = JsonSerializer.Deserialize(json, LyricsCacheJsonContext.Default.LyricsCacheEntry);
@@ -215,14 +229,21 @@ public sealed class LyricsCache
             // A tombstone is respected while the matcher that wrote it is still current and while
             // it is younger than the lifetime: a search that has since learned a better question,
             // or a record lrclib has since picked up, may well find what the old verdict missed.
-            return entry is not null
-                   && string.Equals(entry.Key, key, StringComparison.Ordinal)
-                   && entry.MatchVersion >= CurrentMatchVersion
-                   && !IsStale(entry.WrittenAt);
+            if (entry is null
+                || !string.Equals(entry.Key, key, StringComparison.Ordinal)
+                || entry.MatchVersion < CurrentMatchVersion
+                || IsStale(entry.WrittenAt))
+            {
+                return null;
+            }
+
+            var age = Now() - entry.WrittenAt;
+
+            return TimeSpan.FromSeconds(age > 0 ? age : 0);
         }
         catch (Exception)
         {
-            return false;
+            return null;
         }
     }
 

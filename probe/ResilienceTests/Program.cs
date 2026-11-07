@@ -936,6 +936,84 @@ internal static class Program
             server.Requests.Count == 1
             && !server.Requests[0].Contains("duration=", StringComparison.OrdinalIgnoreCase));
 
+        // ---- 19. An old verdict is re-asked with one cheap question, because lrclib backfills. ----
+        // This is the shape the reported bug had: the app was told "lrclib has nothing" for a track
+        // a day before the record appeared, and the twenty-one-day tombstone kept saying so - for a
+        // song the catalogue held by the time it was played again. The verdict is still worth having;
+        // what it must not do is outlive a single cheap request.
+        var recheckDirectory = Path.Combine(cacheDirectory, "recheck");
+        var recheckCache = new LyricsCache(recheckDirectory);
+        using var recheckClient = new LrclibClient("Overlyric.Tests/1.0", server.BaseUrl, paced: false);
+        var recheckService = NewService(recheckClient, recheckCache);
+
+        server.StatusCode = 200;
+        server.Body = """
+            {"id":40090101,"trackName":"Silicon Sally","artistName":"The Tea Club","albumName":"Chasm",
+             "duration":226,"instrumental":false,"plainLyrics":null,
+             "syncedLyrics":"[00:14.88]Copper and carbon and silicon"}
+            """;
+        server.SearchBody = "[]";
+        server.AlbumSearchBody = null;
+
+        // No album, exactly as a browser media session reports a YouTube tab - and the identity the
+        // verdict was written under.
+        var recheckKey = LyricsCache.MakeKey("The Tea Club", "Silicon Sally", null);
+        LegacyWriteMiss(recheckDirectory, recheckKey, DateTimeOffset.UtcNow.ToUnixTimeSeconds() - (2L * 60 * 60));
+
+        Check(
+            "verdict recheck: an old verdict is visible as old",
+            recheckCache.MissAge(recheckKey) >= TimeSpan.FromMinutes(90));
+
+        server.ResetRequests();
+        var overturned = await recheckService.GetLyricsAsync(
+            "The Tea Club", "Silicon Sally", null, 226, CancellationToken.None);
+
+        Check(
+            "verdict recheck: a record lrclib gained since overturns the verdict",
+            overturned is { LrclibId: 40090101, IsSynced: true });
+        Check("verdict recheck: the overturned verdict is cleared", !recheckCache.IsMiss(recheckKey));
+        Check(
+            "verdict recheck: the first question is the one-record, album-less, duration-less probe",
+            server.Requests.Count > 0
+            && !server.Requests[0].Contains("album_name=", StringComparison.OrdinalIgnoreCase)
+            && !server.Requests[0].Contains("duration=", StringComparison.OrdinalIgnoreCase));
+
+        // Still absent: the probe 404s, the verdict survives, and it is re-dated so the next play
+        // inside the interval costs nothing at all.
+        var absentKey = LyricsCache.MakeKey("Artist", "Still Nobody", null);
+        LegacyWriteMiss(recheckDirectory, absentKey, DateTimeOffset.UtcNow.ToUnixTimeSeconds() - (2L * 60 * 60));
+        server.StatusCode = 404;
+        server.ResetRequests();
+
+        var stillAbsent = await recheckService.GetLyricsAsync(
+            "Artist", "Still Nobody", null, 120, CancellationToken.None);
+
+        Check("verdict recheck: a 404 leaves the verdict standing", stillAbsent is null);
+        Check("verdict recheck: and costs exactly one request", server.Requests.Count == 1);
+        Check(
+            "verdict recheck: a confirmed verdict is re-dated, so a replay is free",
+            recheckCache.MissAge(absentKey) < TimeSpan.FromMinutes(5));
+
+        // An outage is not a statement about the track: the verdict stands, but it is deliberately
+        // not re-dated, so the next play asks again instead of waiting out the interval on a request
+        // that never got an answer.
+        var outageVerdictKey = LyricsCache.MakeKey("Artist", "Verdict During An Outage", null);
+        LegacyWriteMiss(recheckDirectory, outageVerdictKey, DateTimeOffset.UtcNow.ToUnixTimeSeconds() - (2L * 60 * 60));
+        server.StatusCode = 503;
+        server.ResetRequests();
+        using var outageProbeClient = new LrclibClient("Overlyric.Tests/1.0", server.BaseUrl, paced: false);
+        var outageProbeService = NewService(outageProbeClient, recheckCache);
+
+        var outageVerdict = await outageProbeService.GetLyricsAsync(
+            "Artist", "Verdict During An Outage", null, 120, CancellationToken.None);
+
+        Check(
+            "verdict recheck: an outage leaves the verdict standing and does not cascade",
+            outageVerdict is null && server.Requests.Count == 1);
+        Check(
+            "verdict recheck: an outage does not re-date the verdict, so the next play asks again",
+            recheckCache.MissAge(outageVerdictKey) >= TimeSpan.FromMinutes(90));
+
         Console.WriteLine();
         Console.WriteLine(_failures == 0 ? "ALL CHECKS PASSED" : $"{_failures} CHECK(S) FAILED");
 

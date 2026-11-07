@@ -57,6 +57,19 @@ public sealed class LyricsService
     /// </summary>
     private static readonly TimeSpan ResolutionBudget = TimeSpan.FromSeconds(15);
 
+    /// <summary>
+    /// How long a "lrclib holds nothing for this track" verdict is taken at face value before one
+    /// cheap question is spent on whether a record has appeared since.
+    /// </summary>
+    /// <remarks>
+    /// A verdict earns its keep by not re-asking a hopeless track on every replay, and an hour keeps
+    /// that promise for any listening session: a three-minute song replayed ten times costs nothing
+    /// after the first play. What it no longer does is hide a record lrclib picked up in the
+    /// meantime, which is the failure the twenty-one-day tombstone caused for a track that was in
+    /// the catalogue all along by the time it was played again.
+    /// </remarks>
+    private static readonly TimeSpan VerdictRecheckInterval = TimeSpan.FromHours(1);
+
     private readonly LrclibClient _client;
     private readonly LyricsCache _cache;
     private readonly LyricSelectionStore _selections;
@@ -629,10 +642,37 @@ public sealed class LyricsService
             return new LyricsLookup(cached, true);
         }
 
-        if (_cache.IsMiss(key))
+        if (_cache.MissAge(key) is { } verdictAge)
         {
-            // A tombstone is only ever written for a definitive answer, so it stays one.
-            return new LyricsLookup(null, true);
+            // A tombstone is only ever written for a definitive answer, so it stays one. But it is a
+            // verdict about the moment it was given, and lrclib backfills: a track the catalogue did
+            // not hold when it was searched can be there now. A verdict younger than the recheck
+            // interval is taken as it stands; an older one is asked about again with the one question
+            // that can overturn it, and only an answer that actually finds something sends the
+            // resolution on into the full pipeline.
+            if (verdictAge < VerdictRecheckInterval)
+            {
+                return new LyricsLookup(null, true);
+            }
+
+            switch (await RecheckVerdictAsync(artist, cleanTitle, ct).ConfigureAwait(false))
+            {
+                case LookupStatus.NotFound:
+                    // Confirmed, so the verdict is dated anew: a replay inside the interval is free
+                    // rather than another request.
+                    _cache.SetMiss(key);
+                    return new LyricsLookup(null, true);
+
+                case LookupStatus.Unavailable:
+                    // lrclib could not answer, and that is not a confirmation: the date stays where
+                    // it is, so the next play asks again instead of waiting out an interval on a
+                    // request that never landed.
+                    return new LyricsLookup(null, true);
+
+                default:
+                    // A record is there now. The verdict is spent; the rest of the resolution runs.
+                    break;
+            }
         }
 
         var exact = await LookupExactWithAlbumAsync(
@@ -688,6 +728,33 @@ public sealed class LyricsService
         // cache's tombstone lifetime: lrclib backfills missing tracks, so "nothing" is not forever.
         _cache.SetMiss(key);
         return new LyricsLookup(null, true);
+    }
+
+    /// <summary>
+    /// Asks lrclib the one question that can overturn an old "no lyrics" verdict.
+    /// </summary>
+    /// <remarks>
+    /// The question is deliberately the shape the verdict was given in. A tombstone is written after
+    /// a <em>search</em>, and the search is asked without an album - it is a statement about the
+    /// song, not about one edition of it - so the verdict is re-asked about the song: artist and
+    /// title, no album. No duration either, because a length the player reports a little wrong (a
+    /// video counted with its ad, a stream with its lead-in) would 404 and read as "still nothing"
+    /// when a record is right there.
+    /// <para>
+    /// One record and about 1.8 kB, against twenty records and about 36 kB for the search the
+    /// tombstone exists to avoid. The answer is handed back rather than interpreted: a found record
+    /// overturns the verdict, a 404 confirms it, and an outage is neither - a server that cannot
+    /// answer has not said the track is absent, and spending the rest of the resolution on a server
+    /// that just failed is exactly the cascade the client is built to avoid.
+    /// </para>
+    /// </remarks>
+    private async Task<LookupStatus> RecheckVerdictAsync(string artist, string title, CancellationToken ct)
+    {
+        var probe = await _client
+            .LookupExactAsync(artist, title, album: null, durationSeconds: null, ct)
+            .ConfigureAwait(false);
+
+        return probe.Status;
     }
 
     /// <summary>

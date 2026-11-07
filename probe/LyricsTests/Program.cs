@@ -201,6 +201,13 @@ Check("an entry whose stored key does not match is rejected", !cache.TryGet(othe
 cache.SetMiss(key);
 Check("SetMiss then IsMiss, and TryGet still misses", cache.IsMiss(key) && !cache.TryGet(key, out _));
 
+Check(
+    "a tombstone reports how old its verdict is, so a fresh one can be told from a stale one",
+    cache.MissAge(key) is { } verdictAge && verdictAge < TimeSpan.FromMinutes(1),
+    cache.MissAge(key)?.ToString() ?? "none");
+
+Check("a key with no tombstone reports no verdict age", cache.MissAge("no such key") is null);
+
 cache.Set(key, sample);
 Check("Set clears the tombstone", !cache.IsMiss(key) && cache.TryGet(key, out _));
 

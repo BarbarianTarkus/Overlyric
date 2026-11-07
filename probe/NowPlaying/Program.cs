@@ -51,14 +51,22 @@ internal static class Program
             return 1;
         }
 
-        var cacheDirectory = Path.Combine(
+        var appDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Overlyric",
-            "cache");
+            "Overlyric");
+        var cacheDirectory = Path.Combine(appDirectory, "cache");
 
         var cache = new LyricsCache(cacheDirectory);
         using var client = new LrclibClient(UserAgent);
-        var service = new LyricsService(client, cache);
+
+        // The explicit choices are part of the overlay's verdict: a pinned record or an imported
+        // file outranks the automatic answer, so the harness has to read the same two stores the app
+        // reads or it would report a different track than the one on screen.
+        var service = new LyricsService(
+            client,
+            cache,
+            LyricSelectionStore.Load(Path.Combine(appDirectory, "selections.json")),
+            new LocalLyricsStore(Path.Combine(appDirectory, "lyrics")));
 
         var cleanTitle = MetadataNormaliser.CleanTitle(query.Title, query.Artist);
         var key = LyricsCache.MakeKey(query.Artist, query.Title, query.Album);
@@ -196,7 +204,11 @@ internal static class Program
                 Console.WriteLine("source   : that reader refused the entry, so the answer below was produced without a usable cache entry (the network)");
 
                 using var coldClient = new LrclibClient(UserAgent);
-                var coldService = new LyricsService(coldClient, coldCache);
+                var coldService = new LyricsService(
+                    coldClient,
+                    coldCache,
+                    LyricSelectionStore.Load(Path.Combine(seedDirectory, "selections.json")),
+                    new LocalLyricsStore(Path.Combine(seedDirectory, "lyrics")));
                 var cold = await coldService
                     .GetLyricsAsync(query.Artist, query.Title, query.Album, query.DurationSeconds, CancellationToken.None)
                     .ConfigureAwait(false);
