@@ -20,8 +20,8 @@ internal sealed class DiagnosticsWindow : PanelWindow
     private const int OpenLogControl = 2;
     private const int ScrollbarControl = 3;
 
-    private const float Pad = 24f;
-    private const float HeaderHeight = 76f;
+    private const float Pad = 28f;
+    private const float HeaderHeight = 74f;
     private const float FooterHeight = 42f;
     private const float RowHeight = 24f;
     private const float LabelWidth = 176f;
@@ -72,7 +72,7 @@ internal sealed class DiagnosticsWindow : PanelWindow
     {
         var snapshot = _snapshot();
 
-        Label(context, "Diagnostics", Pad, 12f, WidthDip - (2 * Pad), 30f, 20f, FontWeight.SemiBold, ColorText);
+        Label(context, "Diagnostics", Pad, 12f, WidthDip - (2 * Pad), 30f, 22f, FontWeight.SemiBold, ColorText);
         Label(
             context,
             "What Overlyric is playing, what it found, and why the overlay is where it is.",
@@ -80,7 +80,7 @@ internal sealed class DiagnosticsWindow : PanelWindow
             44f,
             WidthDip - (2 * Pad),
             20f,
-            11.5f,
+            12.5f,
             FontWeight.Normal,
             ColorTextDim);
         Fill(context, R(Pad, HeaderHeight - 1f, WidthDip - Pad, HeaderHeight), ColorLine);

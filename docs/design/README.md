@@ -75,8 +75,11 @@ ever opened.
 
 A later 2026-11-06 revision aligned the **Lyrics** header to the **Versions** one — cover and album on
 the left, the song title and artist centred, the duration and player under them, badges and record id
-on the right. The page-2 **Lyrics** frame still shows the earlier left-aligned header; the code and
-[docs/usage.md](../usage.md) carry the shared shape.
+on the right. The page-2 **Lyrics** frame carries that shape, so the two lyric pages line up layer for
+layer: a 48 DIP cover at x 50, a 4 DIP inset under the title bar, the album caption centred under it,
+and the header divider at 74 DIP. **Diagnostics** was brought onto the same grid — 28 DIP inset, 74
+DIP header, 22 DIP heading and a 12.5 DIP subtitle — so switching tabs no longer moves the left edge
+or the divider. See [docs/usage.md](../usage.md) for the running shape.
 
 Frames on page 2: Tray · notification area (schematic) 860 × 120 · Tray launcher — nothing open
 and one page showing, 340 × 552 · Settings 780 × 584 · Lyrics 900 × 664 · Versions 900 × 624 ·
@@ -109,6 +112,9 @@ Every position is a constant from the draw code rather than an eyeballed value:
 * Settings: `NavWidthDip 196`, `PadDip 30`, `RowHeightDip 46`, `RowsTopDip 132`,
   `ViewportTop 108`, `ViewportBottom clientHeight - 40`, and the control sizes in
   `Toggle`/`Segmented`/`Stepper`/`Slider`/`Button`.
+* Page header (Lyrics, Versions, Diagnostics): `Pad 28`, `HeaderHeight 74`, the title at 22
+  SemiBold, the sub-lines at 12.5, the album cover at 48 with its caption centred beneath it, and
+  the divider at `HeaderHeight - 1`.
 * Overlay: `PaddingX 26`, `PaddingY 12`, `CornerRadius 14`, `LineSpacing 6`,
   `ProgressBarHeight 3`, `ProgressBarInset 10`, `ActiveFontSize 30`, `InactiveFontSize 21`,
   `HeaderFontSize 13`, and the control bar's 32 DIP buttons, 5 DIP padding, 4/10 DIP gaps.
