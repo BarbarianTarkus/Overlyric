@@ -1,195 +1,115 @@
-# Overlyric
+<p align="center">
+  <img src="docs/images/icon.png" width="104" alt="Overlyric icon">
+</p>
 
-**Lyrics for whatever is playing, over whatever you are doing.**
+<h1 align="center">Overlyric</h1>
 
-Overlyric is a Windows 10/11 lyric overlay. It reads the now-playing track from Windows' own media
-controls, fetches synced lyrics from [LRCLIB](https://lrclib.net/), and paints them into a
-GPU-composited, click-through window that stays above ordinary windows and borderless-windowed games.
-There is no per-player integration to install. Deep dives live in [`docs/`](docs/README.md).
+<p align="center"><strong>Lyrics for whatever is playing, over whatever you are doing.</strong></p>
 
-![Single-line lyrics over a running game](docs/images/overlay-single-line.png)
+Overlyric is a small Windows app that puts the words of the song you are listening to on top of
+everything else — your games, your browser, your work. It reads what is playing from Windows itself, so
+there is nothing to install in your player and nothing to switch on before the first song.
+
+<p align="center">
+  <img src="docs/images/overlay-single-line.png" alt="Lyrics drawn over a running game">
+</p>
+
+## Install
+
+> [!NOTE]
+> **Windows 10 (1809 or later) or Windows 11, 64-bit.**
+
+Download **`Overlyric-0.4.0-x64-setup.exe`** from the [latest release][release] and run it.
+
+- It installs for your account only — no administrator prompt, no background service.
+- It starts in the notification area. There is no main window: play something and the lyrics appear.
+- Uninstalling keeps your settings, cached lyrics and saved lyric files in `%LOCALAPPDATA%\Overlyric`,
+  so reinstalling picks up where you left off.
+
+Curious before playing anything? `Overlyric.exe --demo` drives the overlay from a canned song.
 
 ## What it does
 
-- **Works with any player that publishes to Windows.** TIDAL, Spotify, browsers, VLC, foobar2000,
-  MusicBee, the built-in Media Player — anything that registers with the system media controls
-  (SMTC/GSMTC). Nothing to install or enable inside Overlyric.
-- **Finds the performance you are actually hearing.** Release suffixes are stripped before querying,
-  candidates are ranked by duration first, and an untimed pick is upgraded to the first record with
-  timings that runs for the same length. If the first search misses, it asks again with the album.
-- **Adapts to players that lie about the timeline.** Live timelines are followed; frozen ones (TIDAL)
-  are self-clocked from a stopwatch, so starting mid-song still lands on the right line.
-- **Fixes the timing once.** A nudge is saved for the track and comes back on replay; a correction
-  saved for the current output device (headphones, speakers, Bluetooth) is used when the track has
-  none, and the global offset is the fallback. The bar and the toast name the layer in force.
-- **Fixes the words too.** When LRCLIB has the wrong version or nothing at all, import a local
-  `.lrc`/`.txt` (UTF-8, UTF-16 or ANSI), preview it against the track, and it is used instead of the
-  network and marked **Local**; any timed sheet exports back to LRC. A deleted local file falls back
-  with a sentence, not silence.
-- **Keeps the transport one click away.** The control bar has play/pause and next, and the tray and
-  CLI expose the same actions through Windows media controls.
-- **Shows the album art it was given.** When the player publishes a thumbnail, the lyric sheet's
-  header and the start-of-track pop-up show it; a player that publishes none gets the text layout.
-- **Publishes a corrected sheet, explicitly.** A local sheet can be sent back to LRCLIB after a
-  confirmation panel that shows the exact payload; the proof-of-work is solved locally, one request
-  is sent, and nothing is ever published silently.
-- **Shows a translation when the listener supplies one.** A `.trans.lrc` beside an imported sheet
-  draws its active line under the lyric in a smaller, dimmer style; no machine translation, no
-  network call, and a switch to turn it off.
-- **Fixes timing line by line.** The lyric sheet is an editor: stamp a line's start or end from the
-  playing position, nudge by 10-250 ms (or hold Shift to shift the whole sheet), undo/redo, save it
-  as the track's local sheet, export LRC, or hand the `.lrc` to Notepad and let it reload on save.
-  The LRCLIB record itself is never modified.
-- **Single line, single line plus the next, or multi line**, with word- or line-timed karaoke sweep, a
-  manual version selector, and a full lyric sheet with timestamps.
-- **A stage mode for parties and streams.** One toggle turns the overlay into an opaque
-  full-monitor audience display with large centred lyrics, on black or chroma-key green.
-- **Built for an OLED desktop**, with a one-click burn-in preset: no backdrop, pixel shift, outline
-  text, and the unsung half of the current line left unlit. Four curated palettes (Default, Warm,
-  Cool, Mono) and a normal/semibold/bold active line sit beside it.
-- **Says when something is wrong.** If audio is playing but no player publishes, or a player publishes
-  no position, the tray says so instead of leaving you with a silent overlay.
-- **Answers "why is it showing this?"** A diagnostics window shows the session, clock, lyric source,
-  timing in force, output and display, Presence rules and the last events; one button copies it as
-  JSON for a bug report.
-- **Fits the machine and the setup.** Follows the cursor, the primary display or a named monitor and
-  remembers placement per display; hides itself for chosen apps such as calls or screen shares (and,
-  opt-in, while the microphone is actually in use); and
-  when a game is in exclusive fullscreen - which no normal window can cover - it says so once and
-  points at Borderless instead of pretending.
-- **Refreshes or previews on demand.** A wrong or missing record can be asked for again from the tray,
-  and the demo track can be shown for fifteen seconds without a player.
+- **Works with the players you already use.** TIDAL, Spotify, browsers, VLC, foobar2000, MusicBee, the
+  built-in Media Player — anything that shows up in the Windows media controls is followed. Nothing to
+  enable per player.
+- **Usually finds the right lyrics first time.** Songs are matched by length rather than by the first
+  search result, "- Remastered" and similar suffixes are ignored, and if a search comes up short it asks
+  again with the album name.
+- **Keeps time even when the player does not.** Some players report the playback position only now and
+  then, or leave it frozen. Overlyric notices and keeps its own clock, so starting a song halfway still
+  lands on the right line.
+- **A correction that sticks.** Shift the lyrics a quarter second and the fix is remembered for that
+  song — and, separately, for the headphones or speakers you were using.
+- **Your own words when the database is wrong or empty.** Import a `.lrc` or `.txt` file, preview it
+  against the song, and it is used instead of the internet. Translations work too: drop a
+  `.trans.lrc` beside it.
+- **Fix a line, not the file.** The lyric sheet is an editor: stamp timings as the song plays, nudge a
+  line, undo, save, export. The public lyrics record is never modified.
+- **Looks the way you want.** One line, one line plus the next, or several; karaoke sweep; a stage mode
+  for parties and streams; an OLED preset that fights burn-in.
+- **Gets out of the way.** It is click-through, it follows the cursor or a screen you pick, it hides
+  itself for chosen apps such as calls and screen shares, and it can hide while your microphone is in
+  use.
+- **Says what went wrong.** If music is playing but nothing publishes, or a player reports no position,
+  the tray icon says so instead of leaving you with an empty overlay. A diagnostics page answers "why is
+  it showing this?" and copies itself as JSON for a bug report.
 
 ## Screenshots
 
 ![The karaoke sweep in demo mode](docs/images/demo.gif)
 
-The karaoke sweep, captured live from `--demo`. The overlay has a transparent backdrop, so the black
-is the capture background, not a theme. Run `Overlyric.exe --demo` to try it with nothing playing.
+*The karaoke sweep, captured live from `--demo`. The black is the capture background, not a theme — the
+overlay itself is transparent.*
 
-| Multi line | Full lyric sheet |
+| | |
 | --- | --- |
-| ![Multi-line overlay in demo mode](docs/images/overlay-multi-line.png) | ![The full lyric sheet](docs/images/lyric-viewer.png) |
-| The same game, `--demo` driving a canned track. | Every line and timestamp, with the line being sung highlighted. |
+| ![The full lyric sheet](docs/images/lyric-viewer.png) | ![Stage mode](docs/images/stage-mode.png) |
+| **Full lyric sheet** — every line and timestamp, with the current line highlighted. | **Stage mode** — an opaque, full-monitor display for parties and streams. |
+| ![The settings window](docs/images/settings-window.png) | ![The overlay controls](docs/images/overlay-controls.png) |
+| **Settings** — four pages, one window. | **Controls** — unlock the overlay and move the mouse over it. |
 
-| Lyrics | Shortcuts |
-| --- | --- |
-| ![The Lyrics settings section](docs/images/settings-window.png) | ![The Shortcuts settings section](docs/images/settings-shortcuts.png) |
-| Mode, lines shown, text sizes, the karaoke sweep, and the track info and info pop-up it owns. | Every global hotkey, rebound by pressing the new combination. |
-
-| Appearance | Players |
-| --- | --- |
-| ![The Appearance settings section](docs/images/settings-oled.png) | ![The Players settings section](docs/images/settings-source.png) |
-| Backdrop, what stays lit, and the burn-in preset and tools. | Who is followed, and the order the rest are tried in. |
-
-Settings captures show one machine's configuration, not the defaults. The
-[screenshot gallery](docs/README.md#screenshots) has the lyric selector and the rest of the settings
-window.
-
-## Quick start
-
-Overlyric is a single self-contained executable; there is no .NET runtime to install. Build it with
-the command under [How it's built](#how-its-built), or install it with `installer\build-installer.ps1`
-(the per-user MSI) or `installer\build-nsis.ps1` (the per-user NSIS setup), then start
-`Overlyric.exe`. It lives in the notification area —
-there is no main window. Play something and the overlay appears.
+## Keyboard shortcuts
 
 | Shortcut | Action |
 | --- | --- |
-| `Ctrl+Alt+H` | Show / hide the overlay |
-| `Ctrl+Alt+M` | Cycle single line → single + next → multi line |
-| `Ctrl+Alt+L` | Lock / unlock. Unlocked, the overlay can be dragged and takes the mouse wheel |
-| `Ctrl+Alt+,` / `Ctrl+Alt+.` | Shift the lyrics 0.25 s earlier / later |
+| `Ctrl+Alt+H` | Show or hide the overlay |
+| `Ctrl+Alt+M` | Cycle one line → one line plus the next → several lines |
+| `Ctrl+Alt+L` | Lock or unlock. Unlocked, the overlay can be dragged and takes the mouse wheel |
+| `Ctrl+Alt+,` / `Ctrl+Alt+.` | Shift the lyrics a quarter second earlier or later |
 | `Ctrl+Alt+0` | Reset the timing offset |
 
-Every shortcut can be rebound in **Settings → Shortcuts**. `Overlyric.exe --settings` opens the same
-window directly, and a second launch forwards scripts to the running instance: `--toggle`,
-`--layout=peek`, `--offset=-250`, `--preview`, `--diagnostics` and more. The
-[usage guide](docs/usage.md) covers the control bar, the tray menu, the lyric selector and the
-viewer.
+Every shortcut can be rebound in **Settings → Shortcuts** by clicking it and pressing the new
+combination. Holding **Shift** while nudging changes the timing for this session only.
 
-## How it works
+## Good to know
 
-```
- any player
-    │  Windows media controls (SMTC)
-    ▼
- MediaSessionWatcher ──▶ LyricsService ──▶ LRCLIB / cache
-    │                        │
-    ▼                        │
- PlaybackClock ──────────────┴──▶ OverlayWindow
-                                  DirectComposition + Direct2D
-```
+> [!IMPORTANT]
+> The player has to publish a playback **position**, not just a title. Players that report metadata but
+> keep the position at zero cannot be synced — Overlyric says so rather than parking on the first line.
+> AIMP is the usual example; the fix is a plug-in that publishes properly.
 
-Four decisions do most of the work:
+> [!WARNING]
+> **Not above exclusive fullscreen.** Windows bypasses the desktop compositor there, so the lyrics stop
+> at the desktop. Borderless-windowed games and normal windows work. Overlyric deliberately does no
+> injection and no hooking — that is what keeps it safe to run alongside games and anti-cheat.
 
-- **Read Windows, not the player.** Windows exposes every registered media session through one API,
-  the same source that drives the media keys and the volume flyout. Overlyric polls it, so a new player
-  works the day it registers. A player that never registers cannot be supported — AIMP is the usual
-  example, and the fix is a plug-in that publishes properly, not a setting in Overlyric.
-- **Choose the record, not the first hit.** LRCLIB holds many records per song. Duration dominates the
-  ranking, release suffixes are stripped so the right family is queried at all, and when the ranked pick
-  has no timings the app looks for the first synced record of the same length. A second, album-scoped
-  search covers the case where LRCLIB's twenty-result cap hides it.
-- **Do not trust the reported position.** TIDAL reports metadata but freezes the timeline, so the clock
-  uses a monotonic stopwatch and ages the reported position by the wall clock since it was stamped.
-  Players with a live timeline re-anchor it, but only when drift exceeds 400 ms.
-- **Draw without a UI framework.** A `WS_EX_NOREDIRECTIONBITMAP` window composited by DirectComposition
-  means the GPU blends the lyrics: no per-frame CPU pixel copy, no focus stealing, and a redraw only
-  when the visible content changes.
-
-The long version, including the measurements behind each claim, is in
-[How it works](docs/architecture.md) and [Lyrics](docs/lyrics.md).
-
-## How it's built
-
-- **NativeAOT on .NET 10** — one self-contained executable, no runtime install, no JIT warm-up.
-- **Win32 + Direct2D/DirectWrite + DirectComposition**, through Vortice. No WPF, WinUI or WinForms;
-  those would cost more memory before the first lyric is drawn than the whole process does.
-- **Cached text layouts and zero per-frame allocations.** The progress bar does not allocate to move.
-- Every platform assumption was measured first with a throwaway probe; the probes are still in
-  [`probe/`](probe/) and documented in [Development](docs/development.md#probes).
-
-Measured on Windows 11, 3840×2160 at 150 % with TIDAL playing over a running game:
-
-| Metric | Value |
-| --- | --- |
-| Working set | ~65 MB, flat over 3+ minutes |
-| CPU | ~0.2 s per 150 s of playback (≈0.15 % of one core) |
-| Executable | 11.0 MB, single file, no .NET runtime installed |
-| Handles / threads | ~1280 / ~25 |
-
-```powershell
-dotnet publish src\Overlyric\Overlyric.csproj -c Release
-```
-
-That produces `src\Overlyric\bin\Release\net10.0-windows10.0.26100.0\win-x64\publish\Overlyric.exe`.
-Building needs the .NET SDK 10 and the MSVC toolchain for the NativeAOT link;
-[Development](docs/development.md) has the rest, including the installer.
-
-## Honest limits
-
-- **Not above exclusive fullscreen.** Windows bypasses the desktop compositor there, so only code
-  injected into the game (or a display driver) can draw. Overlyric deliberately does no injection, no
-  hooking and no DLL loading. Borderless-windowed games and normal windows work.
-- **The player has to publish — a title alone is not enough.** A player that publishes no position
-  cannot be synced; the overlay says so rather than parking on the first line. Some AIMP plug-ins
-  publish metadata but leave the timeline at zero, which is equally unusable; `aimp-smtc-sync`
-  publishes a real one.
-- **Windows 10 1809 or newer, x64.** Windows 11 recommended.
-
-## Documentation
+## Learn more
 
 | Page | What is in it |
 | --- | --- |
-| [How it works](docs/architecture.md) | Sessions, source selection, the adaptive clock, failure diagnosis, rendering |
-| [Lyrics](docs/lyrics.md) | Record matching, the version selector, the full sheet, LRCLIB, instrumentals |
-| [Using Overlyric](docs/usage.md) | Hotkeys, control bar, tray, settings, karaoke, moving and locking |
+| [Using Overlyric](docs/usage.md) | Hotkeys, control bar, tray, settings, moving and locking |
+| [Lyrics](docs/lyrics.md) | How a version is chosen, the selector, imports and publishing |
 | [OLED and burn-in](docs/oled.md) | The burn-in levers and the preset |
-| [Configuration](docs/configuration.md) | Every `config.json` key, the cache, pinned versions |
-| [Development](docs/development.md) | Build, icon, resource budget, probes, project layout |
-| [Fullscreen feasibility](docs/fullscreen-overlay-feasibility.md) | Why true exclusive fullscreen cannot work |
-| [Documentation index](docs/README.md) | All of the above, with the screenshot gallery |
+| [Configuration](docs/configuration.md) | Every `config.json` key and what it changes |
+| [How it works](docs/architecture.md) | The technical story: sessions, the clock, rendering |
+| [Development](docs/development.md) | Building it, probes, the installer, project layout |
 
-Lyrics are fetched from [LRCLIB](https://lrclib.net/). Overlyric is not affiliated with any player or
-with LRCLIB.
+It is one self-contained executable (about 11 MB) with no .NET runtime to install, and it sits at
+around 65 MB of memory while playing. Everything else technical — measurements, the reasoning behind
+the clock, why exclusive fullscreen cannot work — is in [the documentation](docs/README.md).
+
+Lyrics come from [LRCLIB](https://lrclib.net/). Overlyric is not affiliated with any player or with
+LRCLIB.
+
+[release]: https://github.com/BarbarianTarkus/Overlyric/releases/latest
