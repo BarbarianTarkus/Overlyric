@@ -11,5 +11,9 @@ coverage/
 .env
 .agents/
 
+# Python bytecode from the probe/tooling scripts
+__pycache__/
+*.pyc
+
 # Local agent scratch and UI test artifacts (see tools/uitest/README.md)
 .dsh-tmp/
